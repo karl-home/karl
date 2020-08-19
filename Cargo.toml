@@ -1,0 +1,8 @@
+[package]
+name = "wasmer"
+version = "0.1.0"
+authors = ["Gina Yuan <gina.yuan@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+wasmer = { path = "wasmer" }
