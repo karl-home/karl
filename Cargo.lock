@@ -1206,7 +1206,9 @@ checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
 name = "wasmer"
 version = "0.1.0"
 dependencies = [
+ "tempdir",
  "wasmer 0.13.1",
+ "zip",
 ]
 
 [[package]]

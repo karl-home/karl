@@ -6,3 +6,5 @@ edition = "2018"
 
 [dependencies]
 wasmer = { path = "wasmer" }
+tempdir = "0.3"
+zip = "0.5.6"

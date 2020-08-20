@@ -1,27 +1,50 @@
 // use wasmer::wasmer_runtime_core::pkg::Pkg
+use std::fs;
 use std::io;
-use std::io::BufRead;
+use std::io::{Read, Write, BufRead};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 
 use wasmer::executor::{run, Run};
+use tempdir::TempDir;
+use zip;
 
-fn handle_client(stream: TcpStream) -> io::Result<()> {
-    // Read the computation request from the TCP stream.
+fn read_all(inner: &mut dyn Read) -> io::Result<Vec<u8>> {
+    let mut buffer = Vec::new();
+    let mut reader = io::BufReader::new(inner);
     // WARNING: blocking
-    let mut zip_buffer = Vec::new();
-    let mut reader = io::BufReader::new(stream);
     loop {
-        let mut buffer = reader.fill_buf()?.to_vec();
-        if buffer.len() == 0 {
+        let mut inner = reader.fill_buf()?.to_vec();
+        if inner.len() == 0 {
             break;
         }
-        reader.consume(buffer.len());
-        zip_buffer.append(&mut buffer);
+        reader.consume(inner.len());
+        buffer.append(&mut inner);
     }
-    println!("read {} bytes", zip_buffer.len());
+    Ok(buffer)
+}
 
-    // TODO: Decompress the request package into a temporary directory.
+fn handle_client(mut stream: TcpStream) -> io::Result<()> {
+    // Read the computation request from the TCP stream.
+    // WARNING: blocking
+    let buf = read_all(&mut stream)?;
+    println!("read {} bytes", buf.len());
+
+    // Decompress the request package into a temporary directory.
+    let reader = io::Cursor::new(buf);
+    let mut zip = zip::ZipArchive::new(reader)?;
+    let package = TempDir::new("package")?;
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        let path = package.path().join(file.sanitized_name());
+        if file.is_dir() {
+            fs::create_dir(path)?;
+        } else {
+            let mut out = fs::File::create(path)?;
+            let buf = read_all(&mut file)?;
+            out.write_all(&buf)?;
+        }
+    }
 
     // Replay the packaged computation.
     let path = Path::new("package/");
