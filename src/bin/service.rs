@@ -1,11 +1,26 @@
 // use wasmer::wasmer_runtime_core::pkg::Pkg
-use std::io::{self, Read};
+use std::io;
+use std::io::BufRead;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+
 use wasmer::executor::{run, Run};
 
-fn handle_client(mut stream: TcpStream) -> io::Result<()> {
-    // TODO: Read the computation request from the TCP stream.
+fn handle_client(stream: TcpStream) -> io::Result<()> {
+    // Read the computation request from the TCP stream.
+    // WARNING: blocking
+    let mut zip_buffer = Vec::new();
+    let mut reader = io::BufReader::new(stream);
+    loop {
+        let mut buffer = reader.fill_buf()?.to_vec();
+        if buffer.len() == 0 {
+            break;
+        }
+        reader.consume(buffer.len());
+        zip_buffer.append(&mut buffer);
+    }
+    println!("read {} bytes", zip_buffer.len());
+
     // TODO: Decompress the request package into a temporary directory.
 
     // Replay the packaged computation.
