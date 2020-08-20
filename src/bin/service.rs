@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::io::{Read, Write, BufRead};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
+use std::time::Instant;
 
 use wasmer::executor::{run, Run};
 use tempdir::TempDir;
@@ -27,10 +27,12 @@ fn read_all(inner: &mut dyn Read) -> io::Result<Vec<u8>> {
 fn handle_client(mut stream: TcpStream) -> io::Result<()> {
     // Read the computation request from the TCP stream.
     // WARNING: blocking
+    let now = Instant::now();
     let buf = read_all(&mut stream)?;
-    println!("read {} bytes", buf.len());
+    println!("read {} bytes: {} s", buf.len(), now.elapsed().as_secs_f32());
 
     // Decompress the request package into a temporary directory.
+    let now = Instant::now();
     let reader = io::Cursor::new(buf);
     let mut zip = zip::ZipArchive::new(reader)?;
     let package = TempDir::new("package")?;
@@ -45,12 +47,14 @@ fn handle_client(mut stream: TcpStream) -> io::Result<()> {
             out.write_all(&buf)?;
         }
     }
+    println!("decompressed {} files: {} s", zip.len(), now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
-    let path = Path::new("package/");
-    let mut options = Run::new(path.to_path_buf());
+    let now = Instant::now();
+    let mut options = Run::new(package.path().to_path_buf());
     options.replay = true;
     run(&mut options);
+    println!("execution: {} s", now.elapsed().as_secs_f32());
 
     // TODO: Parse the return options from the TCP stream.
     // TODO: Serialize and return the requested results.
