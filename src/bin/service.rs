@@ -62,8 +62,8 @@ fn handle_client(mut stream: TcpStream) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:3333")?;
-    println!("listening on port 3333");
+    let listener = TcpListener::bind("0.0.0.0:0")?;
+    println!("listening on port {}", listener.local_addr()?.port());
 
     // accept connections and process them serially
     for stream in listener.incoming() {
