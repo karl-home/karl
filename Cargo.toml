@@ -1,10 +1,11 @@
 [package]
-name = "wasmer"
+name = "karl"
 version = "0.1.0"
 authors = ["Gina Yuan <gina.yuan@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 wasmer = { path = "wasmer" }
+serde = "1.0.115"
 tempdir = "0.3"
 zip = "0.5.6"
