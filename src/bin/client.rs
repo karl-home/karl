@@ -1,12 +1,34 @@
-use std::io::{self, prelude::*};
-use std::net::TcpStream;
+use std::fs::File;
+use std::io::Read;
+use std::time::Duration;
 
-fn main() -> io::Result<()> {
-    let host_ip = "127.0.0.1";  // TODO: discover host IP through dns-sd
-    let port = "61000";
-    let mut stream = TcpStream::connect(format!("{}:{}", host_ip, port))?;
+use tokio::runtime::Runtime;
+use karl::{controller::{Controller, HostConnection}, ComputeRequest};
 
-    stream.write(&[1])?;
-    stream.read(&mut [0; 128])?;
-    Ok(())
+fn main() {
+    let rt = Runtime::new().unwrap();
+
+    let mut c = Controller::new(rt, Duration::from_secs(15));
+    let hosts = c.find_hosts();
+    if hosts.is_empty() {
+        println!("No hosts found!");
+        return;
+    }
+
+    let host = hosts[0];  // Take the first host.
+    let conn = HostConnection::connect(host);
+    if conn.ping().is_none() {
+        println!("Host {:?} could not be reached! (ping)", conn.host_addr());
+        return;
+    }
+
+    let mut f = File::open("package.zip").expect("failed to open package.zip");
+    let mut buffer: Vec<u8> = Vec::new();
+    f.read(&mut buffer).expect("failed to read package.zip");
+    let res = conn.execute(ComputeRequest::new(buffer));
+    if let Some(res) = res {
+        println!("Result: {:?}", res);
+    } else {
+        println!("Host {:?} could not be reached! (compute)", conn.host_addr());
+    }
 }
