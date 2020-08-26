@@ -1,5 +1,6 @@
+use std::io;
 use std::collections::HashSet;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -22,6 +23,7 @@ pub struct Controller {
 /// Connection to a host.
 pub struct HostConnection {
     host: SocketAddr,
+    stream: TcpStream,
 }
 
 impl Controller {
@@ -36,12 +38,25 @@ impl Controller {
                 .listen();
             pin_mut!(stream);
             while let Some(Ok(response)) = stream.next().await {
-                if response.is_empty() {
+                // Find the port
+                let port = if let Some(port) = response.port() {
+                    port
+                } else {
                     continue;
-                }
-                if let Some(addr) = response.socket_address() {
-                    println!("discovered host: {:?}", addr);
-                    hosts.lock().unwrap().insert(addr);
+                };
+                // Find the IPv4 address
+                let ip_addr = response
+                    .records()
+                    .filter_map(|record| match record.kind {
+                        mdns::RecordKind::A(ip_addr) => Some(ip_addr),
+                        _ => None,
+                    })
+                    .next();
+                // Form the socket address
+                if let Some(ip_addr) = ip_addr {
+                    let socket_addr = SocketAddr::new(ip_addr.into(), port);
+                    println!("discovered host: {:?}", socket_addr);
+                    hosts.lock().unwrap().insert(socket_addr);
                 }
             }
         });
@@ -63,8 +78,10 @@ impl Controller {
 
 impl HostConnection {
     /// Connect to a host.
-    pub fn connect(host: SocketAddr) -> Self {
-        unimplemented!();
+    pub fn connect(host: SocketAddr) -> io::Result<Self> {
+        println!("trying to connect to {:?}", host);
+        let stream = TcpStream::connect(&host)?;
+        Ok(HostConnection { host, stream })
     }
 
     /// Returns the address of the connected host.

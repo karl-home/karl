@@ -21,7 +21,7 @@ fn main() {
     };
 
     let host = hosts[0];  // Take the first host.
-    let conn = HostConnection::connect(host);
+    let conn = HostConnection::connect(host).unwrap();
     if conn.ping().is_none() {
         println!("Host {:?} could not be reached! (ping)", conn.host_addr());
         return;
