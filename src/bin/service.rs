@@ -12,19 +12,11 @@ use zip;
 
 use karl::*;
 
-#[derive(Debug)]
-enum Error {
-    IoError(io::Error),
-    SerializationError(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(error: io::Error) -> Self {
-        Error::IoError(error)
-    }
-}
-
-fn read_all(inner: &mut dyn Read) -> io::Result<Vec<u8>> {
+/// Read bytes from the stream into a buffer.
+///
+/// If `max_nbytes` is provided, reads that number of bytes or until the
+/// internal buffer is empty. Otherwise reads to EOF.
+fn read_bytes(inner: &mut dyn Read, max_nbytes: Option<usize>) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     let mut reader = io::BufReader::new(inner);
     // WARNING: blocking
@@ -33,6 +25,15 @@ fn read_all(inner: &mut dyn Read) -> io::Result<Vec<u8>> {
         if inner.len() == 0 {
             break;
         }
+        if let Some(max_nbytes) = max_nbytes {
+            let nbytes_remaining = max_nbytes - buffer.len();
+            if inner.len() >= nbytes_remaining {
+                inner.truncate(nbytes_remaining);
+                reader.consume(nbytes_remaining);
+                buffer.append(&mut inner);
+                break;
+            }
+        }
         reader.consume(inner.len());
         buffer.append(&mut inner);
     }
@@ -40,11 +41,13 @@ fn read_all(inner: &mut dyn Read) -> io::Result<Vec<u8>> {
 }
 
 fn handle_ping(req: PingRequest) -> PingResult {
-    unimplemented!()
+    println!("RX: ping {:?}", req);
+    PingResult::new()
 }
 
 fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
     // Decompress the request package into a temporary directory.
+    println!("RX: compute");
     let now = Instant::now();
     let reader = io::Cursor::new(req.zip);
     let mut zip = zip::ZipArchive::new(reader)?;
@@ -56,7 +59,7 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
             fs::create_dir(path)?;
         } else {
             let mut out = fs::File::create(path)?;
-            let buf = read_all(&mut file)?;
+            let buf = read_bytes(&mut file, None)?;
             out.write_all(&buf)?;
         }
     }
@@ -76,7 +79,14 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
-    let buf = read_all(&mut stream)?;
+    let nbytes = {
+        let nbytes = read_bytes(&mut stream, Some(1))?;
+        if nbytes.is_empty() {
+            return Err(Error::MissingPacketHeaderError);
+        }
+        *nbytes.get(0).unwrap() as usize
+    };
+    let buf = read_bytes(&mut stream, Some(nbytes))?;
     println!("read {} bytes: {} s", buf.len(), now.elapsed().as_secs_f32());
 
     // Deserialize the request.
@@ -90,6 +100,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     };
 
     // Return the result to sender.
+    println!("TX: {:?}", res);
     let res_bytes = bincode::serialize(&res)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
     stream.write(&res_bytes[..])?;

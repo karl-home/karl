@@ -24,6 +24,12 @@ pub struct ComputeResult {
     pub files: HashMap<PathBuf, Vec<u8>>,
 }
 
+impl PingResult {
+    pub fn new() -> Self {
+        PingResult {}
+    }
+}
+
 impl ComputeResult {
     pub fn new() -> Self {
         unimplemented!()

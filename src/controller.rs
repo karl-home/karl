@@ -94,6 +94,9 @@ impl HostConnection {
     /// Send a request to the connected host.
     fn send(&mut self, req: KarlRequest) -> io::Result<Option<KarlResult>> {
         let bytes = bincode::serialize(&req).unwrap();
+        let nbytes = [bytes.len() as u8];
+        println!("sending {:?}", nbytes);
+        self.stream.write(&nbytes)?;
         println!("sending {:?}", bytes);
         self.stream.write(&bytes[..])?;
         println!("done!");
