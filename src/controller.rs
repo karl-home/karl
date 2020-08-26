@@ -1,5 +1,4 @@
 use std::io;
-use std::io::Write;
 use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
@@ -92,19 +91,22 @@ impl HostConnection {
     }
 
     /// Send a request to the connected host.
-    fn send(&mut self, req: KarlRequest) -> io::Result<Option<KarlResult>> {
-        let bytes = bincode::serialize(&req).unwrap();
-        let nbytes = [bytes.len() as u8];
-        println!("sending {:?}", nbytes);
-        self.stream.write(&nbytes)?;
-        println!("sending {:?}", bytes);
-        self.stream.write(&bytes[..])?;
+    fn send(&mut self, req: KarlRequest) -> Result<Option<KarlResult>, Error> {
+        let bytes = bincode::serialize(&req)
+            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        print!("sending {:?}...", req);
+        write_packet(&mut self.stream, &bytes)?;
         println!("done!");
-        Ok(None)
+
+        // Wait for the response.
+        let bytes = read_packet(&mut self.stream)?;
+        let res = bincode::deserialize(&bytes)
+            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        Ok(Some(res))
     }
 
     /// Ping the host.
-    pub fn ping(&mut self) -> io::Result<Option<PingResult>> {
+    pub fn ping(&mut self) -> Result<Option<PingResult>, Error> {
         let req = KarlRequest::Ping(PingRequest::new());
         match self.send(req)? {
             Some(KarlResult::Ping(res)) => Ok(Some(res)),

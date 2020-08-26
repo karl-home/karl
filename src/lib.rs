@@ -1,8 +1,8 @@
 pub mod controller;
-mod error;
+mod common;
 mod request;
 mod result;
 
-pub use error::Error;
+pub use common::*;
 pub use request::*;
 pub use result::*;

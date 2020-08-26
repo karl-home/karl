@@ -1,7 +1,7 @@
 // use wasmer::wasmer_runtime_core::pkg::Pkg
 use std::fs;
 use std::io;
-use std::io::{Read, Write, BufRead};
+use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::time::Instant;
 
@@ -11,34 +11,6 @@ use tempdir::TempDir;
 use zip;
 
 use karl::*;
-
-/// Read bytes from the stream into a buffer.
-///
-/// If `max_nbytes` is provided, reads that number of bytes or until the
-/// internal buffer is empty. Otherwise reads to EOF.
-fn read_bytes(inner: &mut dyn Read, max_nbytes: Option<usize>) -> io::Result<Vec<u8>> {
-    let mut buffer = Vec::new();
-    let mut reader = io::BufReader::new(inner);
-    // WARNING: blocking
-    loop {
-        let mut inner = reader.fill_buf()?.to_vec();
-        if inner.len() == 0 {
-            break;
-        }
-        if let Some(max_nbytes) = max_nbytes {
-            let nbytes_remaining = max_nbytes - buffer.len();
-            if inner.len() >= nbytes_remaining {
-                inner.truncate(nbytes_remaining);
-                reader.consume(nbytes_remaining);
-                buffer.append(&mut inner);
-                break;
-            }
-        }
-        reader.consume(inner.len());
-        buffer.append(&mut inner);
-    }
-    Ok(buffer)
-}
 
 fn handle_ping(req: PingRequest) -> PingResult {
     println!("RX: ping {:?}", req);
@@ -79,14 +51,7 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
-    let nbytes = {
-        let nbytes = read_bytes(&mut stream, Some(1))?;
-        if nbytes.is_empty() {
-            return Err(Error::MissingPacketHeaderError);
-        }
-        *nbytes.get(0).unwrap() as usize
-    };
-    let buf = read_bytes(&mut stream, Some(nbytes))?;
+    let buf = read_packet(&mut stream)?;
     println!("read {} bytes: {} s", buf.len(), now.elapsed().as_secs_f32());
 
     // Deserialize the request.
@@ -103,7 +68,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     println!("TX: {:?}", res);
     let res_bytes = bincode::serialize(&res)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-    stream.write(&res_bytes[..])?;
+    write_packet(&mut stream, &res_bytes)?;
     Ok(())
 }
 
