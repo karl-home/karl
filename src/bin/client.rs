@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
+use std::thread;
 
 use tokio::runtime::Runtime;
 use karl::{controller::{Controller, HostConnection}, ComputeRequest};
@@ -8,12 +9,16 @@ use karl::{controller::{Controller, HostConnection}, ComputeRequest};
 fn main() {
     let rt = Runtime::new().unwrap();
 
-    let mut c = Controller::new(rt, Duration::from_secs(15));
-    let hosts = c.find_hosts();
-    if hosts.is_empty() {
-        println!("No hosts found!");
-        return;
-    }
+    let mut c = Controller::new(rt, Duration::from_secs(10));
+    let hosts = loop {
+        let hosts = c.find_hosts();
+        if hosts.is_empty() {
+            println!("No hosts found! Try again in 1 second...");
+            thread::sleep(Duration::from_secs(1));
+        } else {
+            break hosts;
+        }
+    };
 
     let host = hosts[0];  // Take the first host.
     let conn = HostConnection::connect(host);
