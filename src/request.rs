@@ -31,6 +31,13 @@ pub struct ComputeRequest {
     pub files: HashSet<PathBuf>,
 }
 
+impl PingRequest {
+    /// Create a new ping request.
+    pub fn new() -> Self {
+        PingRequest {}
+    }
+}
+
 impl ComputeRequest {
     /// Create a new compute request based on a a serialized version of a
     /// formatted zipped directory.

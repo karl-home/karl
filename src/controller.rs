@@ -1,9 +1,11 @@
 use std::io;
+use std::io::Write;
 use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bincode;
 use mdns;
 use tokio;
 use futures_util::{pin_mut, stream::StreamExt};
@@ -90,17 +92,25 @@ impl HostConnection {
     }
 
     /// Send a request to the connected host.
-    fn send(&self, req: KarlRequest) -> Option<KarlResult> {
-        unimplemented!();
+    fn send(&mut self, req: KarlRequest) -> io::Result<Option<KarlResult>> {
+        let bytes = bincode::serialize(&req).unwrap();
+        println!("sending {:?}", bytes);
+        self.stream.write(&bytes[..])?;
+        println!("done!");
+        Ok(None)
     }
 
     /// Ping the host.
-    pub fn ping(&self) -> Option<PingResult> {
-        unimplemented!();
+    pub fn ping(&mut self) -> io::Result<Option<PingResult>> {
+        let req = KarlRequest::Ping(PingRequest::new());
+        match self.send(req)? {
+            Some(KarlResult::Ping(res)) => Ok(Some(res)),
+            _ => Ok(None),
+        }
     }
 
     /// Execute a compute request.
-    pub fn execute(&self, req: ComputeRequest) -> Option<ComputeResult> {
+    pub fn execute(&mut self, req: ComputeRequest) -> io::Result<Option<ComputeResult>> {
         unimplemented!();
     }
 }

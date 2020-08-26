@@ -21,19 +21,25 @@ fn main() {
     };
 
     let host = hosts[0];  // Take the first host.
-    let conn = HostConnection::connect(host).unwrap();
-    if conn.ping().is_none() {
-        println!("Host {:?} could not be reached! (ping)", conn.host_addr());
-        return;
+    let mut conn = HostConnection::connect(host).unwrap();
+    match conn.ping() {
+        Ok(Some(_)) => {},
+        Ok(None) => {
+            println!("Host {:?} could not be reached! (ping)", conn.host_addr());
+            return;
+        },
+        Err(e) => {
+            println!("Error pinging host {:?}: {:?}", conn.host_addr(), e);
+            return;
+        }
     }
 
     let mut f = File::open("package.zip").expect("failed to open package.zip");
     let mut buffer: Vec<u8> = Vec::new();
     f.read(&mut buffer).expect("failed to read package.zip");
-    let res = conn.execute(ComputeRequest::new(buffer));
-    if let Some(res) = res {
-        println!("Result: {:?}", res);
-    } else {
-        println!("Host {:?} could not be reached! (compute)", conn.host_addr());
+    match conn.execute(ComputeRequest::new(buffer)) {
+        Ok(Some(res)) => println!("Result: {:?}", res),
+        Ok(None) => println!("Host {:?} could not be reached! (compute)", conn.host_addr()),
+        Err(e) => println!("Error contacting host {:?}: {:?}", conn.host_addr(), e),
     }
 }
