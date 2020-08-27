@@ -117,7 +117,14 @@ impl HostConnection {
     }
 
     /// Execute a compute request.
-    pub fn execute(&mut self, req: ComputeRequest) -> io::Result<Option<ComputeResult>> {
-        unimplemented!();
+    pub fn execute(
+        &mut self,
+        req: ComputeRequest,
+    ) -> Result<Option<ComputeResult>, Error> {
+        let req = KarlRequest::Compute(req);
+        match self.send(req)? {
+            Some(KarlResult::Compute(res)) => Ok(Some(res)),
+            _ => Ok(None),
+        }
     }
 }

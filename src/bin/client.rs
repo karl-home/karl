@@ -59,7 +59,7 @@ fn main() {
     let hosts = find_hosts(&mut c);
     let host = hosts[0];  // Take the first host.
     if ping(host) {
+        info!("ping!");
         compute(host);
-        println!("ping!");
     }
 }

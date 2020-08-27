@@ -47,21 +47,29 @@ impl ComputeRequest {
     /// -- binary.wasm
     /// -- files
     pub fn new(zip: Vec<u8>) -> Self {
-        unimplemented!()
+        ComputeRequest {
+            zip,
+            stdout: false,
+            stderr: false,
+            files: HashSet::new(),
+        }
     }
 
     /// Include stdout in the results.
-    pub fn stdout(&mut self) -> Self {
-        unimplemented!()
+    pub fn stdout(mut self) -> Self {
+        self.stdout = true;
+        self
     }
 
     /// Include stderr in the results.
-    pub fn stderr(&mut self) -> Self {
-        unimplemented!()
+    pub fn stderr(mut self) -> Self {
+        self.stderr = true;
+        self
     }
 
     /// Include a specific output file in the results, if it exists.
-    pub fn file(&mut self, filename: PathBuf) -> Self {
-        unimplemented!()
+    pub fn file(mut self, filename: PathBuf) -> Self {
+        self.files.insert(filename);
+        self
     }
 }
