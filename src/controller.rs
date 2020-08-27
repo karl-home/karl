@@ -56,7 +56,7 @@ impl Controller {
                 // Form the socket address
                 if let Some(ip_addr) = ip_addr {
                     let socket_addr = SocketAddr::new(ip_addr.into(), port);
-                    println!("discovered host: {:?}", socket_addr);
+                    debug!("discovered host: {:?}", socket_addr);
                     hosts.lock().unwrap().insert(socket_addr);
                 }
             }
@@ -80,7 +80,7 @@ impl Controller {
 impl HostConnection {
     /// Connect to a host.
     pub fn connect(host: SocketAddr) -> io::Result<Self> {
-        println!("trying to connect to {:?}", host);
+        info!("trying to connect to {:?}", host);
         let stream = TcpStream::connect(&host)?;
         Ok(HostConnection { host, stream })
     }
@@ -94,14 +94,16 @@ impl HostConnection {
     fn send(&mut self, req: KarlRequest) -> Result<Option<KarlResult>, Error> {
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        print!("sending {:?}...", req);
+        info!("sending {:?}...", req);
         write_packet(&mut self.stream, &bytes)?;
-        println!("done!");
+        info!("success!");
 
         // Wait for the response.
+        info!("waiting for response...");
         let bytes = read_packet(&mut self.stream)?;
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        info!("done!");
         Ok(Some(res))
     }
 

@@ -46,22 +46,26 @@ pub fn read_bytes(inner: &mut dyn Read, max_nbytes: Option<usize>) -> io::Result
 /// Read bytes from the stream into a buffer. The first byte in the stream
 /// is the packet length. TODO: maximum packet length.
 pub fn read_packet(inner: &mut dyn Read) -> Result<Vec<u8>, Error> {
-	let nbytes = {
+    info!("reading packet...");
+    let nbytes = {
         let nbytes = read_bytes(inner, Some(1))?;
         if nbytes.is_empty() {
             return Err(Error::MissingPacketHeaderError);
         }
         *nbytes.get(0).unwrap() as usize
     };
-    println!("read: ({})", nbytes);
-    Ok(read_bytes(inner, Some(nbytes))?)
+    debug!("packet header: {}", nbytes);
+    let res = read_bytes(inner, Some(nbytes))?;
+    info!("read success!");
+    Ok(res)
 }
 
 /// Write bytes into a stream. Include the packet length as the first byte.
 pub fn write_packet(inner: &mut dyn Write, buffer: &Vec<u8>) -> io::Result<()> {
-	let nbytes = buffer.len() as u8;
-	println!("write: ({}) {:?}", nbytes, buffer);
-	inner.write_all(&[nbytes])?;
-	inner.write_all(buffer)?;
-	Ok(())
+    info!("writing packet... ({} bytes)", buffer.len());
+    let nbytes = buffer.len() as u8;
+    inner.write_all(&[nbytes])?;
+    inner.write_all(buffer)?;
+    info!("write success!");
+    Ok(())
 }

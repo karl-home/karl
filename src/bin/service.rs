@@ -1,4 +1,6 @@
-// use wasmer::wasmer_runtime_core::pkg::Pkg
+#[macro_use]
+extern crate log;
+
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -13,13 +15,14 @@ use zip;
 use karl::*;
 
 fn handle_ping(req: PingRequest) -> PingResult {
-    println!("RX: ping {:?}", req);
+    info!("handling ping: {:?}", req);
     PingResult::new()
 }
 
 fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
     // Decompress the request package into a temporary directory.
-    println!("RX: compute");
+    info!("handling compute: {} {} {} {:?}",
+        req.zip.len(), req.stdout, req.stderr, req.files);
     let now = Instant::now();
     let reader = io::Cursor::new(req.zip);
     let mut zip = zip::ZipArchive::new(reader)?;
@@ -35,14 +38,14 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
             out.write_all(&buf)?;
         }
     }
-    println!("decompressed {} files: {} s", zip.len(), now.elapsed().as_secs_f32());
+    debug!("decompressed {} files: {} s", zip.len(), now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
     let now = Instant::now();
     let mut options = Run::new(package.path().to_path_buf());
     options.replay = true;
     run(&mut options);
-    println!("execution: {} s", now.elapsed().as_secs_f32());
+    debug!("execution: {} s", now.elapsed().as_secs_f32());
 
     // TODO: Serialize and return the requested results.
     Ok(ComputeResult::new())
@@ -52,7 +55,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
     let buf = read_packet(&mut stream)?;
-    println!("read {} bytes: {} s", buf.len(), now.elapsed().as_secs_f32());
+    info!("read {}-byte packet: {} s", buf.len(), now.elapsed().as_secs_f32());
 
     // Deserialize the request.
     let req_bytes = bincode::deserialize(&buf[..])
@@ -65,7 +68,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     };
 
     // Return the result to sender.
-    println!("TX: {:?}", res);
+    info!("returning {:?}", res);
     let res_bytes = bincode::serialize(&res)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
     write_packet(&mut stream, &res_bytes)?;
@@ -73,12 +76,15 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Error> {
+    env_logger::builder().format_timestamp(None).init();
     let listener = TcpListener::bind("0.0.0.0:0")?;
-    println!("listening on port {}", listener.local_addr()?.port());
+    info!("listening on port {}", listener.local_addr()?.port());
 
     // accept connections and process them serially
     for stream in listener.incoming() {
-        handle_client(stream?)?;
+        let stream = stream?;
+        debug!("incoming stream {:?}", stream.local_addr());
+        handle_client(stream)?;
     }
     Ok(())
 }
