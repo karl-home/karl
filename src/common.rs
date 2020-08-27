@@ -8,6 +8,7 @@ pub enum Error {
     ZipError(zip::result::ZipError),
     SerializationError(String),
     IncorrectPacketLength,
+    MissingHeader,
 }
 
 impl From<io::Error> for Error {
@@ -61,6 +62,9 @@ pub fn read_packet(
 
     // Handle incorrect packet lengths
     if header {
+        if buffer.len() == 0 {
+            return Err(Error::MissingHeader);
+        }
         let nbytes = buffer.remove(0);
         if buffer.len() != nbytes.into() {
             return Err(Error::IncorrectPacketLength);
