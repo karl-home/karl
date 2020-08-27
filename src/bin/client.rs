@@ -2,13 +2,12 @@
 extern crate log;
 
 use std::fs::File;
-use std::io::Read;
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::thread;
 
 use tokio::runtime::Runtime;
-use karl::{controller::{Controller, HostConnection}, ComputeRequest};
+use karl::{controller::{Controller, HostConnection}, *};
 
 fn find_hosts(c: &mut Controller) -> Vec<SocketAddr> {
     loop {
@@ -41,8 +40,7 @@ fn compute(host: SocketAddr) {
     let mut conn = HostConnection::connect(host).unwrap();
     info!("reading package.zip");
     let mut f = File::open("package.zip").expect("failed to open package.zip");
-    let mut buffer: Vec<u8> = Vec::new();
-    f.read(&mut buffer).expect("failed to read package.zip");
+    let buffer = read_packet(&mut f, false).expect("failed to read package.zip");
     info!("sending compute request");
     match conn.execute(ComputeRequest::new(buffer)) {
         Ok(Some(res)) => info!("Result: {:?}", res),
