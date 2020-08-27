@@ -39,12 +39,12 @@ pub fn read_packet(
     info!("reading packet... header={}", header);
     loop {
         let mut inner = reader.fill_buf()?.to_vec();
-        debug!("read {} bytes", inner.len());
+        trace!("read {} bytes", inner.len());
         if inner.len() == 0 {
             debug!("EOF");
             break;
         }
-        if buffer.len() == 0 {
+        if header && buffer.len() == 0 {
             debug!("packet header: {} bytes", inner[0])
         }
         reader.consume(inner.len());
@@ -74,6 +74,7 @@ pub fn read_packet(
 pub fn write_packet(inner: &mut dyn Write, buffer: &Vec<u8>) -> io::Result<()> {
     info!("writing packet... ({} bytes)", buffer.len());
     let nbytes = buffer.len() as u8;
+    info!("writing {:?}", &[nbytes]);
     inner.write_all(&[nbytes])?;
     inner.write_all(buffer)?;
     info!("write success!");

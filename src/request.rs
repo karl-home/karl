@@ -1,3 +1,4 @@
+use std::fmt;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
@@ -14,7 +15,7 @@ pub enum KarlRequest {
 pub struct PingRequest {}
 
 /// Compute request.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ComputeRequest {
     /// Formatted zipped directory.
     ///
@@ -35,6 +36,17 @@ impl PingRequest {
     /// Create a new ping request.
     pub fn new() -> Self {
         PingRequest {}
+    }
+}
+
+impl fmt::Debug for ComputeRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ComputeRequest")
+            .field("zip (nbytes)", &self.zip.len())
+            .field("stdout", &self.stdout)
+            .field("stderr", &self.stderr)
+            .field("files", &self.files)
+            .finish()
     }
 }
 
