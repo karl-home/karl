@@ -19,7 +19,7 @@ fn handle_ping(req: PingRequest) -> PingResult {
     PingResult::new()
 }
 
-fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
+fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
     // Decompress the request package into a temporary directory.
     info!("handling compute: {} {} {} {:?}",
         req.zip.len(), req.stdout, req.stderr, req.files);
@@ -34,7 +34,7 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
             fs::create_dir(path)?;
         } else {
             let mut out = fs::File::create(path)?;
-            let buf = read_bytes(&mut file, None)?;
+            let buf = read_packet(&mut file, false)?;
             out.write_all(&buf)?;
         }
     }
@@ -54,7 +54,7 @@ fn handle_compute(req: ComputeRequest) -> io::Result<ComputeResult> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
-    let buf = read_packet(&mut stream)?;
+    let buf = read_packet(&mut stream, true)?;
     info!("read {}-byte packet: {} s", buf.len(), now.elapsed().as_secs_f32());
 
     // Deserialize the request.

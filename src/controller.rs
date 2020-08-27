@@ -100,7 +100,7 @@ impl HostConnection {
 
         // Wait for the response.
         info!("waiting for response...");
-        let bytes = read_packet(&mut self.stream)?;
+        let bytes = read_packet(&mut self.stream, true)?;
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         info!("done!");
