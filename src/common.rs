@@ -1,5 +1,6 @@
 use std::io;
 use std::io::{BufRead, Read, Write};
+use std::convert::TryInto;
 use zip;
 
 #[derive(Debug)]
@@ -7,7 +8,10 @@ pub enum Error {
     IoError(io::Error),
     ZipError(zip::result::ZipError),
     SerializationError(String),
-    IncorrectPacketLength,
+    IncorrectPacketLength {
+        actual: usize,
+        expected: usize,
+    },
     MissingHeader,
 }
 
@@ -23,6 +27,9 @@ impl From<zip::result::ZipError> for Error {
     }
 }
 
+/// Packet header length as u32.
+const HEADER_LEN: usize = 4;
+
 /// Read bytes from the stream into a buffer.
 ///
 /// If no packet header is expected, reads until EOF. Otherwise, interprets
@@ -37,49 +44,66 @@ pub fn read_packet(
 ) -> Result<Vec<u8>, Error> {
     let mut buffer = Vec::new();
     let mut reader = io::BufReader::new(inner);
-    info!("reading packet... header={}", header);
+    let mut nbytes: Option<usize> = None;
+    if header {
+        info!("reading packet...");
+    }
     loop {
         let mut inner = reader.fill_buf()?.to_vec();
         trace!("read {} bytes", inner.len());
         if inner.len() == 0 {
-            debug!("EOF");
+            if header {
+                debug!("EOF");
+            }
             break;
         }
-        if header && buffer.len() == 0 {
-            debug!("packet header: {} bytes", inner[0])
+
+        // Parse the header if it hasn't been parsed already.
+        if header && nbytes.is_none() {
+            if inner.len() < HEADER_LEN {
+                return Err(Error::MissingHeader);
+            }
+            let header: &[u8; HEADER_LEN] =
+                &inner[..HEADER_LEN].try_into().unwrap();
+            nbytes = Some(u32::from_ne_bytes(*header) as usize);
+            inner = inner.split_off(HEADER_LEN);
+            reader.consume(HEADER_LEN);
+            debug!("packet header: {:?} {} bytes", header, nbytes.unwrap())
         }
+
+        // Append the remaining bytes to the original buffer.
         reader.consume(inner.len());
         buffer.append(&mut inner);
 
-        // Expecting a packet header, check if packet is complete
-        if header {
-            let nbytes = buffer.get(0).unwrap();
-            if buffer.len() >= (nbytes + 1).into() {
-                break;
-            }
+        // Check if the packet is complete.
+        if header && buffer.len() >= nbytes.unwrap() {
+            break;
         }
     }
 
     // Handle incorrect packet lengths
     if header {
-        if buffer.len() == 0 {
+        if nbytes.is_none() {
             return Err(Error::MissingHeader);
         }
-        let nbytes = buffer.remove(0);
-        if buffer.len() != nbytes.into() {
-            return Err(Error::IncorrectPacketLength);
+        if buffer.len() != nbytes.unwrap() {
+            return Err(Error::IncorrectPacketLength {
+                actual: buffer.len(),
+                expected: nbytes.unwrap(),
+            });
         }
+        info!("read success! {} bytes", buffer.len());
     }
-    info!("read success! {} bytes", buffer.len());
     Ok(buffer)
 }
 
 /// Write bytes into a stream. Include the packet length as the first byte.
 pub fn write_packet(inner: &mut dyn Write, buffer: &Vec<u8>) -> io::Result<()> {
     info!("writing packet... ({} bytes)", buffer.len());
-    let nbytes = buffer.len() as u8;
-    info!("writing {:?}", &[nbytes]);
-    inner.write_all(&[nbytes])?;
+    // TODO: what if length doesn't fit in u32?
+    let nbytes = (buffer.len() as u32).to_ne_bytes();
+    info!("writing {:?}", nbytes);
+    inner.write_all(&nbytes)?;
     inner.write_all(buffer)?;
     info!("write success!");
     Ok(())
