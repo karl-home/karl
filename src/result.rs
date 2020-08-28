@@ -32,6 +32,10 @@ impl PingResult {
 
 impl ComputeResult {
     pub fn new() -> Self {
-        unimplemented!()
+        ComputeResult {
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            files: HashMap::new(),
+        }
     }
 }
