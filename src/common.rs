@@ -5,13 +5,20 @@ use zip;
 
 #[derive(Debug)]
 pub enum Error {
+    /// I/O error.
     IoError(io::Error),
+    /// Error handling the zip received in a compute request.
     ZipError(zip::result::ZipError),
+    /// Error serializing or deserializing a request or result.
     SerializationError(String),
+    /// The number of bytes received before EOF does not correspond to
+    /// the number of bytes indicated by the 4-byte header.
     IncorrectPacketLength {
         actual: usize,
         expected: usize,
     },
+    /// The packet does not have enough bytes to constitute a header.
+    /// The header should include 4 bytes.
     MissingHeader,
 }
 
