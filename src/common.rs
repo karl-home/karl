@@ -22,6 +22,8 @@ pub enum Error {
     MissingHeader,
     /// No available hosts.
     NoAvailableHosts,
+    /// Received a ping result for a compute request or vice versa.
+    InvalidResponseType,
 }
 
 impl From<io::Error> for Error {

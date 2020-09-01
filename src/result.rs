@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 
 /// Results.
@@ -21,7 +20,7 @@ pub struct ComputeResult {
     /// Stderr.
     pub stderr: Vec<u8>,
     /// Files.
-    pub files: HashMap<PathBuf, Vec<u8>>,
+    pub files: HashMap<String, Vec<u8>>,
 }
 
 impl PingResult {

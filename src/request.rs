@@ -1,6 +1,5 @@
 use std::fmt;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 
 /// Requests.
@@ -29,7 +28,7 @@ pub struct ComputeRequest {
     /// Whether to include stderr in the results.
     pub stderr: bool,
     /// Files to include in the results, if they exist.
-    pub files: HashSet<PathBuf>,
+    pub files: HashSet<String>,
 }
 
 impl PingRequest {
@@ -81,7 +80,7 @@ impl ComputeRequest {
 
     /// Include a specific output file in the results, if it exists.
     pub fn file(mut self, filename: &str) -> Self {
-        self.files.insert(Path::new(filename).to_path_buf());
+        self.files.insert(filename.to_string());
         self
     }
 }

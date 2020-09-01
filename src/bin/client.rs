@@ -10,8 +10,7 @@ use karl::{controller::Controller, *};
 /// Pings the host. Returns whether it is a success.
 fn ping(c: &mut Controller) {
     match c.ping() {
-        Ok(Some(_)) => {},
-        Ok(None) => warn!("could not be reached! (ping)"),
+        Ok(res) => info!("Result: {:?}", res),
         Err(e) => error!("error pinging host: {:?}", e),
     }
 }
@@ -22,17 +21,20 @@ fn compute(c: &mut Controller) {
     let mut f = File::open("package.zip").expect("failed to open package.zip");
     let buffer = read_packet(&mut f, false).expect("failed to read package.zip");
     info!("sending compute request");
+    let filename = "python/tmp2.txt";
     let request = ComputeRequest::new(buffer)
         .stdout()
         .stderr()
-        .file("python/tmp2.txt");
+        .file(filename);
     match c.execute(request) {
-        Ok(Some(res)) => {
+        Ok(res) => {
             info!("Result: {:?}", res);
             info!("stdout\n{}", String::from_utf8_lossy(&res.stdout));
             info!("stderr\n{}", String::from_utf8_lossy(&res.stderr));
+            info!("{}\n{:?}", filename, res.files.get(filename).map(|bytes| {
+                String::from_utf8_lossy(&bytes)
+            }));
         },
-        Ok(None) => warn!("could not be reached! (compute)"),
         Err(e) => error!("error contacting host: {:?}", e),
     }
 }

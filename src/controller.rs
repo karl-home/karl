@@ -99,7 +99,7 @@ impl Controller {
     }
 
     /// Send a request to the connected host.
-    fn send(stream: &mut TcpStream, req: KarlRequest) -> Result<Option<KarlResult>, Error> {
+    fn send(stream: &mut TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         info!("sending {:?}...", req);
@@ -112,16 +112,16 @@ impl Controller {
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         info!("done!");
-        Ok(Some(res))
+        Ok(res)
     }
 
     /// Ping the host.
-    pub fn ping(&mut self) -> Result<Option<PingResult>, Error> {
+    pub fn ping(&mut self) -> Result<PingResult, Error> {
         let mut stream = self.connect(self.blocking)?;
         let req = KarlRequest::Ping(PingRequest::new());
         match Controller::send(&mut stream, req)? {
-            Some(KarlResult::Ping(res)) => Ok(Some(res)),
-            _ => Ok(None),
+            KarlResult::Ping(res) => Ok(res),
+            KarlResult::Compute(_) => Err(Error::InvalidResponseType),
         }
     }
 
@@ -129,12 +129,12 @@ impl Controller {
     pub fn execute(
         &mut self,
         req: ComputeRequest,
-    ) -> Result<Option<ComputeResult>, Error> {
+) -> Result<ComputeResult, Error> {
         let mut stream = self.connect(self.blocking)?;
         let req = KarlRequest::Compute(req);
         match Controller::send(&mut stream, req)? {
-            Some(KarlResult::Compute(res)) => Ok(Some(res)),
-            _ => Ok(None),
+            KarlResult::Compute(res) => Ok(res),
+            KarlResult::Ping(_) => Err(Error::InvalidResponseType),
         }
     }
 }
