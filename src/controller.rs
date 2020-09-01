@@ -1,8 +1,8 @@
-use std::io;
 use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::thread;
 
 use bincode;
 use mdns;
@@ -18,20 +18,24 @@ const SERVICE_NAME: &'static str = "karl._tcp._tcp.local";
 /// Controller for interacting with mDNS.
 pub struct Controller {
     rt: Runtime,
+    blocking: bool,
     hosts: Arc<Mutex<HashSet<SocketAddr>>>,
-}
-
-/// Connection to a host.
-pub struct HostConnection {
-    host: SocketAddr,
-    stream: TcpStream,
 }
 
 impl Controller {
     /// Create a controller that asynchronously queries for new hosts
     /// at the given interval.
-    pub fn new(rt: Runtime, interval: Duration) -> Self {
-        let c = Controller { rt, hosts: Arc::new(Mutex::new(HashSet::new())) };
+    ///
+    /// Parameters:
+    /// - rt - Tokio runtime.
+    /// - blocking - Whether the controller should block on requests.
+    /// - interval - The interval with which to search for new hosts.
+    pub fn new(rt: Runtime, blocking: bool, interval: Duration) -> Self {
+        let c = Controller {
+            rt,
+            blocking,
+            hosts: Arc::new(Mutex::new(HashSet::new())),
+        };
         let hosts = c.hosts.clone();
         c.rt.spawn(async move {
             let stream = mdns::discover::all(SERVICE_NAME, interval)
@@ -65,7 +69,7 @@ impl Controller {
     }
 
     /// Find all hosts that broadcast the service over mDNS.
-    pub fn find_hosts(&mut self) -> Vec<SocketAddr> {
+    fn find_hosts(&mut self) -> Vec<SocketAddr> {
         let mut hosts = self.hosts
             .lock()
             .unwrap()
@@ -75,32 +79,36 @@ impl Controller {
         hosts.sort();
         hosts
     }
-}
 
-impl HostConnection {
-    /// Connect to a host.
-    pub fn connect(host: SocketAddr) -> io::Result<Self> {
-        info!("trying to connect to {:?}", host);
-        let stream = TcpStream::connect(&host)?;
-        Ok(HostConnection { host, stream })
-    }
-
-    /// Returns the address of the connected host.
-    pub fn host_addr(&self) -> &SocketAddr {
-        &self.host
+    /// Connect to a host, returning the tcp stream.
+    fn connect(&mut self, blocking: bool) -> Result<TcpStream, Error> {
+        let hosts = loop {
+            let hosts = self.find_hosts();
+            if !hosts.is_empty() {
+                break hosts;
+            }
+            if !blocking {
+                return Err(Error::NoAvailableHosts);
+            }
+            debug!("No hosts found! Try again in 1 second...");
+            thread::sleep(Duration::from_secs(1));
+        };
+        let host = hosts[0];
+        info!("trying to connect to {:?} ({} hosts)", host, hosts.len());
+        Ok(TcpStream::connect(&host)?)
     }
 
     /// Send a request to the connected host.
-    fn send(&mut self, req: KarlRequest) -> Result<Option<KarlResult>, Error> {
+    fn send(stream: &mut TcpStream, req: KarlRequest) -> Result<Option<KarlResult>, Error> {
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         info!("sending {:?}...", req);
-        write_packet(&mut self.stream, &bytes)?;
+        write_packet(stream, &bytes)?;
         info!("success!");
 
         // Wait for the response.
         info!("waiting for response...");
-        let bytes = read_packet(&mut self.stream, true)?;
+        let bytes = read_packet(stream, true)?;
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         info!("done!");
@@ -109,8 +117,9 @@ impl HostConnection {
 
     /// Ping the host.
     pub fn ping(&mut self) -> Result<Option<PingResult>, Error> {
+        let mut stream = self.connect(self.blocking)?;
         let req = KarlRequest::Ping(PingRequest::new());
-        match self.send(req)? {
+        match Controller::send(&mut stream, req)? {
             Some(KarlResult::Ping(res)) => Ok(Some(res)),
             _ => Ok(None),
         }
@@ -121,8 +130,9 @@ impl HostConnection {
         &mut self,
         req: ComputeRequest,
     ) -> Result<Option<ComputeResult>, Error> {
+        let mut stream = self.connect(self.blocking)?;
         let req = KarlRequest::Compute(req);
-        match self.send(req)? {
+        match Controller::send(&mut stream, req)? {
             Some(KarlResult::Compute(res)) => Ok(Some(res)),
             _ => Ok(None),
         }

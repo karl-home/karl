@@ -20,6 +20,8 @@ pub enum Error {
     /// The packet does not have enough bytes to constitute a header.
     /// The header should include 4 bytes.
     MissingHeader,
+    /// No available hosts.
+    NoAvailableHosts,
 }
 
 impl From<io::Error> for Error {
