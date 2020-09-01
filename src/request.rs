@@ -1,6 +1,6 @@
 use std::fmt;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 
 /// Requests.
@@ -80,8 +80,8 @@ impl ComputeRequest {
     }
 
     /// Include a specific output file in the results, if it exists.
-    pub fn file(mut self, filename: PathBuf) -> Self {
-        self.files.insert(filename);
+    pub fn file(mut self, filename: &str) -> Self {
+        self.files.insert(Path::new(filename).to_path_buf());
         self
     }
 }

@@ -42,8 +42,16 @@ fn compute(host: SocketAddr) {
     let mut f = File::open("package.zip").expect("failed to open package.zip");
     let buffer = read_packet(&mut f, false).expect("failed to read package.zip");
     info!("sending compute request");
-    match conn.execute(ComputeRequest::new(buffer)) {
-        Ok(Some(res)) => info!("Result: {:?}", res),
+    let request = ComputeRequest::new(buffer)
+        .stdout()
+        .stderr()
+        .file("python/tmp2.txt");
+    match conn.execute(request) {
+        Ok(Some(res)) => {
+            info!("Result: {:?}", res);
+            info!("stdout\n{}", String::from_utf8_lossy(&res.stdout));
+            info!("stderr\n{}", String::from_utf8_lossy(&res.stderr));
+        },
         Ok(None) => warn!("could not be reached! (compute)"),
         Err(e) => error!("error contacting host: {:?}", e),
     }
