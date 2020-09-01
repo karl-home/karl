@@ -44,11 +44,27 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
     let now = Instant::now();
     let mut options = Run::new(package.path().to_path_buf());
     options.replay = true;
-    run(&mut options);
+    let result = run(&mut options).expect("expected result");
     debug!("execution: {} s", now.elapsed().as_secs_f32());
 
-    // TODO: Serialize and return the requested results.
-    Ok(ComputeResult::new())
+    // Return the requested results.
+    let mut res = ComputeResult::new();
+    if req.stdout {
+        res.stdout = result.stdout;
+    }
+    if req.stderr {
+        res.stderr = result.stderr;
+    }
+    for path in req.files {
+        let f = result.root.path().join(&path);
+        match fs::File::open(&f) {
+            Ok(mut file) => {
+                res.files.insert(path, read_packet(&mut file, false)?);
+            },
+            Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
+        }
+    }
+    Ok(res)
 }
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {

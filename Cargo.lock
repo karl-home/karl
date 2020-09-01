@@ -1613,6 +1613,7 @@ dependencies = [
  "log",
  "time",
  "wasmer-runtime-core",
+ "wasmer-wasi",
 ]
 
 [[package]]
@@ -1678,6 +1679,7 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "libc",
+ "log",
  "nix",
  "page_size",
  "parking_lot",
