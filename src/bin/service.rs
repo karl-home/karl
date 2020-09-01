@@ -2,15 +2,12 @@
 extern crate log;
 
 use std::fs;
-use std::io;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::time::Instant;
 
 use bincode;
 use wasmer::executor::{run, Run};
-use tempdir::TempDir;
-use zip;
 
 use karl::*;
 
@@ -20,29 +17,19 @@ fn handle_ping(req: PingRequest) -> PingResult {
 }
 
 fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
-    // Decompress the request package into a temporary directory.
+    // Write the tar.gz bytes into a temporary file.
     info!("handling compute: {} {} {} {:?}",
-        req.zip.len(), req.stdout, req.stderr, req.files);
+        req.package.len(), req.stdout, req.stderr, req.files);
     let now = Instant::now();
-    let reader = io::Cursor::new(req.zip);
-    let mut zip = zip::ZipArchive::new(reader)?;
-    let package = TempDir::new("package")?;
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        let path = package.path().join(file.sanitized_name());
-        if file.is_dir() {
-            fs::create_dir(path)?;
-        } else {
-            let mut out = fs::File::create(path)?;
-            let buf = read_packet(&mut file, false)?;
-            out.write_all(&buf)?;
-        }
-    }
-    debug!("decompressed {} files: {} s", zip.len(), now.elapsed().as_secs_f32());
+    let filename = "package.tar.gz";
+    let mut f = fs::File::create(filename)?;
+    f.write_all(&req.package[..])?;
+    f.flush()?;
+    debug!("write {} bytes: {} s", req.package.len(), now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
     let now = Instant::now();
-    let mut options = Run::new(package.path().to_path_buf());
+    let mut options = Run::new(std::path::Path::new(filename).to_path_buf());
     options.replay = true;
     let result = run(&mut options).expect("expected result");
     debug!("execution: {} s", now.elapsed().as_secs_f32());

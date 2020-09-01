@@ -16,13 +16,13 @@ pub struct PingRequest {}
 /// Compute request.
 #[derive(Serialize, Deserialize)]
 pub struct ComputeRequest {
-    /// Formatted zipped directory.
+    /// Formatted tar.gz directory.
     ///
     /// config
     /// package/
     /// -- binary.wasm
     /// -- files
-    pub zip: Vec<u8>,
+    pub package: Vec<u8>,
     /// Whether to include stdout in the results.
     pub stdout: bool,
     /// Whether to include stderr in the results.
@@ -41,7 +41,7 @@ impl PingRequest {
 impl fmt::Debug for ComputeRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ComputeRequest")
-            .field("zip (nbytes)", &self.zip.len())
+            .field("package (nbytes)", &self.package.len())
             .field("stdout", &self.stdout)
             .field("stderr", &self.stderr)
             .field("files", &self.files)
@@ -51,15 +51,15 @@ impl fmt::Debug for ComputeRequest {
 
 impl ComputeRequest {
     /// Create a new compute request based on a a serialized version of a
-    /// formatted zipped directory.
+    /// formatted tar.gz directory.
     ///
     /// config
     /// package/
     /// -- binary.wasm
     /// -- files
-    pub fn new(zip: Vec<u8>) -> Self {
+    pub fn new(tar_gz_bytes: Vec<u8>) -> Self {
         ComputeRequest {
-            zip,
+            package: tar_gz_bytes,
             stdout: false,
             stderr: false,
             files: HashSet::new(),

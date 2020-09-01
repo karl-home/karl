@@ -1,14 +1,11 @@
 use std::io;
 use std::io::{BufRead, Read, Write};
 use std::convert::TryInto;
-use zip;
 
 #[derive(Debug)]
 pub enum Error {
     /// I/O error.
     IoError(io::Error),
-    /// Error handling the zip received in a compute request.
-    ZipError(zip::result::ZipError),
     /// Error serializing or deserializing a request or result.
     SerializationError(String),
     /// The number of bytes received before EOF does not correspond to
@@ -29,12 +26,6 @@ pub enum Error {
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
         Error::IoError(error)
-    }
-}
-
-impl From<zip::result::ZipError> for Error {
-    fn from(error: zip::result::ZipError) -> Self {
-        Error::ZipError(error)
     }
 }
 

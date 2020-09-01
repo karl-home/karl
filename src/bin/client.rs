@@ -17,9 +17,9 @@ fn ping(c: &mut Controller) {
 
 /// Requests computation from the host.
 fn compute(c: &mut Controller) {
-    info!("reading package.zip");
-    let mut f = File::open("package.zip").expect("failed to open package.zip");
-    let buffer = read_packet(&mut f, false).expect("failed to read package.zip");
+    info!("reading package.tar.gz");
+    let mut f = File::open("package.tar.gz").expect("failed to open package.tar.gz");
+    let buffer = read_packet(&mut f, false).expect("failed to read package.tar.gz");
     info!("sending compute request");
     let filename = "python/tmp2.txt";
     let request = ComputeRequest::new(buffer)
