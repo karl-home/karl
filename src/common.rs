@@ -19,6 +19,12 @@ pub enum Error {
     MissingHeader,
     /// No available hosts.
     NoAvailableHosts,
+    /// Invalid input root. Either the input root is uninitialized, or
+    /// you initialized the root as an existing directory rather than a
+    /// custom-built one.
+    InvalidInputRoot,
+    /// Reinitialized the input root. Should only initialize it once.
+    DoubleInputInitialization,
     /// Received a ping result for a compute request or vice versa.
     InvalidResponseType,
 }
