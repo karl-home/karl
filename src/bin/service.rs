@@ -93,7 +93,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
 
 fn main() -> Result<(), Error> {
     env_logger::builder().format_timestamp(None).init();
-    let listener = TcpListener::bind("0.0.0.0:0")?;
+    let listener = TcpListener::bind("0.0.0.0:62453")?;
     info!("listening on port {}", listener.local_addr()?.port());
 
     // accept connections and process them serially
