@@ -14,31 +14,31 @@ use wasmer::executor::{run, Run};
 use karl::*;
 
 /// Handle a ping request.
-fn handle_ping(req: PingRequest) -> PingResult {
-    info!("handling ping: {:?}", req);
+fn handle_ping(_req: PingRequest) -> PingResult {
     PingResult::new()
 }
 
 /// Handle a compute request.
 fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
     // Write the tar.gz bytes into a temporary file.
-    info!("handling compute: {} {} {} {:?}",
+    info!("handling compute: (len {}) stdout={} stderr={} {:?}",
         req.package.len(), req.stdout, req.stderr, req.files);
     let now = Instant::now();
     let filename = "package.tar.gz";
     let mut f = fs::File::create(filename)?;
     f.write_all(&req.package[..])?;
     f.flush()?;
-    debug!("write {} bytes: {} s", req.package.len(), now.elapsed().as_secs_f32());
+    debug!("=> write package.tar.gz: {} s", now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
     let now = Instant::now();
     let mut options = Run::new(std::path::Path::new(filename).to_path_buf());
     options.replay = true;
     let result = run(&mut options).expect("expected result");
-    debug!("execution: {} s", now.elapsed().as_secs_f32());
+    debug!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
+    let now = Instant::now();
     let mut res = ComputeResult::new();
     if req.stdout {
         res.stdout = result.stdout;
@@ -55,6 +55,7 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
             Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
         }
     }
+    debug!("=> build result: {} s", now.elapsed().as_secs_f32());
     Ok(res)
 }
 
@@ -62,12 +63,16 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
+    info!("reading packet");
     let buf = read_packet(&mut stream, true)?;
-    info!("read {}-byte packet: {} s", buf.len(), now.elapsed().as_secs_f32());
+    info!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
     // Deserialize the request.
+    info!("deserialize packet");
+    let now = Instant::now();
     let req_bytes = bincode::deserialize(&buf[..])
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+    info!("=> {} s", now.elapsed().as_secs_f32());
 
     // Deploy the request to correct handler.
     let res = match req_bytes {
@@ -76,10 +81,17 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     };
 
     // Return the result to sender.
-    info!("returning {:?}", res);
+    info!("serialize packet");
+    info!("=> {:?}", res);
+    let now = Instant::now();
     let res_bytes = bincode::serialize(&res)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+    info!("=> {} s", now.elapsed().as_secs_f32());
+
+    info!("writing packet");
+    let now = Instant::now();
     write_packet(&mut stream, &res_bytes)?;
+    info!("=> {} s", now.elapsed().as_secs_f32());
     Ok(())
 }
 
