@@ -1,28 +1,41 @@
 #[macro_use]
 extern crate log;
 
-use std::fs::File;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::runtime::Runtime;
 use karl::{controller::Controller, *};
 
 /// Pings the host. Returns whether it is a success.
 fn ping(c: &mut Controller) {
+    info!("sending ping request");
+    let now = Instant::now();
     match c.ping() {
         Ok(res) => info!("Result: {:?}", res),
         Err(e) => error!("error pinging host: {:?}", e),
     }
+    info!("=> {} s", now.elapsed().as_secs_f32());
 }
 
 /// Requests computation from the host.
-fn compute(c: &mut Controller) {
-    info!("reading package.tar.gz");
-    let mut f = File::open("package.tar.gz").expect("failed to open package.tar.gz");
-    let buffer = read_packet(&mut f, false).expect("failed to read package.tar.gz");
+fn compute(c: &mut Controller) -> Result<(), Error> {
+    info!("building compute request");
+    let now = Instant::now();
+    let request = ComputeRequestBuilder::new("python/python.wasm")
+        .preopen_dirs(vec!["python/"])
+        .args(vec!["python/run.py"])
+        .build_root()?
+        .add_dir("python/")?
+        .finalize()?;
+    // let mut f = File::open("package.tar.gz").expect("failed to open package.tar.gz");
+    // let buffer = read_packet(&mut f, false).expect("failed to read package.tar.gz");
+    // let request = ComputeRequest::new(buffer);
+    info!("=> {} s", now.elapsed().as_secs_f32());
+
     info!("sending compute request");
+    let now = Instant::now();
     let filename = "python/tmp2.txt";
-    let request = ComputeRequest::new(buffer)
+    let request = request
         .stdout()
         .stderr()
         .file(filename);
@@ -37,6 +50,8 @@ fn compute(c: &mut Controller) {
         },
         Err(e) => error!("error contacting host: {:?}", e),
     }
+    info!("=> {} s", now.elapsed().as_secs_f32());
+    Ok(())
 }
 
 fn main() {
@@ -46,5 +61,5 @@ fn main() {
     let mut c = Controller::new(rt, blocking, Duration::from_secs(10));
 
     ping(&mut c);
-    compute(&mut c);
+    compute(&mut c).unwrap();
 }
