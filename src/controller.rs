@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use std::thread;
 
 use bincode;
@@ -65,6 +65,7 @@ impl Controller {
                 }
             }
         });
+        thread::sleep(Duration::from_secs(3));
         c
     }
 
@@ -82,6 +83,8 @@ impl Controller {
 
     /// Connect to a host, returning the tcp stream.
     fn connect(&mut self, blocking: bool) -> Result<TcpStream, Error> {
+        debug!("connect...");
+        let now = Instant::now();
         let hosts = loop {
             let hosts = self.find_hosts();
             if !hosts.is_empty() {
@@ -90,28 +93,34 @@ impl Controller {
             if !blocking {
                 return Err(Error::NoAvailableHosts);
             }
-            debug!("No hosts found! Try again in 1 second...");
+            trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
         };
         let host = hosts[0];
-        info!("trying to connect to {:?} ({} hosts)", host, hosts.len());
-        Ok(TcpStream::connect(&host)?)
+        debug!("=> {} s ({:?} out of {} hosts)", now.elapsed().as_secs_f32(), host, hosts.len());
+        let stream = TcpStream::connect(&host)?;
+        debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
+        Ok(stream)
     }
 
     /// Send a request to the connected host.
     fn send(stream: &mut TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
+        debug!("sending {:?}...", req);
+        let now = Instant::now();
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        info!("sending {:?}...", req);
+        debug!("=> {} s (serialize)", now.elapsed().as_secs_f32());
         write_packet(stream, &bytes)?;
-        info!("success!");
+        debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
 
         // Wait for the response.
-        info!("waiting for response...");
+        debug!("waiting for response...");
+        let now = Instant::now();
         let bytes = read_packet(stream, true)?;
+        debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        info!("done!");
+        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
         Ok(res)
     }
 
@@ -129,7 +138,7 @@ impl Controller {
     pub fn execute(
         &mut self,
         req: ComputeRequest,
-) -> Result<ComputeResult, Error> {
+    ) -> Result<ComputeResult, Error> {
         let mut stream = self.connect(self.blocking)?;
         let req = KarlRequest::Compute(req);
         match Controller::send(&mut stream, req)? {

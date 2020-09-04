@@ -28,14 +28,14 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
     let mut f = fs::File::create(filename)?;
     f.write_all(&req.package[..])?;
     f.flush()?;
-    debug!("=> write package.tar.gz: {} s", now.elapsed().as_secs_f32());
+    info!("=> write package.tar.gz: {} s", now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
     let now = Instant::now();
     let mut options = Run::new(std::path::Path::new(filename).to_path_buf());
     options.replay = true;
     let result = run(&mut options).expect("expected result");
-    debug!("=> execution: {} s", now.elapsed().as_secs_f32());
+    info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
     let now = Instant::now();
@@ -47,6 +47,7 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
         res.stderr = result.stderr;
     }
     for path in req.files {
+        // TODO: use KARL_PATH environment variable
         let f = result.root.path().join(&path);
         match fs::File::open(&f) {
             Ok(mut file) => {
@@ -55,7 +56,7 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
             Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
         }
     }
-    debug!("=> build result: {} s", now.elapsed().as_secs_f32());
+    info!("=> build result: {} s", now.elapsed().as_secs_f32());
     Ok(res)
 }
 
@@ -63,16 +64,16 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Read the computation request from the TCP stream.
     let now = Instant::now();
-    info!("reading packet");
+    debug!("reading packet");
     let buf = read_packet(&mut stream, true)?;
-    info!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
+    debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
     // Deserialize the request.
-    info!("deserialize packet");
+    debug!("deserialize packet");
     let now = Instant::now();
     let req_bytes = bincode::deserialize(&buf[..])
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-    info!("=> {} s", now.elapsed().as_secs_f32());
+    debug!("=> {} s", now.elapsed().as_secs_f32());
 
     // Deploy the request to correct handler.
     let res = match req_bytes {
@@ -81,17 +82,17 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     };
 
     // Return the result to sender.
-    info!("serialize packet");
-    info!("=> {:?}", res);
+    debug!("serialize packet");
+    debug!("=> {:?}", res);
     let now = Instant::now();
     let res_bytes = bincode::serialize(&res)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-    info!("=> {} s", now.elapsed().as_secs_f32());
+    debug!("=> {} s", now.elapsed().as_secs_f32());
 
-    info!("writing packet");
+    debug!("writing packet");
     let now = Instant::now();
     write_packet(&mut stream, &res_bytes)?;
-    info!("=> {} s", now.elapsed().as_secs_f32());
+    debug!("=> {} s", now.elapsed().as_secs_f32());
     Ok(())
 }
 

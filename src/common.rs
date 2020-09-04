@@ -54,14 +54,14 @@ pub fn read_packet(
     let mut reader = io::BufReader::new(inner);
     let mut nbytes: Option<usize> = None;
     if header {
-        info!("reading packet...");
+        trace!("reading packet...");
     }
     loop {
         let mut inner = reader.fill_buf()?.to_vec();
         trace!("read {} bytes", inner.len());
         if inner.len() == 0 {
             if header {
-                debug!("EOF");
+                trace!("EOF");
             }
             break;
         }
@@ -76,7 +76,7 @@ pub fn read_packet(
             nbytes = Some(u32::from_ne_bytes(*header) as usize);
             inner = inner.split_off(HEADER_LEN);
             reader.consume(HEADER_LEN);
-            debug!("packet header: {:?} {} bytes", header, nbytes.unwrap())
+            trace!("packet header: {:?} {} bytes", header, nbytes.unwrap())
         }
 
         // Append the remaining bytes to the original buffer.
@@ -100,19 +100,19 @@ pub fn read_packet(
                 expected: nbytes.unwrap(),
             });
         }
-        info!("read success! {} bytes", buffer.len());
+        trace!("read success! {} bytes", buffer.len());
     }
     Ok(buffer)
 }
 
 /// Write bytes into a stream. Include the packet length as the first byte.
 pub fn write_packet(inner: &mut dyn Write, buffer: &Vec<u8>) -> io::Result<()> {
-    info!("writing packet... ({} bytes)", buffer.len());
+    trace!("writing packet... ({} bytes)", buffer.len());
     // TODO: what if length doesn't fit in u32?
     let nbytes = (buffer.len() as u32).to_ne_bytes();
-    info!("writing {:?}", nbytes);
+    trace!("writing {:?}", nbytes);
     inner.write_all(&nbytes)?;
     inner.write_all(buffer)?;
-    info!("write success!");
+    trace!("write success!");
     Ok(())
 }
