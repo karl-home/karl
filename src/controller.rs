@@ -1,19 +1,14 @@
 use std::collections::HashSet;
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
 use std::thread;
 
 use bincode;
-use mdns;
-use tokio;
-use futures_util::{pin_mut, stream::StreamExt};
+use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use crate::*;
-
-/// The hostname of the devices we are searching for.
-const SERVICE_NAME: &'static str = "karl._tcp._tcp.local";
 
 /// Controller for interacting with mDNS.
 pub struct Controller {
@@ -29,43 +24,58 @@ impl Controller {
     /// Parameters:
     /// - rt - Tokio runtime.
     /// - blocking - Whether the controller should block on requests.
-    /// - interval - The interval with which to search for new hosts.
-    pub fn new(rt: Runtime, blocking: bool, interval: Duration) -> Self {
+    pub fn new(rt: Runtime, blocking: bool) -> Self {
         let c = Controller {
             rt,
             blocking,
             hosts: Arc::new(Mutex::new(HashSet::new())),
         };
         let hosts = c.hosts.clone();
+        debug!("Listening...");
         c.rt.spawn(async move {
-            let stream = mdns::discover::all(SERVICE_NAME, interval)
-                .expect("TODO")
-                .listen();
-            pin_mut!(stream);
-            while let Some(Ok(response)) = stream.next().await {
-                // Find the port
-                let port = if let Some(port) = response.port() {
-                    port
-                } else {
-                    continue;
-                };
-                // Find the IPv4 address
-                let ip_addr = response
-                    .records()
-                    .filter_map(|record| match record.kind {
-                        mdns::RecordKind::A(ip_addr) => Some(ip_addr),
-                        _ => None,
-                    })
-                    .next();
-                // Form the socket address
-                if let Some(ip_addr) = ip_addr {
-                    let socket_addr = SocketAddr::new(ip_addr.into(), port);
-                    debug!("discovered host: {:?}", socket_addr);
-                    hosts.lock().unwrap().insert(socket_addr);
+            let mut browser = ServiceBrowserBuilder::new("_karl._tcp")
+                .build()
+                .unwrap();
+            let _result = browser.start(move |result| match result {
+                Ok(mut service) => {
+                    // Log the discovered service
+                    let event = match service.event_type {
+                        ServiceEventType::Added => "ADD",
+                        ServiceEventType::Removed => "RMV",
+                    };
+                    info!(
+                        "{} if: {} name: {} type: {} domain: {}",
+                        event, service.interface_index, service.name,
+                        service.regtype, service.domain,
+                    );
+                    let results = service.resolve();
+                    for r in results.unwrap() {
+                        let status = r.txt_record.as_ref().unwrap().get("status");
+                        let addrs_iter = r.to_socket_addrs().unwrap();
+                        for addr in addrs_iter {
+                            debug!("Addr: {}", addr);
+                            if !addr.is_ipv4() {
+                                continue;
+                            }
+                            // Update hosts with IPv4 address.
+                            match service.event_type {
+                                ServiceEventType::Added => {
+                                    hosts.lock().unwrap().insert(addr);
+                                },
+                                ServiceEventType::Removed => {
+                                    hosts.lock().unwrap().remove(&addr);
+                                },
+                            }
+                        }
+                        debug!("Status: {:?}", status);
+                    }
                 }
+                Err(e) => error!("Error: {:?}", e),
+            });
+            loop {
+                browser.process_result();
             }
         });
-        thread::sleep(Duration::from_secs(3));
         c
     }
 

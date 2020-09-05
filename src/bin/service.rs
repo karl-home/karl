@@ -7,8 +7,8 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Instant;
 
 use bincode;
-use async_dnssd::{RegisterData, Registration, RegisterResult};
-use tokio_core::reactor::Core;
+use tokio::runtime::Runtime;
+use astro_dnssd::register::DNSServiceBuilder;
 use wasmer::executor::{run, Run};
 
 use karl::*;
@@ -96,23 +96,24 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     Ok(())
 }
 
-/// Register the service named "karl" of type "_tcp._tcp" via dns-sd.
+/// Register the service named "MyRustService" of type "_karl._tcp" via dns-sd.
 ///
 /// TODO: might be platform dependent.
-fn register_service(core: &mut Core, port: u16) -> (Registration, RegisterResult) {
-    use async_dnssd::{Interface, InterfaceIndex};
-    let result = core.run(async_dnssd::register_extended(
-        "_tcp._tcp",
-        port,
-        RegisterData {
-            interface: Interface::Index(InterfaceIndex::from_raw(8).unwrap()),
-            name: Some("karl"),
-            ..Default::default()
-        },
-        &core.handle(),
-    ).unwrap()).unwrap();
-    info!("registered service");
-    result
+fn register_service(rt: &mut Runtime, port: u16) {
+    rt.spawn(async move {
+        let mut service = DNSServiceBuilder::new("_karl._tcp")
+            .with_port(port)
+            .with_name("MyRustService")
+            .build()
+            .unwrap();
+        let _result = service.register(|reply| match reply {
+            Ok(reply) => info!("successful register: {:?}", reply),
+            Err(e) => info!("error registering: {:?}", e),
+        });
+        loop {
+            service.process_result();
+        }
+    });
 }
 
 fn main() -> Result<(), Error> {
@@ -120,8 +121,8 @@ fn main() -> Result<(), Error> {
     let listener = TcpListener::bind("0.0.0.0:0")?;
     let port = listener.local_addr()?.port();
     info!("listening on port {}", port);
-    let mut core = Core::new().unwrap();
-    let (registration, _) = register_service(&mut core, port);
+    let mut rt = Runtime::new().unwrap();
+    register_service(&mut rt, port);
 
     // accept connections and process them serially
     for stream in listener.incoming() {
@@ -129,6 +130,5 @@ fn main() -> Result<(), Error> {
         debug!("incoming stream {:?}", stream.local_addr());
         handle_client(stream)?;
     }
-    drop(registration);
     Ok(())
 }

@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tokio::runtime::Runtime;
 use karl::{controller::Controller, *};
@@ -58,7 +58,7 @@ fn main() {
     env_logger::builder().format_timestamp(None).init();
     let rt = Runtime::new().unwrap();
     let blocking = true;
-    let mut c = Controller::new(rt, blocking, Duration::from_secs(10));
+    let mut c = Controller::new(rt, blocking);
 
     ping(&mut c);
     compute(&mut c).unwrap();
