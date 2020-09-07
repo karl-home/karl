@@ -2,3 +2,6 @@
 	path = wasmer
 	url = git@github.com:ygina/wasmer.git
 	branch = package
+[submodule "astro-dnssd"]
+	path = astro-dnssd
+	url = git@github.com:ygina/astro-dnssd.git
