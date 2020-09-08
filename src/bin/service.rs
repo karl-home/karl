@@ -7,6 +7,7 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Instant;
 
 use bincode;
+use tempfile;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
 use wasmer::executor::{run, Run};
@@ -24,20 +25,21 @@ fn handle_compute(req: ComputeRequest) -> Result<ComputeResult, Error> {
     info!("handling compute: (len {}) stdout={} stderr={} {:?}",
         req.package.len(), req.stdout, req.stderr, req.files);
     let now = Instant::now();
-    let filename = "package.tar.gz";
-    let mut f = fs::File::create(filename)?;
+    let mut f = tempfile::NamedTempFile::new()?;
     f.write_all(&req.package[..])?;
     f.flush()?;
     info!("=> write package.tar.gz: {} s", now.elapsed().as_secs_f32());
 
     // Replay the packaged computation.
     let now = Instant::now();
-    let mut options = Run::new(std::path::Path::new(filename).to_path_buf());
+    let mut options = Run::new(f.path().to_path_buf());
     options.replay = true;
     let result = run(&mut options).expect("expected result");
     info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
-    // Return the requested results.
+    // Remove the file and return the requested results.
+    // TODO: KARL_PATH
+    f.close()?;
     let now = Instant::now();
     let mut res = ComputeResult::new();
     if req.stdout {
