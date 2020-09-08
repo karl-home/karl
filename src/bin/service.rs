@@ -132,7 +132,9 @@ fn main() -> Result<(), Error> {
     for stream in listener.incoming() {
         let stream = stream?;
         debug!("incoming stream {:?}", stream.local_addr());
+        let now = Instant::now();
         handle_client(stream)?;
+        warn!("total: {} s", now.elapsed().as_secs_f32());
     }
     Ok(())
 }

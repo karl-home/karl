@@ -5,13 +5,13 @@ use std::thread;
 
 use bincode;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
-use tokio::runtime::Runtime;
+use tokio::{task::JoinHandle, runtime::Runtime};
 
 use crate::*;
 
 /// Controller for interacting with mDNS.
 pub struct Controller {
-    rt: Runtime,
+    pub rt: Runtime,
     blocking: bool,
     hosts: Arc<Mutex<Vec<SocketAddr>>>,
     prev_host_i: usize,
@@ -119,19 +119,19 @@ impl Controller {
     }
 
     /// Send a request to the connected host.
-    fn send(stream: &mut TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
+    fn send(mut stream: TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
         debug!("sending {:?}...", req);
         let now = Instant::now();
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         debug!("=> {} s (serialize)", now.elapsed().as_secs_f32());
-        write_packet(stream, &bytes)?;
+        write_packet(&mut stream, &bytes)?;
         debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
 
         // Wait for the response.
         debug!("waiting for response...");
         let now = Instant::now();
-        let bytes = read_packet(stream, true)?;
+        let bytes = read_packet(&mut stream, true)?;
         debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
         let res = bincode::deserialize(&bytes)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
@@ -141,9 +141,9 @@ impl Controller {
 
     /// Ping the host.
     pub fn ping(&mut self) -> Result<PingResult, Error> {
-        let mut stream = self.connect()?;
+        let stream = self.connect()?;
         let req = KarlRequest::Ping(PingRequest::new());
-        match Controller::send(&mut stream, req)? {
+        match Controller::send(stream, req)? {
             KarlResult::Ping(res) => Ok(res),
             KarlResult::Compute(_) => Err(Error::InvalidResponseType),
         }
@@ -154,11 +154,25 @@ impl Controller {
         &mut self,
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
-        let mut stream = self.connect()?;
+        let stream = self.connect()?;
         let req = KarlRequest::Compute(req);
-        match Controller::send(&mut stream, req)? {
+        match Controller::send(stream, req)? {
             KarlResult::Compute(res) => Ok(res),
             KarlResult::Ping(_) => Err(Error::InvalidResponseType),
         }
+    }
+
+    pub fn execute_async(
+        &mut self,
+        req: ComputeRequest,
+    ) -> Result<JoinHandle<Result<ComputeResult, Error>>, Error> {
+        let stream = self.connect()?;
+        let req = KarlRequest::Compute(req);
+        Ok(self.rt.spawn(async move {
+            match Controller::send(stream, req)? {
+                KarlResult::Compute(res) => Ok(res),
+                KarlResult::Ping(_) => Err(Error::InvalidResponseType),
+            }
+        }))
     }
 }

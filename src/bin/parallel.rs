@@ -14,7 +14,7 @@ fn gen_request() -> Result<ComputeRequest, Error> {
     let mut f = File::open("add.tar.gz").expect("failed to open add.tar.gz");
     let buffer = read_packet(&mut f, false).expect("failed to read add.tar.gz");
     let request = ComputeRequest::new(buffer);
-    info!("build request => {} s", now.elapsed().as_secs_f32());
+    debug!("build request => {} s", now.elapsed().as_secs_f32());
     Ok(request)
 }
 
@@ -25,18 +25,33 @@ fn gen_request() -> Result<ComputeRequest, Error> {
 /// - c - Connection to a controller.
 /// - n - The total number of requests.
 fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
-    for i in 0..n {
-        let request = gen_request()?.stdout();
-        let now = Instant::now();
-        match c.execute(request) {
-            Ok(res) => {
-                let res = String::from_utf8_lossy(&res.stdout);
-                info!("{} => {}", i, res.trim());
-            },
-            Err(e) => error!("{:?}", e),
-        }
-        info!("execute request => {} s", now.elapsed().as_secs_f32());
+    let mut handles = vec![];
+    let start = Instant::now();
+    let now = Instant::now();
+    let mut requests = vec![];
+    for _ in 0..n {
+        requests.push(gen_request()?.stdout());
     }
+    info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
+    let now = Instant::now();
+    for request in requests.into_iter() {
+        let handle = c.execute_async(request)?;
+        handles.push(handle);
+    }
+    info!("queue {} requests: {} s", n, now.elapsed().as_secs_f32());
+    let now = Instant::now();
+    let results = handles
+        .into_iter()
+        .enumerate()
+        .map(|(i, handle)| {
+            debug!("{}/{}", i, n);
+            c.rt.block_on(async { handle.await.unwrap() })
+        })
+        .map(|result| result.unwrap().stdout)
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().parse::<i32>().unwrap())
+        .collect::<Vec<_>>();
+    info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), results);
+    info!("total: {} s", start.elapsed().as_secs_f32());
     Ok(())
 }
 
