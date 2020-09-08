@@ -672,6 +672,7 @@ version = "0.1.0"
 dependencies = [
  "astro-dnssd",
  "bincode",
+ "clap",
  "env_logger",
  "flate2",
  "futures-util",
