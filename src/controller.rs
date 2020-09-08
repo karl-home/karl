@@ -83,14 +83,12 @@ impl Controller {
 
     /// Find all hosts that broadcast the service over mDNS.
     fn find_hosts(&mut self) -> Vec<SocketAddr> {
-        let mut hosts = self.hosts
+        self.hosts
             .lock()
             .unwrap()
             .clone()
             .into_iter()
-            .collect::<Vec<_>>();
-        hosts.sort();
-        hosts
+            .collect::<Vec<_>>()
     }
 
     /// Connect to a host, returning the tcp stream.
