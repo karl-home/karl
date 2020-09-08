@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
@@ -14,7 +13,8 @@ use crate::*;
 pub struct Controller {
     rt: Runtime,
     blocking: bool,
-    hosts: Arc<Mutex<HashSet<SocketAddr>>>,
+    hosts: Arc<Mutex<Vec<SocketAddr>>>,
+    prev_host_i: usize,
 }
 
 impl Controller {
@@ -28,7 +28,8 @@ impl Controller {
         let c = Controller {
             rt,
             blocking,
-            hosts: Arc::new(Mutex::new(HashSet::new())),
+            hosts: Arc::new(Mutex::new(Vec::new())),
+            prev_host_i: 0,
         };
         let hosts = c.hosts.clone();
         debug!("Listening...");
@@ -53,17 +54,23 @@ impl Controller {
                         let status = r.txt_record.as_ref().unwrap().get("status");
                         let addrs_iter = r.to_socket_addrs().unwrap();
                         for addr in addrs_iter {
-                            debug!("Addr: {}", addr);
                             if !addr.is_ipv4() {
                                 continue;
                             }
                             // Update hosts with IPv4 address.
+                            debug!("Addr: {}", addr);
                             match service.event_type {
                                 ServiceEventType::Added => {
-                                    hosts.lock().unwrap().insert(addr);
+                                    hosts.lock().unwrap().push(addr);
                                 },
                                 ServiceEventType::Removed => {
-                                    hosts.lock().unwrap().remove(&addr);
+                                    let mut hosts = hosts.lock().unwrap();
+                                    for i in 0..hosts.len() {
+                                        if hosts[i] == addr {
+                                            hosts.remove(i);
+                                            break;
+                                        }
+                                    }
                                 },
                             }
                         }
@@ -81,33 +88,31 @@ impl Controller {
         c
     }
 
-    /// Find all hosts that broadcast the service over mDNS.
-    fn find_hosts(&mut self) -> Vec<SocketAddr> {
-        self.hosts
-            .lock()
-            .unwrap()
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-    }
-
-    /// Connect to a host, returning the tcp stream.
-    fn connect(&mut self, blocking: bool) -> Result<TcpStream, Error> {
-        debug!("connect...");
-        let now = Instant::now();
+    /// Find a host to connect to round-robin.
+    fn find_host(&mut self) -> Result<SocketAddr, Error> {
         let hosts = loop {
-            let hosts = self.find_hosts();
+            let hosts = self.hosts.lock().unwrap();
             if !hosts.is_empty() {
                 break hosts;
             }
-            if !blocking {
+            if !self.blocking {
                 return Err(Error::NoAvailableHosts);
             }
+            drop(hosts);
             trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
         };
-        let host = hosts[0];
-        debug!("=> {} s ({:?} out of {} hosts)", now.elapsed().as_secs_f32(), host, hosts.len());
+        let i = (self.prev_host_i + 1) % hosts.len();
+        self.prev_host_i = i;
+        Ok(hosts[i])
+    }
+
+    /// Connect to a host, returning the tcp stream.
+    fn connect(&mut self) -> Result<TcpStream, Error> {
+        debug!("connect...");
+        let now = Instant::now();
+        let host = self.find_host()?;
+        debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
         let stream = TcpStream::connect(&host)?;
         debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
         Ok(stream)
@@ -136,7 +141,7 @@ impl Controller {
 
     /// Ping the host.
     pub fn ping(&mut self) -> Result<PingResult, Error> {
-        let mut stream = self.connect(self.blocking)?;
+        let mut stream = self.connect()?;
         let req = KarlRequest::Ping(PingRequest::new());
         match Controller::send(&mut stream, req)? {
             KarlResult::Ping(res) => Ok(res),
@@ -149,7 +154,7 @@ impl Controller {
         &mut self,
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
-        let mut stream = self.connect(self.blocking)?;
+        let mut stream = self.connect()?;
         let req = KarlRequest::Compute(req);
         match Controller::send(&mut stream, req)? {
             KarlResult::Compute(res) => Ok(res),
