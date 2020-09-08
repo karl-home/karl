@@ -111,7 +111,9 @@ fn register_service(rt: &mut Runtime, port: u16) {
             Err(e) => info!("error registering: {:?}", e),
         });
         loop {
-            service.process_result();
+            if service.has_data() {
+                service.process_result();
+            }
         }
     });
 }

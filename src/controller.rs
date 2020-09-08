@@ -73,7 +73,9 @@ impl Controller {
                 Err(e) => error!("Error: {:?}", e),
             });
             loop {
-                browser.process_result();
+                if browser.has_data() {
+                    browser.process_result();
+                }
             }
         });
         c
