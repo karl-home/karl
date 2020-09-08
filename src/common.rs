@@ -14,6 +14,9 @@ pub enum Error {
         actual: usize,
         expected: usize,
     },
+    /// Expected to read a packet but received the connection closed
+    /// and no bytes were received.
+    NoReply,
     /// The packet does not have enough bytes to constitute a header.
     /// The header should include 4 bytes.
     MissingHeader,
@@ -89,6 +92,10 @@ pub fn read_packet(
         }
     }
 
+    // Handle no reply
+    if nbytes.is_none() && buffer.is_empty() {
+        return Err(Error::NoReply);
+    }
     // Handle incorrect packet lengths
     if header {
         if nbytes.is_none() {
