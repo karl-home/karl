@@ -2,17 +2,17 @@
 extern crate log;
 
 use std::fs;
-use std::io::Write;
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use bincode;
 use dirs;
-use tempfile::NamedTempFile;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
 use wasmer::executor::{run, Run};
+use flate2::read::GzDecoder;
+use tar::Archive;
 
 use karl::*;
 
@@ -39,13 +39,13 @@ fn get_karl_path() -> PathBuf {
 /// The file will be removed after the results are returned to the sender.
 ///
 /// TODO: Avoid this extra serialization step.
-fn write_to_targz(req: &ComputeRequest) -> NamedTempFile {
+fn unpack_request(req: &ComputeRequest, root: &Path) {
     let now = Instant::now();
-    let mut f = NamedTempFile::new().unwrap();
-    f.write_all(&req.package[..]).unwrap();
-    f.flush().unwrap();
-    info!("=> write {:?}: {} s", f.path(), now.elapsed().as_secs_f32());
-    f
+    std::fs::create_dir_all(root).unwrap();
+    let tar = GzDecoder::new(&req.package[..]);
+    let mut archive = Archive::new(tar);
+    archive.unpack(root).expect(&format!("malformed tar.gz in request"));
+    info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
 }
 
 impl Listener {
@@ -103,14 +103,13 @@ impl Listener {
     fn handle_compute(&mut self, req: ComputeRequest) -> Result<ComputeResult, Error> {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
-        let f = write_to_targz(&req);
+        unpack_request(&req, &self.root);
 
         // Replay the packaged computation.
         // Create the _compute_ working directory but stay in the karl path.
         let now = Instant::now();
-        std::fs::create_dir_all(&self.root).unwrap();
         let mut options = Run::new(self.root.clone());
-        options.pkg_path = Some(f.path().to_path_buf());
+        options.replay = true;
         let result = run(&mut options).expect("expected result");
         info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
