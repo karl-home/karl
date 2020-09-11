@@ -4,11 +4,12 @@ extern crate log;
 use std::fs;
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use bincode;
-use tempfile;
+use dirs;
+use tempfile::NamedTempFile;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
 use wasmer::executor::{run, Run};
@@ -18,18 +19,60 @@ use karl::*;
 struct Listener {
     /// Node/service ID
     id: u32,
-    /// Root karl directory
+    /// Karl path
     karl_path: PathBuf,
+    /// Computation root
+    root: PathBuf,
     port: u16,
     rt: Runtime,
 }
 
+/// Read from the KARL_PATH environment variable. (TODO)
+///
+/// If not set, defaults to ~/.karl/.
+fn get_karl_path() -> PathBuf {
+    let home_dir = dirs::home_dir().unwrap();
+    home_dir.join(".karl")
+}
+
+/// Write the bytes of the packaged compute request to a temporary file.
+/// The file will be removed after the results are returned to the sender.
+///
+/// TODO: Avoid this extra serialization step.
+fn write_to_targz(req: &ComputeRequest) -> NamedTempFile {
+    let now = Instant::now();
+    let mut f = NamedTempFile::new().unwrap();
+    f.write_all(&req.package[..]).unwrap();
+    f.flush().unwrap();
+    info!("=> write {:?}: {} s", f.path(), now.elapsed().as_secs_f32());
+    f
+}
+
 impl Listener {
+    /// Generate a new listener with a random ID.
+    ///
+    /// The KARL_PATH defaults to ~/.karl. The constructor creates a directory
+    /// at the <KARL_PATH> if it does not already exist. The working directory
+    /// for any computation is at <KARL_PATH>/<LISTENER_ID>. When not doing
+    /// computation, the working directory must be at <KARL_PATH>.
+    ///
+    /// Note that the wasmer runtime changes the working directory for
+    /// computation, so the listener must change it back immediately after.
     fn new(port: u16) -> Self {
         use rand::Rng;
+        let id: u32 = rand::thread_rng().gen();
+        let karl_path = get_karl_path();
+        let root = karl_path.join(id.to_string());
+
+        // Create the <KARL_PATH> if it does not already exist.
+        fs::create_dir_all(&karl_path).unwrap();
+        // Set the current working directory to the <KARL_PATH>.
+        std::env::set_current_dir(&karl_path).unwrap();
+        debug!("create karl_path {:?}", &karl_path);
         Self {
-            id: rand::thread_rng().gen(),
-            karl_path: Path::new("~/.karl").to_path_buf(),
+            id,
+            karl_path,
+            root,
             port,
             rt: Runtime::new().unwrap(),
         }
@@ -39,7 +82,7 @@ impl Listener {
     fn start(&mut self) -> Result<(), Error> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
-        info!("listening on port {}", self.port);
+        info!("ID {} listening on port {}", self.id, self.port);
         register_service(&mut self.rt, self.port);
         for stream in listener.incoming() {
             let stream = stream?;
@@ -58,25 +101,20 @@ impl Listener {
 
     /// Handle a compute request.
     fn handle_compute(&mut self, req: ComputeRequest) -> Result<ComputeResult, Error> {
-        // Write the tar.gz bytes into a temporary file.
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
-        let now = Instant::now();
-        let mut f = tempfile::NamedTempFile::new()?;
-        f.write_all(&req.package[..])?;
-        f.flush()?;
-        info!("=> write package.tar.gz: {} s", now.elapsed().as_secs_f32());
+        let f = write_to_targz(&req);
 
         // Replay the packaged computation.
+        // Create the _compute_ working directory but stay in the karl path.
         let now = Instant::now();
-        let mut options = Run::new(f.path().to_path_buf());
-        options.replay = true;
+        std::fs::create_dir_all(&self.root).unwrap();
+        let mut options = Run::new(self.root.clone());
+        options.pkg_path = Some(f.path().to_path_buf());
         let result = run(&mut options).expect("expected result");
         info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
-        // Remove the file and return the requested results.
-        // TODO: KARL_PATH
-        f.close()?;
+        // Return the requested results.
         let now = Instant::now();
         let mut res = ComputeResult::new();
         if req.stdout {
@@ -86,7 +124,6 @@ impl Listener {
             res.stderr = result.stderr;
         }
         for path in req.files {
-            // TODO: use KARL_PATH environment variable
             let f = result.root.path().join(&path);
             match fs::File::open(&f) {
                 Ok(mut file) => {
@@ -96,6 +133,12 @@ impl Listener {
             }
         }
         info!("=> build result: {} s", now.elapsed().as_secs_f32());
+
+        // Reset the root for the next computation.
+        let now = Instant::now();
+        std::env::set_current_dir(&self.karl_path).unwrap();
+        std::fs::remove_dir_all(&self.root).unwrap();
+        info!("reset directory at {:?} => {} s", self.root, now.elapsed().as_secs_f32());
         Ok(res)
     }
 
@@ -158,9 +201,8 @@ fn register_service(rt: &mut Runtime, port: u16) {
     });
 }
 
-fn main() -> Result<(), Error> {
+fn main() {
     env_logger::builder().format_timestamp(None).init();
     let mut listener = Listener::new(0);
-    listener.start()?;
-    Ok(())
+    listener.start().unwrap();
 }
