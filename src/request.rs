@@ -185,7 +185,7 @@ impl ComputeRequestBuilder {
 
         // Generate the default compute request.
         let mut f = fs::File::open(filename)?;
-        Ok(ComputeRequest::new(common::read_packet(&mut f, false)?))
+        Ok(ComputeRequest::new(common::read_all(&mut f)?))
     }
 }
 

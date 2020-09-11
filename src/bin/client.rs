@@ -28,7 +28,7 @@ fn compute(c: &mut Controller) -> Result<(), Error> {
         .add_dir("python/")?
         .finalize()?;
     // let mut f = File::open("package.tar.gz").expect("failed to open package.tar.gz");
-    // let buffer = read_packet(&mut f, false).expect("failed to read package.tar.gz");
+    // let buffer = read_all(&mut f).expect("failed to read package.tar.gz");
     // let request = ComputeRequest::new(buffer);
     info!("=> {} s", now.elapsed().as_secs_f32());
 

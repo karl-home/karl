@@ -131,9 +131,9 @@ impl Controller {
         // Wait for the response.
         debug!("waiting for response...");
         let now = Instant::now();
-        let bytes = read_packet(&mut stream, true)?;
+        let bytes = read_packets(&mut stream, 1)?;
         debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
-        let res = bincode::deserialize(&bytes)
+        let res = bincode::deserialize(&bytes[0])
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
         debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
         Ok(res)

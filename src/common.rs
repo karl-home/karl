@@ -14,6 +14,12 @@ pub enum Error {
         actual: usize,
         expected: usize,
     },
+    /// The number of packets received does not correspond to the number
+    /// of packets actually received.
+    IncorrectNumPackets {
+        actual: usize,
+        expected: usize,
+    },
     /// Expected to read a packet but received the connection closed
     /// and no bytes were received.
     NoReply,
@@ -41,73 +47,120 @@ impl From<io::Error> for Error {
 /// Packet header length as u32.
 const HEADER_LEN: usize = 4;
 
-/// Read bytes from the stream into a buffer.
+/// Read bytes from the stream into multiple buffers.
 ///
-/// If no packet header is expected, reads until EOF. Otherwise, interprets
-/// the first byte as the packet length and returns only the packet contents.
-/// Returns Error::IncorrectPacketLength if the number of bytes read does not
-/// match the epacket length.
+/// Interprets the first HEADER_LEN bytes as the packet length and returns
+/// only the packet contents. Errors:
+/// - IncorrectPacketLength - header does not match packet length, or incorrect
+///   number of packets.
+/// - NoReply - connection closed before all packets were read.
 ///
 /// WARNING: blocking
-pub fn read_packet(
+pub fn read_packets(
     inner: &mut dyn Read,
-    header: bool,
-) -> Result<Vec<u8>, Error> {
-    let mut buffer = Vec::new();
+    npackets: usize,
+) -> Result<Vec<Vec<u8>>, Error> {
+    trace!("reading {} packets...", npackets);
+    let mut result = Vec::new();
     let mut reader = io::BufReader::new(inner);
-    let mut nbytes: Option<usize> = None;
-    if header {
-        trace!("reading packet...");
-    }
+
+    let mut index = 0;
+    let mut current_buffer = Vec::new();
+    let mut current_nbytes: Option<usize> = None;
     loop {
         let mut inner = reader.fill_buf()?.to_vec();
         trace!("read {} bytes", inner.len());
         if inner.len() == 0 {
-            if header {
-                trace!("EOF");
-            }
+            trace!("EOF");
             break;
         }
+        reader.consume(inner.len());
+        current_buffer.append(&mut inner);
 
-        // Parse the header if it hasn't been parsed already.
-        if header && nbytes.is_none() {
-            if inner.len() < HEADER_LEN {
-                return Err(Error::MissingHeader);
+        loop {
+            // Parse the header if necessary
+            if current_nbytes.is_none() {
+                if current_buffer.len() >= HEADER_LEN {
+                    let header: &[u8; HEADER_LEN] =
+                        &current_buffer[..HEADER_LEN].try_into().unwrap();
+                    current_nbytes = Some(u32::from_ne_bytes(*header) as usize);
+                    current_buffer = current_buffer.split_off(HEADER_LEN);
+                    trace!("packet header: {:?} {} bytes", header, current_nbytes.unwrap())
+                } else {
+                    // Need more bytes
+                    break;
+                }
             }
-            let header: &[u8; HEADER_LEN] =
-                &inner[..HEADER_LEN].try_into().unwrap();
-            nbytes = Some(u32::from_ne_bytes(*header) as usize);
-            inner = inner.split_off(HEADER_LEN);
-            reader.consume(HEADER_LEN);
-            trace!("packet header: {:?} {} bytes", header, nbytes.unwrap())
+
+            // Split off a packet if there are enough bytes
+            let nbytes = current_nbytes.unwrap();
+            if current_buffer.len() >= nbytes {
+                let buffer: Vec<_> = current_buffer.drain(..).collect();
+                result.push(buffer);
+                current_nbytes = None;
+                index += 1;
+                trace!("finished packet {} bytes", nbytes);
+                // Short circuit if read the last packet
+                if index == npackets {
+                    break;
+                }
+            } else {
+                // Need more bytes
+                break;
+            }
         }
 
-        // Append the remaining bytes to the original buffer.
-        reader.consume(inner.len());
-        buffer.append(&mut inner);
-
-        // Check if the packet is complete.
-        if header && buffer.len() >= nbytes.unwrap() {
+        if index == npackets {
             break;
         }
     }
 
-    // Handle no reply
-    if nbytes.is_none() && buffer.is_empty() {
+    // Handle no reply, wrong number of replies
+    if result.is_empty() {
         return Err(Error::NoReply);
     }
     // Handle incorrect packet lengths
-    if header {
-        if nbytes.is_none() {
-            return Err(Error::MissingHeader);
+    assert!(result.len() <= npackets);
+    if result.len() == 0 {
+        Err(Error::NoReply)
+    } else if result.len() < npackets {
+        if let Some(nbytes) = current_nbytes {
+            Err(Error::IncorrectPacketLength {
+                actual: current_buffer.len(),
+                expected: nbytes,
+            })
+        } else {
+            Err(Error::IncorrectNumPackets {
+                actual: result.len(),
+                expected: npackets,
+            })
         }
-        if buffer.len() != nbytes.unwrap() {
-            return Err(Error::IncorrectPacketLength {
-                actual: buffer.len(),
-                expected: nbytes.unwrap(),
-            });
+    } else {
+        trace!("read success! {:?} bytes",
+            result.iter().map(|a| a.len()).collect::<Vec<_>>());
+        Ok(result)
+    }
+}
+
+/// Read bytes from the stream into a buffer. Reads until EOF.
+///
+/// WARNING: blocking
+pub fn read_all(
+    inner: &mut dyn Read,
+) -> Result<Vec<u8>, Error> {
+    let mut buffer = Vec::new();
+    let mut reader = io::BufReader::new(inner);
+    loop {
+        let mut inner = reader.fill_buf()?.to_vec();
+        trace!("read {} bytes", inner.len());
+        if inner.len() == 0 {
+            break;
         }
-        trace!("read success! {} bytes", buffer.len());
+        reader.consume(inner.len());
+        buffer.append(&mut inner);
+    }
+    if buffer.is_empty() {
+        return Err(Error::NoReply);
     }
     Ok(buffer)
 }

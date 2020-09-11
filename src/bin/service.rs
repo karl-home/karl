@@ -127,7 +127,7 @@ impl Listener {
             let f = result.root.path().join(&path);
             match fs::File::open(&f) {
                 Ok(mut file) => {
-                    res.files.insert(path, read_packet(&mut file, false)?);
+                    res.files.insert(path, read_all(&mut file)?);
                 },
                 Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
             }
@@ -147,7 +147,7 @@ impl Listener {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let buf = read_packet(&mut stream, true)?;
+        let buf = read_packets(&mut stream, 1)?.remove(0);
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
         // Deserialize the request.

@@ -12,7 +12,7 @@ use karl::{controller::Controller, *};
 fn gen_request() -> Result<ComputeRequest, Error> {
     let now = Instant::now();
     let mut f = File::open("add.tar.gz").expect("failed to open add.tar.gz");
-    let buffer = read_packet(&mut f, false).expect("failed to read add.tar.gz");
+    let buffer = read_all(&mut f).expect("failed to read add.tar.gz");
     let request = ComputeRequest::new(buffer);
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     Ok(request)
