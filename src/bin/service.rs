@@ -123,7 +123,7 @@ impl Listener {
             res.stderr = result.stderr;
         }
         for path in req.files {
-            let f = result.root.path().join(&path);
+            let f = self.root.join(&path);
             match fs::File::open(&f) {
                 Ok(mut file) => {
                     res.files.insert(path, read_all(&mut file)?);
