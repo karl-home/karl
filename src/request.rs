@@ -10,7 +10,7 @@ use wasmer::executor::PkgConfig;
 use tar::{Builder, Header};
 use flate2::{Compression, write::GzEncoder};
 
-use crate::common::{self, Error};
+use crate::common::Error;
 
 /// Requests.
 #[derive(Debug, Serialize, Deserialize)]
@@ -169,9 +169,8 @@ impl ComputeRequestBuilder {
         };
 
         // Tar it up.
-        let filename = "package.tar.gz";
-        let tar_gz = fs::File::create(filename)?;
-        let enc = GzEncoder::new(tar_gz, Compression::default());
+        let mut buffer = Vec::new();
+        let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
         tar.append_dir_all("root", root_path)?;
 
@@ -184,8 +183,7 @@ impl ComputeRequestBuilder {
         tar.into_inner()?;
 
         // Generate the default compute request.
-        let mut f = fs::File::open(filename)?;
-        Ok(ComputeRequest::new(common::read_all(&mut f)?))
+        Ok(ComputeRequest::new(buffer))
     }
 }
 
