@@ -81,20 +81,11 @@ impl ComputeRequestBuilder {
             root: InputRoot::Uninitialized,
             config: PkgConfig {
                 binary_path: Some(Path::new(binary_path).to_path_buf()),
-                preopened: Vec::new(),
+                mapped_dirs: Vec::new(),
                 args: Vec::new(),
                 envs: Vec::new(),
             },
         }
-    }
-
-    /// Directories to preopen, none included by default
-    pub fn preopen_dirs(mut self, dirs: Vec<&str>) -> ComputeRequestBuilder {
-        self.config.preopened = dirs
-            .into_iter()
-            .map(|dir| Path::new(dir).to_path_buf())
-            .collect();
-        self
     }
 
     /// Arguments, not including the binary path

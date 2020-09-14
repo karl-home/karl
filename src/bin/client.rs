@@ -22,7 +22,6 @@ fn compute(c: &mut Controller) -> Result<(), Error> {
     info!("building compute request");
     let now = Instant::now();
     let request = ComputeRequestBuilder::new("python/python.wasm")
-        .preopen_dirs(vec!["python/"])
         .args(vec!["python/run.py"])
         .build_root()?
         .add_dir("python/")?
