@@ -19,7 +19,6 @@ fn gen_request() -> Result<ComputeRequest, Error> {
         })
         .build_root()?
         .add_file("add/add.py")?
-        .add_file("add/python.wasm")?
         .finalize()?;
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     Ok(request)

@@ -36,6 +36,8 @@ pub enum Error {
     DoubleInputInitialization,
     /// Received a ping result for a compute request or vice versa.
     InvalidResponseType,
+    /// Package does not contain a valid binary in its root or imports.
+    BinaryNotFound(String),
 }
 
 impl From<io::Error> for Error {

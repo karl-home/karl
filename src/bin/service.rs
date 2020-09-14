@@ -65,19 +65,68 @@ fn parse_request(pkg_root: &Path) -> (PkgConfig, PathBuf) {
 }
 
 /// Resolve imports.
-fn get_mapped_dirs(karl_path: &Path, imports: &Vec<Import>) -> Vec<String> {
-    let mut mapped_dirs = vec![];
+fn resolve_import_paths(karl_path: &Path, imports: &Vec<Import>) -> Vec<PathBuf> {
+    let mut import_paths = vec![];
     for import in imports {
         match import {
             Import::Wapm { name, version } => {
                 let path = format!("wapm_packages/_/{}@{}/", name, version);
                 let path = karl_path.join(path);
-                let path_str = path.into_os_string().into_string().unwrap();
-                mapped_dirs.push(format!(".:{}", path_str));
+                import_paths.push(path);
             },
         }
     }
-    mapped_dirs
+    import_paths
+}
+
+/// Get mapped directories.
+///
+/// Maps imports to the package root.
+fn get_mapped_dirs(import_paths: Vec<PathBuf>) -> Vec<String> {
+    import_paths
+        .into_iter()
+        .map(|path| path.into_os_string().into_string().unwrap())
+        .map(|path| format!(".:{}", path))
+        .collect()
+}
+
+/// Resolve the actual host binary path based on the config binary path.
+///
+/// Find an existing path in the following order:
+/// 1. Relative to the package root.
+/// 2. Relative to import paths.
+/// 3. Otherwise, errors with Error::BinaryNotFound.
+fn resolve_binary_path(
+    config: &PkgConfig,
+    pkg_root: &Path,
+    import_paths: &Vec<PathBuf>,
+) -> Result<PathBuf, Error> {
+    assert!(pkg_root.is_absolute());
+    // 1.
+    let bin_path = config.binary_path.as_ref().ok_or(
+        Error::BinaryNotFound("binary path did not exist in config".to_string()))?;
+    let path = pkg_root.join(&bin_path);
+    if path.exists() {
+        return Ok(path);
+    }
+    // 2.
+    let wasm_filename = bin_path.file_name().ok_or(
+        Error::BinaryNotFound(format!("malformed: {:?}", bin_path)))?;
+    for import_path in import_paths {
+        assert!(import_path.is_absolute());
+        let path = import_path.join("bin").join(&wasm_filename);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    // 3.
+    Err(Error::BinaryNotFound(format!("not found: {:?}", bin_path)))
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
 }
 
 impl Listener {
@@ -120,7 +169,7 @@ impl Listener {
             let stream = stream?;
             debug!("incoming stream {:?}", stream.local_addr());
             let now = Instant::now();
-            self.handle_client(stream)?;
+            self.handle_client(stream).unwrap();
             warn!("total: {} s", now.elapsed().as_secs_f32());
         }
         Ok(())
@@ -138,8 +187,10 @@ impl Listener {
         let now = Instant::now();
         unpack_request(&req, &self.root);
         let (mut config, root_path) = parse_request(&self.root);
-        config.mapped_dirs = get_mapped_dirs(&self.karl_path, &req.imports);
-        // TODO: binary path
+        let import_paths = resolve_import_paths(&self.karl_path, &req.imports);
+        config.binary_path = Some(resolve_binary_path(
+            &config, &root_path, &import_paths)?);
+        config.mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         // Replay the packaged computation.
