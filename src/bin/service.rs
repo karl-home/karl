@@ -2,6 +2,7 @@
 extern crate log;
 
 use std::fs;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -10,7 +11,7 @@ use bincode;
 use dirs;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
-use wasmer::executor::{run, Run, Import};
+use wasmer::executor::{replay_with_config, Run, Import, PkgConfig};
 use flate2::read::GzDecoder;
 use tar::Archive;
 
@@ -46,6 +47,21 @@ fn unpack_request(req: &ComputeRequest, root: &Path) {
     let mut archive = Archive::new(tar);
     archive.unpack(root).expect(&format!("malformed tar.gz in request"));
     info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
+}
+
+/// Parse the config and root path directory given the package root.
+fn parse_request(pkg_root: &Path) -> (PkgConfig, PathBuf) {
+    assert!(pkg_root.is_dir());
+    let root_path = pkg_root.join("root");
+    let config_path = pkg_root.join("config");
+    let config = {
+        let mut buffer = vec![];
+        let mut f = fs::File::open(&config_path).expect(
+            &format!("malformed package: no config file at {:?}", config_path));
+        f.read_to_end(&mut buffer).expect("error reading config");
+        bincode::deserialize(&buffer).expect("malformed config file")
+    };
+    (config, root_path)
 }
 
 /// Resolve imports.
@@ -119,15 +135,19 @@ impl Listener {
     fn handle_compute(&mut self, req: ComputeRequest) -> Result<ComputeResult, Error> {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
+        let now = Instant::now();
         unpack_request(&req, &self.root);
+        let (mut config, root_path) = parse_request(&self.root);
+        config.mapped_dirs = get_mapped_dirs(&self.karl_path, &req.imports);
+        // TODO: binary path
+        info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         // Replay the packaged computation.
         // Create the _compute_ working directory but stay in the karl path.
         let now = Instant::now();
-        let mut options = Run::new(self.root.clone());
-        options.replay = true;
-        options.mapped_dirs = get_mapped_dirs(&self.karl_path, &req.imports);
-        let result = run(&mut options).expect("expected result");
+        let mut options = Run::new(root_path);
+        let result = replay_with_config(&mut options, config)
+            .expect("expected result");
         info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
         // Return the requested results.
