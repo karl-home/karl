@@ -11,7 +11,7 @@ use karl::{controller::Controller, *};
 fn gen_request() -> Result<ComputeRequest, Error> {
     let now = Instant::now();
     let request = ComputeRequestBuilder::new("add/python.wasm")
-        .args(vec!["add/add.py", "10"])
+        .args(vec!["add/add.py", "20"])
         .build_root()?
         .add_file("add/add.py")?
         .add_file("add/python.wasm")?
@@ -52,7 +52,7 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
             c.rt.block_on(async { handle.await.unwrap() })
         })
         .map(|result| result.unwrap().stdout)
-        .map(|bytes| String::from_utf8_lossy(&bytes).trim().parse::<i32>().unwrap())
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().parse::<i64>().unwrap())
         .collect::<Vec<_>>();
     info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), results);
     info!("total: {} s", start.elapsed().as_secs_f32());
