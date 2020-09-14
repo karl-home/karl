@@ -2,7 +2,6 @@
 extern crate log;
 extern crate clap;
 
-use std::fs::File;
 use std::time::Instant;
 
 use clap::{Arg, App};
@@ -11,9 +10,14 @@ use karl::{controller::Controller, *};
 
 fn gen_request() -> Result<ComputeRequest, Error> {
     let now = Instant::now();
-    let mut f = File::open("add.tar.gz").expect("failed to open add.tar.gz");
-    let buffer = read_all(&mut f).expect("failed to read add.tar.gz");
-    let request = ComputeRequest::new(buffer);
+    let request = ComputeRequestBuilder::new("add/python.wasm")
+        .args(vec!["add/add.py", "10"])
+        .build_root()?
+        .add_file("add/add.py")?
+        .add_file("add/python.wasm")?
+        .add_dir("add/lib/")?
+        .finalize()?;
+        // .import(Import::Wapm { name: "python", version: "0.1.0" })?
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     Ok(request)
 }

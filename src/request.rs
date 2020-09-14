@@ -134,7 +134,12 @@ impl ComputeRequestBuilder {
     pub fn add_file(self, path: &str) -> Result<ComputeRequestBuilder, Error> {
         let path = Path::new(path);
         match &self.root {
-            InputRoot::CustomDir(root) => fs::copy(path, root.path().join(path))?,
+            InputRoot::CustomDir(root) => {
+                let new_path = root.path().join(path);
+                let parent = new_path.parent().unwrap();
+                fs::create_dir_all(parent)?;
+                fs::copy(path, new_path)?
+            },
             _ => return Err(Error::InvalidInputRoot),
         };
         Ok(self)
