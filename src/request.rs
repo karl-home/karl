@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Serialize, Deserialize};
 use tempdir::TempDir;
-use wasmer::executor::PkgConfig;
+use wasmer::executor::{Import, PkgConfig};
 use tar::{Builder, Header};
 use flate2::{Compression, write::GzEncoder};
 
@@ -35,6 +35,7 @@ enum InputRoot {
 /// Compute request builder.
 pub struct ComputeRequestBuilder {
     root: InputRoot,
+    imports: Vec<Import>,
     config: PkgConfig,
 }
 
@@ -54,6 +55,8 @@ pub struct ComputeRequest {
     pub stderr: bool,
     /// Files to include in the results, if they exist.
     pub files: HashSet<String>,
+    /// Imported packages or libraries
+    pub imports: Vec<Import>,
 }
 
 impl PingRequest {
@@ -79,6 +82,7 @@ impl ComputeRequestBuilder {
     pub fn new(binary_path: &str) -> ComputeRequestBuilder {
         ComputeRequestBuilder {
             root: InputRoot::Uninitialized,
+            imports: Vec::new(),
             config: PkgConfig {
                 binary_path: Some(Path::new(binary_path).to_path_buf()),
                 mapped_dirs: Vec::new(),
@@ -103,6 +107,12 @@ impl ComputeRequestBuilder {
             .into_iter()
             .map(|env| env.to_string())
             .collect();
+        self
+    }
+
+    /// Import external library or package.
+    pub fn import(mut self, import: Import) -> ComputeRequestBuilder {
+        self.imports.push(import);
         self
     }
 
@@ -179,7 +189,9 @@ impl ComputeRequestBuilder {
         tar.into_inner()?;
 
         // Generate the default compute request.
-        Ok(ComputeRequest::new(buffer))
+        let mut request = ComputeRequest::new(buffer);
+        request.imports = self.imports;
+        Ok(request)
     }
 }
 
@@ -208,6 +220,7 @@ impl ComputeRequest {
             stdout: false,
             stderr: false,
             files: HashSet::new(),
+            imports: Vec::new(),
         }
     }
 

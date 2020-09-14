@@ -10,7 +10,7 @@ use bincode;
 use dirs;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
-use wasmer::executor::{run, Run};
+use wasmer::executor::{run, Run, Import};
 use flate2::read::GzDecoder;
 use tar::Archive;
 
@@ -46,6 +46,22 @@ fn unpack_request(req: &ComputeRequest, root: &Path) {
     let mut archive = Archive::new(tar);
     archive.unpack(root).expect(&format!("malformed tar.gz in request"));
     info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
+}
+
+/// Resolve imports.
+fn get_mapped_dirs(karl_path: &Path, imports: &Vec<Import>) -> Vec<String> {
+    let mut mapped_dirs = vec![];
+    for import in imports {
+        match import {
+            Import::Wapm { name, version } => {
+                let path = format!("wapm_packages/_/{}@{}/", name, version);
+                let path = karl_path.join(path);
+                let path_str = path.into_os_string().into_string().unwrap();
+                mapped_dirs.push(format!(".:{}", path_str));
+            },
+        }
+    }
+    mapped_dirs
 }
 
 impl Listener {
@@ -110,6 +126,7 @@ impl Listener {
         let now = Instant::now();
         let mut options = Run::new(self.root.clone());
         options.replay = true;
+        options.mapped_dirs = get_mapped_dirs(&self.karl_path, &req.imports);
         let result = run(&mut options).expect("expected result");
         info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
