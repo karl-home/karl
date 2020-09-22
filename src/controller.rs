@@ -39,16 +39,6 @@ impl Controller {
                 .unwrap();
             let _result = browser.start(move |result| match result {
                 Ok(mut service) => {
-                    // Log the discovered service
-                    let event = match service.event_type {
-                        ServiceEventType::Added => "ADD",
-                        ServiceEventType::Removed => "RMV",
-                    };
-                    info!(
-                        "{} if: {} name: {} type: {} domain: {}",
-                        event, service.interface_index, service.name,
-                        service.regtype, service.domain,
-                    );
                     let results = service.resolve();
                     for r in results.unwrap() {
                         let status = r.txt_record.as_ref().unwrap().get("status");
@@ -64,12 +54,23 @@ impl Controller {
                                 continue;
                             }
                             // Update hosts with IPv4 address.
+                            // Log the discovered service
                             debug!("Addr: {}", addr);
                             match service.event_type {
                                 ServiceEventType::Added => {
+                                    info!(
+                                        "ADD if: {} name: {} type: {} domain: {} => {:?}",
+                                        service.interface_index, service.name,
+                                        service.regtype, service.domain, addr,
+                                    );
                                     hosts.lock().unwrap().push(addr);
                                 },
                                 ServiceEventType::Removed => {
+                                    info!(
+                                        "RMV if: {} name: {} type: {} domain: {} => {:?}",
+                                        service.interface_index, service.name,
+                                        service.regtype, service.domain, addr,
+                                    );
                                     let mut hosts = hosts.lock().unwrap();
                                     for i in 0..hosts.len() {
                                         if hosts[i] == addr {
@@ -126,7 +127,7 @@ impl Controller {
 
     /// Send a request to the connected host.
     fn send(mut stream: TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
-        debug!("sending {:?} to {:?}...", req, stream.peer_addr());
+        info!("sending {:?} to {:?}...", req, stream.peer_addr());
         let now = Instant::now();
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;

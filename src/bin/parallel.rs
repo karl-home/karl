@@ -2,7 +2,7 @@
 extern crate log;
 extern crate clap;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
@@ -72,6 +72,8 @@ fn main() {
     let n = matches.value_of("n").unwrap().parse::<usize>().unwrap();
     let blocking = true;
     let mut c = Controller::new(rt, blocking);
+    // Wait for the controller to add all hosts.
+    std::thread::sleep(Duration::from_secs(5));
     send_all(&mut c, n).unwrap();
     info!("done.");
 }
