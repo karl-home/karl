@@ -38,6 +38,8 @@ pub enum Error {
     InvalidResponseType,
     /// Package does not contain a valid binary in its root or imports.
     BinaryNotFound(String),
+    /// Failure to install an imported package.
+    InstallImportError(String),
 }
 
 impl From<io::Error> for Error {

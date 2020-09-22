@@ -65,18 +65,16 @@ fn parse_request(pkg_root: &Path) -> (PkgConfig, PathBuf) {
 }
 
 /// Resolve imports.
-fn resolve_import_paths(karl_path: &Path, imports: &Vec<Import>) -> Vec<PathBuf> {
+fn resolve_import_paths(
+    karl_path: &Path,
+    imports: &Vec<Import>,
+) -> Result<Vec<PathBuf>, Error> {
     let mut import_paths = vec![];
     for import in imports {
-        match import {
-            Import::Wapm { name, version } => {
-                let path = format!("wapm_packages/_/{}@{}/", name, version);
-                let path = karl_path.join(path);
-                import_paths.push(path);
-            },
-        }
+        let path = import.install_if_missing(karl_path)?;
+        import_paths.push(path);
     }
-    import_paths
+    Ok(import_paths)
 }
 
 /// Get mapped directories.
@@ -187,7 +185,7 @@ impl Listener {
         let now = Instant::now();
         unpack_request(&req, &self.root);
         let (mut config, root_path) = parse_request(&self.root);
-        let import_paths = resolve_import_paths(&self.karl_path, &req.imports);
+        let import_paths = resolve_import_paths(&self.karl_path, &req.imports)?;
         config.binary_path = Some(resolve_binary_path(
             &config, &root_path, &import_paths)?);
         config.mapped_dirs = get_mapped_dirs(import_paths);
