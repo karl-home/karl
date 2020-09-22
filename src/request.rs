@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Serialize, Deserialize};
 use tempdir::TempDir;
-use wasmer::executor::{Import, PkgConfig};
+use wasmer::executor::PkgConfig;
 use tar::{Builder, Header};
 use flate2::{Compression, write::GzEncoder};
 
 use crate::common::Error;
+use crate::import::Import;
 
 /// Requests.
 #[derive(Debug, Serialize, Deserialize)]

@@ -6,8 +6,7 @@ use std::time::Instant;
 
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
-use karl::{controller::Controller, *};
-use wasmer::executor::Import;
+use karl::{controller::Controller, import::Import, *};
 
 fn gen_request() -> Result<ComputeRequest, Error> {
     let now = Instant::now();

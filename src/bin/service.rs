@@ -11,11 +11,11 @@ use bincode;
 use dirs;
 use tokio::runtime::Runtime;
 use astro_dnssd::register::DNSServiceBuilder;
-use wasmer::executor::{replay_with_config, Run, Import, PkgConfig};
+use wasmer::executor::{replay_with_config, Run, PkgConfig};
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use karl::*;
+use karl::{import::Import, *};
 
 struct Listener {
     /// Node/service ID
