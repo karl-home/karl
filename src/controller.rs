@@ -52,7 +52,13 @@ impl Controller {
                     let results = service.resolve();
                     for r in results.unwrap() {
                         let status = r.txt_record.as_ref().unwrap().get("status");
-                        let addrs_iter = r.to_socket_addrs().unwrap();
+                        let addrs_iter = match r.to_socket_addrs() {
+                            Ok(addrs) => addrs,
+                            Err(e) => {
+                                error!("Failed to resolve\n=> addrs: {:?}\n=> {:?}", r, e);
+                                return;
+                            },
+                        };
                         for addr in addrs_iter {
                             if !addr.is_ipv4() {
                                 continue;

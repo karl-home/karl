@@ -8,7 +8,7 @@ use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use karl::{controller::Controller, import::Import, *};
 
-fn gen_request() -> Result<ComputeRequest, Error> {
+fn gen_request() -> ComputeRequest {
     let now = Instant::now();
     let request = ComputeRequestBuilder::new("add/python.wasm")
         .args(vec!["add/add.py", "20"])
@@ -16,11 +16,11 @@ fn gen_request() -> Result<ComputeRequest, Error> {
             name: "python".to_string(),
             version: "0.1.0".to_string(),
         })
-        .build_root()?
-        .add_file("add/add.py")?
-        .finalize()?;
+        .build_root().unwrap()
+        .add_file("add/add.py").unwrap()
+        .finalize().unwrap();
     debug!("build request => {} s", now.elapsed().as_secs_f32());
-    Ok(request)
+    request
 }
 
 
@@ -35,7 +35,7 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
     let now = Instant::now();
     let mut requests = vec![];
     for _ in 0..n {
-        requests.push(gen_request()?.stdout());
+        requests.push(gen_request().stdout());
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
