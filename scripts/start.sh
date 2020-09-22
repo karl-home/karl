@@ -9,6 +9,7 @@ else
         do
 	    ssh $USER@${machine} \
 		    "RUST_LOG=karl=debug,service=debug \
+		    RUST_BACKTRACE=1 \
 		    $HOME/karl/target/release/service > \
 		    $HOME/karl/logs/service$i.txt 2>&1 \
 		    &" &
