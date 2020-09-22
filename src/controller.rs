@@ -126,7 +126,7 @@ impl Controller {
 
     /// Send a request to the connected host.
     fn send(mut stream: TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
-        debug!("sending {:?}...", req);
+        debug!("sending {:?} to {:?}...", req, stream.peer_addr());
         let now = Instant::now();
         let bytes = bincode::serialize(&req)
             .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
