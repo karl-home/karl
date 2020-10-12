@@ -14,6 +14,15 @@ pub enum Import {
         name: String,
         /// Package version
         version: String,
+    },
+    /// A directory at `~/.karl/local/`.
+    ///
+    /// Local imports cannot be installed. They must already exist.
+    Local {
+        /// Directory name relative to `~/.karl/local`.
+        name: String,
+        /// Hash of the directory.
+        hash: String,
     }
 }
 
@@ -45,6 +54,10 @@ impl Import {
                     Error::InstallImportError(format!("{}", e)))?;
                 warn!("installed wapm package {}@{}", name, version);
             },
+            Import::Local { name, hash: _hash } => {
+                return Err(Error::InstallImportError(format!(
+                    "cannot install a local import: {}", name)));
+            },
         }
         Ok(path)
     }
@@ -56,6 +69,11 @@ impl Import {
                 let path = karl_path.join(path);
                 path
             },
+            Import::Local { name, .. } => {
+                let path = format!("local/{}/", name);
+                let path = karl_path.join(path);
+                path
+            }
         }
     }
 }

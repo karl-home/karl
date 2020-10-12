@@ -175,7 +175,9 @@ impl Listener {
             let stream = stream?;
             debug!("incoming stream {:?}", stream.local_addr());
             let now = Instant::now();
-            self.handle_client(stream).unwrap();
+            if let Err(e) = self.handle_client(stream) {
+                error!("{:?}", e);
+            }
             warn!("total: {} s", now.elapsed().as_secs_f32());
         }
         Ok(())
