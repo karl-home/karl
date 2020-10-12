@@ -69,7 +69,8 @@ fn send(c: &mut Controller, import: bool) -> Result<(), Error> {
     let now = Instant::now();
 
     let result = c.rt.block_on(async { handle.await.unwrap() }).unwrap().stdout;
-    info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), result);
+    let result = String::from_utf8_lossy(&result);
+    info!("finished: {} s\n{}", now.elapsed().as_secs_f32(), result);
     info!("total: {} s", start.elapsed().as_secs_f32());
     Ok(())
 }

@@ -40,11 +40,19 @@ pub enum Error {
     BinaryNotFound(String),
     /// Failure to install an imported package.
     InstallImportError(String),
+    /// Unknown.
+    UnknownError(String),
 }
 
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
         Error::IoError(error)
+    }
+}
+
+impl From<String> for Error {
+    fn from(error: String) -> Self {
+        Error::UnknownError(error)
     }
 }
 
