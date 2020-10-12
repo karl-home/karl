@@ -4,7 +4,7 @@ extern crate log;
 use std::time::Instant;
 
 use tokio::runtime::Runtime;
-use karl::{controller::Controller, *};
+use karl::{net::Controller, *};
 
 /// Pings the host. Returns whether it is a success.
 fn ping(c: &mut Controller) {

@@ -10,20 +10,25 @@ use std::time::Instant;
 use bincode;
 use dirs;
 use tokio::runtime::Runtime;
-use astro_dnssd::register::DNSServiceBuilder;
-use wasmer::executor::{replay_with_config, Run, PkgConfig};
+use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use karl::{import::Import, *};
+use karl::{
+    self, Error, import::Import,
+    KarlRequest, KarlResult,
+    ComputeRequest, ComputeResult, PingRequest, PingResult,
+};
 
 struct Listener {
     /// Node/service ID
     id: u32,
-    /// Karl path
+    /// Karl path, likely ~/.karl
     karl_path: PathBuf,
-    /// Computation root
-    root: PathBuf,
+    /// Computation request base, likely ~/.karl/<id>
+    /// Config likely at ~/.karl/<id>/config
+    /// Computation root likely at ~/.karl/<id>/root/
+    base_path: PathBuf,
     port: u16,
     rt: Runtime,
 }
@@ -36,24 +41,24 @@ fn get_karl_path() -> PathBuf {
     home_dir.join(".karl")
 }
 
-/// Write the bytes of the packaged compute request to a temporary file.
-/// The file will be removed after the results are returned to the sender.
+/// Unpackage the bytes of the tarred and gzipped request to the base path.
+///
+/// A properly formatted request will produce a `config` file and the `root`
+/// compute directory at the base path. Returns the deserialized config file
+/// and the root path.
 ///
 /// TODO: Avoid this extra serialization step.
-fn unpack_request(req: &ComputeRequest, root: &Path) {
+fn unpack_request(req: &ComputeRequest, base: &Path) -> (PkgConfig, PathBuf) {
     let now = Instant::now();
-    std::fs::create_dir_all(root).unwrap();
+    std::fs::create_dir_all(base).unwrap();
     let tar = GzDecoder::new(&req.package[..]);
     let mut archive = Archive::new(tar);
-    archive.unpack(root).expect(&format!("malformed tar.gz in request"));
-    info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
-}
+    archive.unpack(base).expect(&format!("malformed tar.gz in request"));
+    info!("=> unpacked request to {:?}: {} s", base, now.elapsed().as_secs_f32());
 
-/// Parse the config and root path directory given the package root.
-fn parse_request(pkg_root: &Path) -> (PkgConfig, PathBuf) {
-    assert!(pkg_root.is_dir());
-    let root_path = pkg_root.join("root");
-    let config_path = pkg_root.join("config");
+    // Deserialize the config file.
+    let root_path = base.join("root");
+    let config_path = base.join("config");
     let config = {
         let mut buffer = vec![];
         let mut f = fs::File::open(&config_path).expect(
@@ -123,7 +128,7 @@ fn resolve_binary_path(
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        let _ = std::fs::remove_dir_all(&self.base_path);
     }
 }
 
@@ -141,7 +146,7 @@ impl Listener {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let karl_path = get_karl_path();
-        let root = karl_path.join(id.to_string());
+        let base_path = karl_path.join(id.to_string());
 
         // Create the <KARL_PATH> if it does not already exist.
         fs::create_dir_all(&karl_path).unwrap();
@@ -151,7 +156,7 @@ impl Listener {
         Self {
             id,
             karl_path,
-            root,
+            base_path,
             port,
             rt: Runtime::new().unwrap(),
         }
@@ -162,7 +167,7 @@ impl Listener {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
-        register_service(&mut self.rt, self.port);
+        karl::net::register(&mut self.rt, self.id, self.port);
         for stream in listener.incoming() {
             let stream = stream?;
             debug!("incoming stream {:?}", stream.local_addr());
@@ -183,47 +188,27 @@ impl Listener {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
         let now = Instant::now();
-        unpack_request(&req, &self.root);
-        let (mut config, root_path) = parse_request(&self.root);
+        let (mut config, root_path) = unpack_request(&req, &self.base_path);
         let import_paths = resolve_import_paths(&self.karl_path, &req.imports)?;
         config.binary_path = Some(resolve_binary_path(
             &config, &root_path, &import_paths)?);
         config.mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
-        // Replay the packaged computation.
-        // Create the _compute_ working directory but stay in the karl path.
-        let now = Instant::now();
-        let mut options = Run::new(root_path);
-        let result = replay_with_config(&mut options, config)
-            .expect("expected result");
-        info!("=> execution: {} s", now.elapsed().as_secs_f32());
-
-        // Return the requested results.
-        let now = Instant::now();
-        let mut res = ComputeResult::new();
-        if req.stdout {
-            res.stdout = result.stdout;
-        }
-        if req.stderr {
-            res.stderr = result.stderr;
-        }
-        for path in req.files {
-            let f = self.root.join(&path);
-            match fs::File::open(&f) {
-                Ok(mut file) => {
-                    res.files.insert(path, read_all(&mut file)?);
-                },
-                Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
-            }
-        }
-        info!("=> build result: {} s", now.elapsed().as_secs_f32());
+        let res = karl::backend::wasm::run(
+            config,
+            &self.base_path,
+            &root_path,
+            req.stdout,
+            req.stderr,
+            req.files,
+        )?;
 
         // Reset the root for the next computation.
         let now = Instant::now();
         std::env::set_current_dir(&self.karl_path).unwrap();
-        std::fs::remove_dir_all(&self.root).unwrap();
-        info!("reset directory at {:?} => {} s", self.root, now.elapsed().as_secs_f32());
+        std::fs::remove_dir_all(&self.base_path).unwrap();
+        info!("reset directory at {:?} => {} s", self.base_path, now.elapsed().as_secs_f32());
         Ok(res)
     }
 
@@ -232,7 +217,7 @@ impl Listener {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let buf = read_packets(&mut stream, 1)?.remove(0);
+        let buf = karl::read_packets(&mut stream, 1)?.remove(0);
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
         // Deserialize the request.
@@ -258,32 +243,10 @@ impl Listener {
 
         debug!("writing packet");
         let now = Instant::now();
-        write_packet(&mut stream, &res_bytes)?;
+        karl::write_packet(&mut stream, &res_bytes)?;
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }
-}
-
-/// Register the service named "MyRustService" of type "_karl._tcp" via dns-sd.
-///
-/// TODO: might be platform dependent.
-fn register_service(rt: &mut Runtime, port: u16) {
-    rt.spawn(async move {
-        let mut service = DNSServiceBuilder::new("_karl._tcp")
-            .with_port(port)
-            .with_name("MyRustService")
-            .build()
-            .unwrap();
-        let _result = service.register(|reply| match reply {
-            Ok(reply) => info!("successful register: {:?}", reply),
-            Err(e) => info!("error registering: {:?}", e),
-        });
-        loop {
-            if service.has_data() {
-                service.process_result();
-            }
-        }
-    });
 }
 
 fn main() {

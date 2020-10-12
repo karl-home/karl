@@ -9,7 +9,12 @@ use tokio::{task::JoinHandle, runtime::Runtime};
 
 use crate::*;
 
-/// Controller for interacting with mDNS.
+/// Controller used for discovering available Karl services via DNS-SD.
+///
+/// Currently, each client runs its own controller, which is aware of all
+/// available Karl services. Eventually, there may be a central controller
+/// that coordinates client requests among available services.
+/// Non-macOS services need to install the appropriate shims around DNS-SD.
 pub struct Controller {
     pub rt: Runtime,
     blocking: bool,
@@ -18,12 +23,19 @@ pub struct Controller {
 }
 
 impl Controller {
-    /// Create a controller that asynchronously queries for new hosts
-    /// at the given interval.
+    /// Create a new controller.
+    ///
+    /// The controller spawns a process in the background that listens on
+    /// DNS-SD for available hosts. The controller maintains a list of
+    /// available hosts, adding and removing hosts as specified by DNS-SD
+    /// messages. On request, a host selected by the controller is not
+    /// guaranteed to be available, and the client may have to try again.
     ///
     /// Parameters:
-    /// - rt - Tokio runtime.
-    /// - blocking - Whether the controller should block on requests.
+    /// - `rt`: The Tokio runtime.
+    /// - `blocking`: Whether the controller should block until it finds
+    ///   an available host on request. Otherwise, if no hosts are available,
+    ///   the controller will error.
     pub fn new(rt: Runtime, blocking: bool) -> Self {
         let c = Controller {
             rt,
@@ -156,8 +168,13 @@ impl Controller {
         }
     }
 
-    /// Execute a compute request.
-    pub fn execute(
+    /// Execute a compute request and return the result.
+    ///
+    /// Errors if there are network connection issues with the service.
+    /// The controller may have found a service that is no longer available,
+    /// or disconnected after the initial handshake. In this case, the
+    /// client should try again.
+    pub fn compute(
         &mut self,
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
@@ -169,7 +186,9 @@ impl Controller {
         }
     }
 
-    pub fn execute_async(
+    /// Asynchronously execute a compute request and return a handle that
+    /// returns the result.
+    pub fn compute_async(
         &mut self,
         req: ComputeRequest,
     ) -> Result<JoinHandle<Result<ComputeResult, Error>>, Error> {

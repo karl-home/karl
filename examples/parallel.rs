@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
-use karl::{controller::Controller, import::Import, *};
+use karl::{net::Controller, import::Import, *};
 
 fn gen_request() -> ComputeRequest {
     let now = Instant::now();
@@ -40,7 +40,7 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
     for request in requests.into_iter() {
-        let handle = c.execute_async(request)?;
+        let handle = c.compute_async(request)?;
         handles.push(handle);
     }
     info!("queue {} requests: {} s", n, now.elapsed().as_secs_f32());
