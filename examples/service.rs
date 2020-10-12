@@ -197,7 +197,6 @@ impl Listener {
 
         let res = karl::backend::wasm::run(
             config,
-            &self.base_path,
             &root_path,
             req.stdout,
             req.stderr,

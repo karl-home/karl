@@ -35,7 +35,7 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
     let now = Instant::now();
     let mut requests = vec![];
     for _ in 0..n {
-        requests.push(gen_request().stdout());
+        requests.push(gen_request().stdout().file("add/output.txt"));
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
@@ -45,6 +45,9 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
     }
     info!("queue {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
+    let to_i64 = |bytes: &Vec<u8>| {
+        String::from_utf8_lossy(bytes).trim().parse::<i64>().unwrap()
+    };
     let results = handles
         .into_iter()
         .enumerate()
@@ -52,8 +55,11 @@ fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
             debug!("{}/{}", i, n);
             c.rt.block_on(async { handle.await.unwrap() })
         })
-        .map(|result| result.unwrap().stdout)
-        .map(|bytes| String::from_utf8_lossy(&bytes).trim().parse::<i64>().unwrap())
+        .map(|result| result.unwrap())
+        .map(|result| (
+            to_i64(&result.stdout),
+            result.files.get("add/output.txt").map(to_i64),
+        ))
         .collect::<Vec<_>>();
     info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), results);
     info!("total: {} s", start.elapsed().as_secs_f32());

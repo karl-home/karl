@@ -17,17 +17,14 @@ use crate::{read_all, Error};
 ///        args,         # Arguments.
 ///        envs,         # Environment variables.
 ///    }
-/// - `base_path`: The path to the service base. Probably the directory
-///   `~/.karl/<SERVICE_ID>/`. Likely contains a config file and the
-///   computation root directory.
 /// - `root_path`: The path to the computation root. Contains the unpacked
-///   and decompressed bytes of the compute request.
+///   and decompressed bytes of the compute request. Should be a directory
+///   within the service base path `~/.karl/<id>`.
 /// - `res_stdout`: Whether to include stdout in the result.
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
     config: PkgConfig,
-    base_path: &Path,
     root_path: &Path,
     res_stdout: bool,
     res_stderr: bool,
@@ -51,7 +48,7 @@ pub fn run(
         res.stderr = result.stderr;
     }
     for path in res_files {
-        let f = base_path.join(&path);
+        let f = root_path.join(&path);
         match File::open(&f) {
             Ok(mut file) => {
                 res.files.insert(path, read_all(&mut file)?);
