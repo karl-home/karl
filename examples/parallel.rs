@@ -23,7 +23,14 @@ fn gen_request(backend: &Backend) -> ComputeRequest {
                 .finalize().unwrap()
         },
         Backend::Binary => {
-            unimplemented!()
+            ComputeRequestBuilder::new("add/python")
+                .args(vec!["add/add.py", "20"])
+                .envs(vec!["PYTHONPATH=add/lib/python3.6/"])
+                .build_root().unwrap()
+                .add_file("add/add.py").unwrap()
+                .add_file("add/python").unwrap()
+                .add_dir("add/lib/").unwrap()
+                .finalize().unwrap()
         },
     };
     debug!("build request => {} s", now.elapsed().as_secs_f32());

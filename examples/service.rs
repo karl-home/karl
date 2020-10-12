@@ -206,7 +206,13 @@ impl Listener {
                 req.stderr,
                 req.files,
             )?,
-            Backend::Binary => unimplemented!(),
+            Backend::Binary => karl::backend::binary::run(
+                config,
+                &root_path,
+                req.stdout,
+                req.stderr,
+                req.files,
+            )?,
         };
 
         // Reset the root for the next computation.

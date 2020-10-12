@@ -134,7 +134,10 @@ impl ComputeRequestBuilder {
     /// Root must be uninitialized to begin with.
     pub fn build_root(mut self) -> Result<ComputeRequestBuilder, Error> {
         self.root = match &self.root {
-            InputRoot::Uninitialized => InputRoot::CustomDir(TempDir::new("karl")?),
+            InputRoot::Uninitialized => {
+                let dir = TempDir::new("karl").unwrap();
+                InputRoot::CustomDir(dir)
+            },
             _ => return Err(Error::DoubleInputInitialization),
         };
         Ok(self)
