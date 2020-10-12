@@ -9,13 +9,14 @@ use std::time::Instant;
 
 use bincode;
 use dirs;
+use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
 use karl::{
-    self, Error, import::Import,
+    self, Error, import::Import, backend::Backend,
     KarlRequest, KarlResult,
     ComputeRequest, ComputeResult, PingRequest, PingResult,
 };
@@ -29,6 +30,7 @@ struct Listener {
     /// Config likely at ~/.karl/<id>/config
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
+    backend: Backend,
     port: u16,
     rt: Runtime,
 }
@@ -142,7 +144,7 @@ impl Listener {
     ///
     /// Note that the wasmer runtime changes the working directory for
     /// computation, so the listener must change it back immediately after.
-    fn new(port: u16) -> Self {
+    fn new(backend: Backend, port: u16) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let karl_path = get_karl_path();
@@ -157,6 +159,7 @@ impl Listener {
             id,
             karl_path,
             base_path,
+            backend,
             port,
             rt: Runtime::new().unwrap(),
         }
@@ -195,13 +198,16 @@ impl Listener {
         config.mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
-        let res = karl::backend::wasm::run(
-            config,
-            &root_path,
-            req.stdout,
-            req.stderr,
-            req.files,
-        )?;
+        let res = match self.backend {
+            Backend::Wasm => karl::backend::wasm::run(
+                config,
+                &root_path,
+                req.stdout,
+                req.stderr,
+                req.files,
+            )?,
+            Backend::Binary => unimplemented!(),
+        };
 
         // Reset the root for the next computation.
         let now = Instant::now();
@@ -250,6 +256,22 @@ impl Listener {
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
-    let mut listener = Listener::new(0);
+    let matches = App::new("Karl Service")
+        .arg(Arg::with_name("backend")
+            .help("Service backend. Either 'wasm' for wasm executables or \
+                `binary` for binary executables. Assumes macOS executables \
+                only.")
+            .short("b")
+            .long("backend")
+            .takes_value(true)
+            .default_value("wasm"))
+        .get_matches();
+
+    let backend = match matches.value_of("backend").unwrap() {
+        "wasm" => Backend::Wasm,
+        "binary" => Backend::Binary,
+        backend => unimplemented!("unimplemented backend: {}", backend),
+    };
+    let mut listener = Listener::new(backend, 0);
     listener.start().unwrap();
 }

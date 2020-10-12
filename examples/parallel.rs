@@ -6,36 +6,42 @@ use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
-use karl::{net::Controller, import::Import, *};
+use karl::{backend::Backend, net::Controller, import::Import, *};
 
-fn gen_request() -> ComputeRequest {
+fn gen_request(backend: &Backend) -> ComputeRequest {
     let now = Instant::now();
-    let request = ComputeRequestBuilder::new("add/python.wasm")
-        .args(vec!["add/add.py", "20"])
-        .import(Import::Wapm {
-            name: "python".to_string(),
-            version: "0.1.0".to_string(),
-        })
-        .build_root().unwrap()
-        .add_file("add/add.py").unwrap()
-        .finalize().unwrap();
+    let request = match backend {
+        Backend::Wasm => {
+            ComputeRequestBuilder::new("add/python.wasm")
+                .args(vec!["add/add.py", "20"])
+                .import(Import::Wapm {
+                    name: "python".to_string(),
+                    version: "0.1.0".to_string(),
+                })
+                .build_root().unwrap()
+                .add_file("add/add.py").unwrap()
+                .finalize().unwrap()
+        },
+        Backend::Binary => {
+            unimplemented!()
+        },
+    };
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     request
 }
-
 
 /// Requests computation from the host.
 ///
 /// Parameters:
 /// - c - Connection to a controller.
 /// - n - The total number of requests.
-fn send_all(c: &mut Controller, n: usize) -> Result<(), Error> {
+fn send_all(c: &mut Controller, n: usize, backend: &Backend) -> Result<(), Error> {
     let mut handles = vec![];
     let start = Instant::now();
     let now = Instant::now();
     let mut requests = vec![];
     for _ in 0..n {
-        requests.push(gen_request().stdout().file("add/output.txt"));
+        requests.push(gen_request(backend).stdout().file("add/output.txt"));
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
@@ -70,16 +76,29 @@ fn main() {
     env_logger::builder().format_timestamp(None).init();
     let rt = Runtime::new().unwrap();
     let matches = App::new("Parallel Compute")
+        .arg(Arg::with_name("backend")
+            .help("Service backend. Either 'wasm' for wasm executables or \
+                `binary` for binary executables. Assumes macOS executables \
+                only.")
+            .short("b")
+            .long("backend")
+            .takes_value(true)
+            .default_value("wasm"))
         .arg(Arg::with_name("n")
             .help("Number of parallel requests")
             .required(true))
         .get_matches();
 
     let n = matches.value_of("n").unwrap().parse::<usize>().unwrap();
+    let backend = match matches.value_of("backend").unwrap() {
+        "wasm" => Backend::Wasm,
+        "binary" => Backend::Binary,
+        backend => unimplemented!("unimplemented backend: {}", backend),
+    };
     let blocking = true;
     let mut c = Controller::new(rt, blocking);
     // Wait for the controller to add all hosts.
     std::thread::sleep(Duration::from_secs(5));
-    send_all(&mut c, n).unwrap();
+    send_all(&mut c, n, &backend).unwrap();
     info!("done.");
 }
