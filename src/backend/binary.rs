@@ -56,6 +56,8 @@ pub fn run(
     info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
+    warn!("{}", String::from_utf8_lossy(&output.stdout));
+    warn!("{}", String::from_utf8_lossy(&output.stderr));
     let now = Instant::now();
     let mut res = ComputeResult::new();
     if res_stdout {
