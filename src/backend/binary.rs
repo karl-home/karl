@@ -10,11 +10,15 @@ use crate::ComputeResult;
 use crate::{read_all, Error};
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
+    let now = Instant::now();
     let mut cmd = Command::new(bin);
+    error!("check 1: {:?}", now.elapsed().as_secs_f32());
     for arg in args {
         cmd.arg(arg);
     }
+    error!("check 2: {:?}", now.elapsed().as_secs_f32());
     cmd.env_clear();
+    error!("check 3: {:?}", now.elapsed().as_secs_f32());
     for envvar in envs {
     	let mut envvar = envvar.split("=");
     	let key = envvar.next().unwrap();
@@ -22,7 +26,10 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     	assert!(envvar.next().is_none());
         cmd.env(key, val);
     }
-    cmd.output().expect("failed to run process")
+    error!("check 4: {:?}", now.elapsed().as_secs_f32());
+    let res = cmd.output().expect("failed to run process");
+    error!("check 5: {:?}", now.elapsed().as_secs_f32());
+    res
 }
 
 /// Copies a directory from the old (mapped) directory to the new (root)
@@ -87,6 +94,8 @@ pub fn run(
     res_stderr: bool,
     res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
+    error!("{:?}", config);
+    error!("{:?}", root_path);
     env::set_current_dir(root_path).unwrap();
     let now = Instant::now();
     map_dirs(config.mapped_dirs)?;
