@@ -35,19 +35,25 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
 /// Copies a directory from the old (mapped) directory to the new (root)
 /// directory. The directory path is a relative path.
 fn copy(path: &Path, old_dir: &Path, new_dir: &Path) {
+    debug!("copy {:?} {:?} {:?}", path, old_dir, new_dir);
     assert!(path.is_relative());
     let abs_path = old_dir.join(path);
     assert!(abs_path.is_dir());
-    for f in fs::read_dir(&abs_path).unwrap() {
+    for f in fs::read_dir(&abs_path).expect(&format!("{:?}", abs_path)) {
         let f = f.unwrap();
         let ext_path = path.join(f.file_name());
         let old_path = old_dir.join(&ext_path);
         let new_path = new_dir.join(&ext_path);
+        if new_path.exists() {
+            continue;
+        }
         if old_path.is_dir() {
-            fs::create_dir_all(new_path).unwrap();
+            let e = format!("{:?}", new_path);
+            fs::create_dir_all(new_path).expect(&e);
             copy(&ext_path, old_dir, new_dir);
         } else {
-            fs::copy(old_path, new_path).unwrap();
+            let e = format!("{:?} {:?}", old_path, new_path);
+            fs::copy(old_path, new_path).expect(&e);
         }
     }
 }
@@ -100,6 +106,8 @@ pub fn run(
     let now = Instant::now();
     map_dirs(config.mapped_dirs)?;
     info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
+    // let root_path = Path::new("/Users/gina/.karl/1234/root/");
+    // env::set_current_dir(root_path).unwrap();
 
     let now = Instant::now();
     let binary_path = config.binary_path.expect("expected binary path");

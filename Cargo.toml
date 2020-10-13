@@ -33,3 +33,6 @@ crate-type = ["bin"]
 [[example]]
 name = "parallel"
 crate-type = ["bin"]
+
+[profile.release]
+debug = true
