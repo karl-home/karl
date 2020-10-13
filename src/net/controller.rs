@@ -49,7 +49,7 @@ impl Controller {
             let mut browser = ServiceBrowserBuilder::new("_karl._tcp")
                 .build()
                 .unwrap();
-            let _result = browser.start(move |result| match result {
+            browser.start(move |result| match result {
                 Ok(mut service) => {
                     let results = service.resolve();
                     for r in results.unwrap() {
@@ -97,7 +97,7 @@ impl Controller {
                     }
                 }
                 Err(e) => error!("Error: {:?}", e),
-            });
+            }).unwrap();
             loop {
                 if browser.has_data() {
                     browser.process_result();

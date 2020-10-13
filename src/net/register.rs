@@ -18,10 +18,10 @@ pub fn register(rt: &mut Runtime, id: u32, port: u16) {
             .with_name(&format!("KarlService-{}", id))
             .build()
             .unwrap();
-        let _result = service.register(|reply| match reply {
+        service.register(|reply| match reply {
             Ok(reply) => info!("successful register: {:?}", reply),
             Err(e) => info!("error registering: {:?}", e),
-        });
+        }).unwrap();
         loop {
             if service.has_data() {
                 service.process_result();
