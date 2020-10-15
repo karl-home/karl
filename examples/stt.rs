@@ -18,7 +18,7 @@ fn gen_request(import: bool) -> ComputeRequest {
             "--scorer",
             "models.scorer",
             "--audio",
-            "audio/2830-3980-0043.wav",
+            "data/stt/audio/2830-3980-0043.wav",
         ])
         .envs(vec!["PYTHONPATH=\
             lib/python3.6/:\
@@ -29,25 +29,25 @@ fn gen_request(import: bool) -> ComputeRequest {
             hash: "TODO".to_string(),
         })
         .build_root().unwrap()
-        .add_dir("audio/").unwrap()
+        .add_dir("data/stt/audio/").unwrap()
         .finalize().unwrap()
     } else {
         ComputeRequestBuilder::new("stt/python")
         .args(vec![
-            "stt/client.py",
+            "data/stt/client.py",
             "--model",
-            "stt/models.pbmm",
+            "data/stt/models.pbmm",
             "--scorer",
-            "stt/models.scorer",
+            "data/stt/models.scorer",
             "--audio",
-            "stt/audio/2830-3980-0043.wav",
+            "data/stt/audio/2830-3980-0043.wav",
         ])
         .envs(vec!["PYTHONPATH=\
-            stt/lib/python3.6/:\
-            stt/lib/python3.6/lib-dynload:\
-            stt/lib/python3.6/site-packages"])
+            data/stt/lib/python3.6/:\
+            data/stt/lib/python3.6/lib-dynload:\
+            data/stt/lib/python3.6/site-packages"])
         .build_root().unwrap()
-        .add_dir("stt").unwrap()
+        .add_dir("data/stt").unwrap()
         .finalize().unwrap()
     };
     debug!("build request => {} s", now.elapsed().as_secs_f32());
