@@ -12,24 +12,24 @@ fn gen_request(backend: &Backend) -> ComputeRequest {
     let now = Instant::now();
     let request = match backend {
         Backend::Wasm => {
-            ComputeRequestBuilder::new("add/python.wasm")
-                .args(vec!["add/add.py", "20"])
+            ComputeRequestBuilder::new("data/add/python.wasm")
+                .args(vec!["data/add/add.py", "20"])
                 .import(Import::Wapm {
                     name: "python".to_string(),
                     version: "0.1.0".to_string(),
                 })
                 .build_root().unwrap()
-                .add_file("add/add.py").unwrap()
+                .add_file("data/add/add.py").unwrap()
                 .finalize().unwrap()
         },
         Backend::Binary => {
-            ComputeRequestBuilder::new("add/python")
-                .args(vec!["add/add.py", "20"])
-                .envs(vec!["PYTHONPATH=add/lib/python3.6/"])
+            ComputeRequestBuilder::new("data/add/python")
+                .args(vec!["data/add/add.py", "20"])
+                .envs(vec!["PYTHONPATH=data/add/lib/python3.6/"])
                 .build_root().unwrap()
-                .add_file("add/add.py").unwrap()
-                .add_file("add/python").unwrap()
-                .add_dir("add/lib/").unwrap()
+                .add_file("data/add/add.py").unwrap()
+                .add_file("data/add/python").unwrap()
+                .add_dir("data/add/lib/").unwrap()
                 .finalize().unwrap()
         },
     };
@@ -48,7 +48,7 @@ fn send_all(c: &mut Controller, n: usize, backend: &Backend) -> Result<(), Error
     let now = Instant::now();
     let mut requests = vec![];
     for _ in 0..n {
-        requests.push(gen_request(backend).stdout().file("add/output.txt"));
+        requests.push(gen_request(backend).stdout().file("output.txt"));
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
@@ -71,7 +71,7 @@ fn send_all(c: &mut Controller, n: usize, backend: &Backend) -> Result<(), Error
         .map(|result| result.unwrap())
         .map(|result| (
             to_i64(&result.stdout),
-            result.files.get("add/output.txt").map(to_i64),
+            result.files.get("output.txt").map(to_i64),
         ))
         .collect::<Vec<_>>();
     info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), results);
