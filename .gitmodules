@@ -1,10 +1,10 @@
 [submodule "wasmer"]
-	path = wasmer
+	path = submodules/wasmer
 	url = git@github.com:ygina/wasmer.git
 	branch = package
 [submodule "astro-dnssd"]
-	path = astro-dnssd
+	path = submodules/astro-dnssd
 	url = git@github.com:ygina/astro-dnssd.git
 [submodule "wapm-cli"]
-	path = wapm-cli
+	path = submodules/wapm-cli
 	url = git@github.com:ygina/wapm-cli.git
