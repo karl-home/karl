@@ -1,2 +1,10 @@
 target/
 logs/
+
+# Data
+lib/
+bin/
+*.pbmm
+*.scorer
+python
+*.svg
