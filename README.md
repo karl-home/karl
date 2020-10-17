@@ -26,12 +26,34 @@ cargo build --release
 The following example executes the given number of tasks across all discoverable Karl instances. Run each command in a separate terminal window.
 
 ```
-cargo r --bin service --release
-cargo r --bin parallel --release -- 20  # number of tasks
+cargo r --example service --release
+cargo r --example parallel --release -- 20  # number of tasks
 ```
 
 Prefix each command with `RUST_LOG=info` to enable logging and/or `RUST_BACKTRACE=1` to display backtraces.
 
+## Speech-to-text
+
+You will need to install [Virtualenv](https://virtualenv.pypa.io/en/latest/installation.html) and have Python. Initialize Python dependencies with `./scripts/setup_stt.sh`. There should be a directory at `$HOME/.karl/local/stt/` with the STT model and score, a Python binary and packages, and a file `client.py`.
+
+### Cloud Baseline
+Run the STT service. The dedicated service takes an audio file through a TCP stream (should this be an HTTP request?) where the first four bytes encode the size of the audio file. The service does STT on the audio file and returns the text to the client.
+
+```
+RUST_LOG=debug cargo r --release --example stt_standalone
+RUST_LOG=debug cargo r --release --example stt_client -- --mode cloud --host <HOST_IP>
+```
+
+### Local/Karl Baseline
+Offload STT to a Karl service in the same network.
+
+```
+RUST_LOG=info cargo r --release --example service -- --backend binary
+RUST_LOG=debug cargo r --release --example stt_client -- --mode local --import
+```
+
+### Raspberry Pi Baseline
+TODO
 
 ## Distributed Example
 

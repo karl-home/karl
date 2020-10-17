@@ -69,7 +69,7 @@ impl PingRequest {
 
 fn cp(root: &Path, path: &Path) -> io::Result<()> {
     if path.is_dir() {
-        fs::create_dir(root.join(path))?;
+        fs::create_dir_all(root.join(path))?;
         for entry in fs::read_dir(path)? {
             cp(root, &entry?.path())?;
         }
