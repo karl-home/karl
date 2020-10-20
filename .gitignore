@@ -3,7 +3,7 @@ logs/
 
 # Data
 lib/
-bin/
+data/*/bin/
 *.pbmm
 *.scorer
 python

@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate sys_mount;
 
 pub mod net;
 mod common;

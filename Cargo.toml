@@ -20,6 +20,7 @@ tempdir = "0.3"
 tokio = { version = "0.2", features = ["rt-threaded"] }
 flate2 = "1.0.17"
 tar = "0.4.30"
+sys-mount = "1.2.1"
 
 [dev-dependencies]
 clap = "2.33.3"

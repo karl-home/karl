@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
+use sys_mount::{SupportedFilesystems, Mount, MountFlags};
 use wasmer::executor::PkgConfig;
 use crate::ComputeResult;
 use crate::{read_all, Error};
@@ -45,6 +46,8 @@ fn copy(path: &Path, old_dir: &Path, new_dir: &Path) {
     }
 }
 
+/// Copy an old path to the new path.
+#[allow(dead_code)]
 fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
     for mapped_dir in mapped_dirs {
         let mut mapped_dir = mapped_dir.split(":");
@@ -56,9 +59,56 @@ fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Copy an old path to the new path.
+/// Mounts an overlay fs at the `root_path`. All mapped directories are from
+/// a read-only directory containing dependency files to the current working
+/// directory. The `work_path` is needed in overlay fs to prepare files before
+/// they are switched to the overlay destination in an atomic action.
+///
+/// Parameters:
+/// - mapped_dirs - List of directories to map to the current directory.
+/// - root_path - The initial filesystem provided by the client, and the
+///   eventual working directory.
+/// - work_path - Needed for the overlay fs.
+///
+/// Returns:
+/// An object representing the mounted filesystem. Once the reference to the
+/// object is dropped, the directory is also unmounted.
+fn mount(
+    mapped_dirs: Vec<String>,
+    root_path: &Path,
+    work_path: &Path,
+) -> Mount {
+    let fstype = "overlay";
+    assert!(SupportedFilesystems::new().unwrap().is_supported(fstype));
+    let lowerdir = mapped_dirs
+        .iter()
+        .map(|mapped_dir| {
+            let mut mapped_dir = mapped_dir.split(":");
+            let new_dir = mapped_dir.next().unwrap();
+            let old_dir = mapped_dir.next().unwrap();
+            assert_eq!(new_dir, ".");
+            assert!(Path::new(old_dir).is_dir());
+            old_dir
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+    let options = format!(
+        "lowerdir={},upperdir={:?},workdir={:?}",
+        lowerdir,
+        root_path,
+        work_path,
+    );
+    warn!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
+    Mount::new(
+        "dummy",  // dummy
+        root_path,
+        fstype,
+        MountFlags::empty(),
+        Some(&options),
+    ).unwrap()
+}
 
-/// Run the compute request with the wasm backend.
+/// Run the compute request with the native backend.
 ///
 /// Parameters:
 /// - `config`: The compute config.
@@ -74,22 +124,28 @@ fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
 ///        args,         # Arguments.
 ///        envs,         # Environment variables.
 ///    }
-/// - `root_path`: The path to the computation root. Contains the unpacked
-///   and decompressed bytes of the compute request. Should be a directory
-///   within the service base path `~/.karl/<id>`.
+/// - `base_path`: The service base path is usually at `~/.karl/<id>`. The
+///   path to the computation root should be a directory within the service
+///   base path, and should exist. The computation root contains the unpacked
+///   and decompressed bytes of the compute request.
 /// - `res_stdout`: Whether to include stdout in the result.
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
     config: PkgConfig,
-    root_path: &Path,
+    base_path: &Path,
     res_stdout: bool,
     res_stderr: bool,
     res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
-    env::set_current_dir(root_path).unwrap();
     let now = Instant::now();
-    map_dirs(config.mapped_dirs)?;
+    assert!(base_path.is_dir());
+    let root_path = base_path.join("root");
+    assert!(root_path.is_dir());
+    let work_path = base_path.join("work");
+    fs::create_dir_all(&work_path).unwrap();
+    let mount_result = mount(config.mapped_dirs, &root_path, &work_path);
+    env::set_current_dir(&root_path).unwrap();
     info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
 
     let now = Instant::now();
@@ -118,5 +174,6 @@ pub fn run(
         }
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
+    drop(mount_result);
     Ok(res)
 }
