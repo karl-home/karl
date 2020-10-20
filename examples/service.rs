@@ -50,7 +50,7 @@ fn get_karl_path() -> PathBuf {
 /// and the root path.
 ///
 /// TODO: Avoid this extra serialization step.
-fn unpack_request(req: &ComputeRequest, base: &Path) -> (PkgConfig, PathBuf) {
+fn unpack_request(req: &ComputeRequest, base: &Path) -> PkgConfig {
     let now = Instant::now();
     std::fs::create_dir_all(base).unwrap();
     let tar = GzDecoder::new(&req.package[..]);
@@ -59,7 +59,6 @@ fn unpack_request(req: &ComputeRequest, base: &Path) -> (PkgConfig, PathBuf) {
     info!("=> unpacked request to {:?}: {} s", base, now.elapsed().as_secs_f32());
 
     // Deserialize the config file.
-    let root_path = base.join("root");
     let config_path = base.join("config");
     let config = {
         let mut buffer = vec![];
@@ -68,7 +67,7 @@ fn unpack_request(req: &ComputeRequest, base: &Path) -> (PkgConfig, PathBuf) {
         f.read_to_end(&mut buffer).expect("error reading config");
         bincode::deserialize(&buffer).expect("malformed config file")
     };
-    (config, root_path)
+    config
 }
 
 /// Resolve imports.
@@ -193,7 +192,8 @@ impl Listener {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
         let now = Instant::now();
-        let (mut config, root_path) = unpack_request(&req, &self.base_path);
+        let mut config = unpack_request(&req, &self.base_path);
+        let root_path = self.base_path.join("root");
         let import_paths = resolve_import_paths(&self.karl_path, &req.imports)?;
         config.binary_path = Some(resolve_binary_path(
             &config, &root_path, &import_paths)?);
@@ -210,7 +210,7 @@ impl Listener {
             )?,
             Backend::Binary => karl::backend::binary::run(
                 config,
-                &root_path,
+                &self.base_path,
                 req.stdout,
                 req.stderr,
                 req.files,

@@ -16,10 +16,10 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     }
     cmd.env_clear();
     for envvar in envs {
-    	let mut envvar = envvar.split("=");
-    	let key = envvar.next().unwrap();
-    	let val = envvar.next().unwrap();
-    	assert!(envvar.next().is_none());
+        let mut envvar = envvar.split("=");
+        let key = envvar.next().unwrap();
+        let val = envvar.next().unwrap();
+        assert!(envvar.next().is_none());
         cmd.env(key, val);
     }
     cmd.output().expect("failed to run process")
@@ -45,6 +45,7 @@ fn copy(path: &Path, old_dir: &Path, new_dir: &Path) {
     }
 }
 
+/// Copy an old path to the new path.
 fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
     for mapped_dir in mapped_dirs {
         let mut mapped_dir = mapped_dir.split(":");
@@ -56,9 +57,7 @@ fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Copy an old path to the new path.
-
-/// Run the compute request with the wasm backend.
+/// Run the compute request with the native backend.
 ///
 /// Parameters:
 /// - `config`: The compute config.
@@ -74,21 +73,26 @@ fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
 ///        args,         # Arguments.
 ///        envs,         # Environment variables.
 ///    }
-/// - `root_path`: The path to the computation root. Contains the unpacked
-///   and decompressed bytes of the compute request. Should be a directory
-///   within the service base path `~/.karl/<id>`.
+/// - `base_path`: The service base path is usually at `~/.karl/<id>`. The
+///   path to the computation root should be a directory within the service
+///   base path, and should exist. The computation root contains the unpacked
+///   and decompressed bytes of the compute request.
 /// - `res_stdout`: Whether to include stdout in the result.
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
     config: PkgConfig,
-    root_path: &Path,
+    base_path: &Path,
     res_stdout: bool,
     res_stderr: bool,
     res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
-    env::set_current_dir(root_path).unwrap();
     let now = Instant::now();
+    assert!(base_path.is_dir());
+    let root_path = base_path.join("root");
+    assert!(root_path.is_dir());
+    env::set_current_dir(&root_path).unwrap();
+
     map_dirs(config.mapped_dirs)?;
     info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
 
