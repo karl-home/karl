@@ -93,10 +93,10 @@ fn mount(
         .collect::<Vec<_>>()
         .join(":");
     let options = format!(
-        "lowerdir={},upperdir={:?},workdir={:?}",
+        "lowerdir={},upperdir={},workdir={}",
         lowerdir,
-        root_path,
-        work_path,
+        root_path.to_str().unwrap(),
+        work_path.to_str().unwrap(),
     );
     warn!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
     Mount::new(

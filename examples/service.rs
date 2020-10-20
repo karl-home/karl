@@ -129,7 +129,7 @@ fn resolve_binary_path(
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.base_path);
+        //let _ = std::fs::remove_dir_all(&self.base_path);
     }
 }
 
