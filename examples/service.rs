@@ -220,7 +220,9 @@ impl Listener {
         // Reset the root for the next computation.
         let now = Instant::now();
         std::env::set_current_dir(&self.karl_path).unwrap();
-        std::fs::remove_dir_all(&self.base_path).unwrap();
+        if let Err(e) = std::fs::remove_dir_all(&self.base_path) {
+            error!("error resetting root: {:?}", e);
+        }
         info!("reset directory at {:?} => {} s", self.base_path, now.elapsed().as_secs_f32());
         Ok(res)
     }

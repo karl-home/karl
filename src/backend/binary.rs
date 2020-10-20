@@ -195,6 +195,8 @@ pub fn run(
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
     #[cfg(target_os = "linux")]
-    mount_result.unmount(UnmountFlags::FORCE).unwrap();
+    if let Err(e) = mount_result.unmount(UnmountFlags::FORCE) {
+        error!("error unmounting: {:?}", e);
+    }
     Ok(res)
 }
