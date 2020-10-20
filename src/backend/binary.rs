@@ -195,8 +195,14 @@ pub fn run(
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
     #[cfg(target_os = "linux")]
-    if let Err(e) = mount_result.unmount(UnmountFlags::FORCE) {
-        error!("error unmounting: {:?}", e);
+    {
+        // Note that a filesystem cannot be unmounted when it is 'busy' - for
+        // example, when there are open files on it, or when some process has
+        // its working directory there, or when a swap file on it is in use.
+        env::set_current_dir(&base_path).unwrap();
+        if let Err(e) = mount_result.unmount(UnmountFlags::DETACH) {
+            error!("error unmounting: {:?}", e);
+        }
     }
     Ok(res)
 }
