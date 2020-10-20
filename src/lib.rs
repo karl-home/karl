@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate log;
+#[cfg(target_os = "linux")]
+extern crate sys_mount;
 
 pub mod net;
 mod common;

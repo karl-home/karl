@@ -9,6 +9,9 @@ path = "submodules/wasmer"
 default-features = false
 features = ["backend-cranelift", "wasi"]
 
+[target."cfg(target_os = \"linux\")".dependencies.sys-mount]
+version = "1.2.1"
+
 [dependencies]
 astro-dnssd = { path = "submodules/astro-dnssd" }
 wapm-cli = { path = "submodules/wapm-cli" }

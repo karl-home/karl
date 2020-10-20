@@ -1150,6 +1150,7 @@ dependencies = [
  "log",
  "rand 0.7.3",
  "serde",
+ "sys-mount",
  "tar",
  "tempdir",
  "tokio",
@@ -1231,6 +1232,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "loopdev"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac9e35cfb6646d67059f2ca8913a90e6c60633053c103df423975297f33d6fcc"
+dependencies = [
+ "errno",
+ "libc",
 ]
 
 [[package]]
@@ -2194,6 +2205,17 @@ dependencies = [
  "quote 1.0.7",
  "syn 1.0.38",
  "unicode-xid 0.2.1",
+]
+
+[[package]]
+name = "sys-mount"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62f5703caf67c45ad3450104001b4620a605e9def0cef13dde3c9add23f73cee"
+dependencies = [
+ "bitflags",
+ "libc",
+ "loopdev",
 ]
 
 [[package]]

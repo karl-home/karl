@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
+#[cfg(target_os = "linux")]
+use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
 use wasmer::executor::PkgConfig;
 use crate::ComputeResult;
 use crate::{read_all, Error};
@@ -27,6 +29,7 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
 
 /// Copies a directory from the old (mapped) directory to the new (root)
 /// directory. The directory path is a relative path.
+#[cfg(target_os = "macos")]
 fn copy(path: &Path, old_dir: &Path, new_dir: &Path) {
     assert!(path.is_relative());
     let abs_path = old_dir.join(path);
@@ -46,7 +49,8 @@ fn copy(path: &Path, old_dir: &Path, new_dir: &Path) {
 }
 
 /// Copy an old path to the new path.
-fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
+#[cfg(target_os = "macos")]
+fn copy_mapped_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
     for mapped_dir in mapped_dirs {
         let mut mapped_dir = mapped_dir.split(":");
         let new_dir = Path::new(mapped_dir.next().unwrap());
@@ -55,6 +59,56 @@ fn map_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
         copy(Path::new("."), old_dir, new_dir);
     }
     Ok(())
+}
+
+/// Mounts an overlay fs at the `root_path`. All mapped directories are from
+/// a read-only directory containing dependency files to the current working
+/// directory. The `work_path` is needed in overlay fs to prepare files before
+/// they are switched to the overlay destination in an atomic action.
+///
+/// Parameters:
+/// - mapped_dirs - List of directories to map to the current directory.
+/// - root_path - The initial filesystem provided by the client, and the
+///   eventual working directory.
+/// - work_path - Needed for the overlay fs.
+///
+/// Returns:
+/// An object representing the mounted filesystem. Once the reference to the
+/// object is dropped, the directory is also unmounted.
+#[cfg(target_os = "linux")]
+fn mount(
+    mapped_dirs: Vec<String>,
+    root_path: &Path,
+    work_path: &Path,
+) -> Mount {
+    let fstype = "overlay";
+    assert!(SupportedFilesystems::new().unwrap().is_supported(fstype));
+    let lowerdir = mapped_dirs
+        .iter()
+        .map(|mapped_dir| {
+            let mut mapped_dir = mapped_dir.split(":");
+            let new_dir = mapped_dir.next().unwrap();
+            let old_dir = mapped_dir.next().unwrap();
+            assert_eq!(new_dir, ".");
+            assert!(Path::new(old_dir).is_dir());
+            old_dir
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+    let options = format!(
+        "lowerdir={},upperdir={},workdir={}",
+        lowerdir,
+        root_path.to_str().unwrap(),
+        work_path.to_str().unwrap(),
+    );
+    debug!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
+    Mount::new(
+        "dummy",  // dummy
+        root_path,
+        fstype,
+        MountFlags::empty(),
+        Some(&options),
+    ).unwrap()
 }
 
 /// Run the compute request with the native backend.
@@ -91,10 +145,28 @@ pub fn run(
     assert!(base_path.is_dir());
     let root_path = base_path.join("root");
     assert!(root_path.is_dir());
-    env::set_current_dir(&root_path).unwrap();
 
-    map_dirs(config.mapped_dirs)?;
-    info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
+    // Map directories using an overlay fs if possible, but otherwise
+    // copy all the files into the root path. This can be very slow!
+    #[cfg(target_os = "macos")]
+    {
+        env::set_current_dir(&root_path).unwrap();
+        copy_mapped_dirs(config.mapped_dirs)?;
+        info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
+    }
+    #[cfg(target_os = "linux")]
+    let mount_result = {
+        let work_path = base_path.join("work");
+        fs::create_dir_all(&work_path).unwrap();
+        let mount_result = mount(config.mapped_dirs, &root_path, &work_path);
+        env::set_current_dir(&root_path).unwrap();
+        info!("=> mounted fs: {} s", now.elapsed().as_secs_f32());
+        mount_result
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        unimplemented!();
+    }
 
     let now = Instant::now();
     let binary_path = config.binary_path.expect("expected binary path");
@@ -122,5 +194,7 @@ pub fn run(
         }
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
+    #[cfg(target_os = "linux")]
+    mount_result.unmount(UnmountFlags::FORCE).unwrap();
     Ok(res)
 }

@@ -50,6 +50,8 @@ Offload STT to a Karl service in the same network.
 ```
 RUST_LOG=info cargo r --release --example service -- --backend binary
 RUST_LOG=debug cargo r --release --example stt_client -- --mode local --import
+# sudo needed to mount filesystem :(
+cargo b --release --example service && RUST_LOG=info sudo ./target/release/examples/service --backend binary
 ```
 
 ### Raspberry Pi Baseline
