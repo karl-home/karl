@@ -2,8 +2,8 @@ target/
 logs/
 
 # Data
-lib/
-bin/
+data/*/lib/
+data/*/bin/
 *.pbmm
 *.scorer
 python
