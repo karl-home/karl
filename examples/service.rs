@@ -275,6 +275,12 @@ fn main() {
             .long("backend")
             .takes_value(true)
             .default_value("wasm"))
+        .arg(Arg::with_name("port")
+            .help("Port. Defaults to a random open port.")
+            .short("p")
+            .long("port")
+            .takes_value(true)
+            .default_value("0"))
         .get_matches();
 
     let backend = match matches.value_of("backend").unwrap() {
@@ -282,6 +288,7 @@ fn main() {
         "binary" => Backend::Binary,
         backend => unimplemented!("unimplemented backend: {}", backend),
     };
-    let mut listener = Listener::new(backend, 0);
+    let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
+    let mut listener = Listener::new(backend, port);
     listener.start().unwrap();
 }
