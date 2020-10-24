@@ -33,6 +33,8 @@ struct Listener {
     backend: Backend,
     port: u16,
     rt: Runtime,
+    /// Whether the listener should register itself on DNS-SD
+    register: bool,
 }
 
 /// Read from the KARL_PATH environment variable. (TODO)
@@ -143,7 +145,7 @@ impl Listener {
     ///
     /// Note that the wasmer runtime changes the working directory for
     /// computation, so the listener must change it back immediately after.
-    fn new(backend: Backend, port: u16) -> Self {
+    fn new(backend: Backend, port: u16, register: bool) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let karl_path = get_karl_path();
@@ -161,6 +163,7 @@ impl Listener {
             backend,
             port,
             rt: Runtime::new().unwrap(),
+            register,
         }
     }
 
@@ -169,7 +172,11 @@ impl Listener {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
-        karl::net::register(&mut self.rt, self.id, self.port);
+        if self.register {
+            karl::net::register(&mut self.rt, self.id, self.port);
+        } else {
+            warn!("you must manually register the service on DNS-SD!")
+        }
         for stream in listener.incoming() {
             let stream = stream?;
             debug!("incoming stream {:?}", stream.local_addr());
@@ -281,6 +288,10 @@ fn main() {
             .long("port")
             .takes_value(true)
             .default_value("0"))
+        .arg(Arg::with_name("no-register")
+            .help("If the flag is included, does not automatically register \
+                the service with DNS-SD. The default is to register.")
+            .long("no-register"))
         .get_matches();
 
     let backend = match matches.value_of("backend").unwrap() {
@@ -289,6 +300,7 @@ fn main() {
         backend => unimplemented!("unimplemented backend: {}", backend),
     };
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
-    let mut listener = Listener::new(backend, port);
+    let register = !matches.is_present("no-register");
+    let mut listener = Listener::new(backend, port, register);
     listener.start().unwrap();
 }
