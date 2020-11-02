@@ -73,7 +73,12 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
 fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
     if import {
         ComputeRequestBuilder::new("node")
-        .args(vec!["main.js", audio_file])
+        .args(vec![
+            "main.js",
+            audio_file,
+            "models.pbmm",
+            "models.scorer",
+        ])
         .import(Import::Local {
             name: "stt_node".to_string(),
             hash: "TODO".to_string(),

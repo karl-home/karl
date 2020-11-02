@@ -1,14 +1,14 @@
 const fs = require('fs');
 const Ds = require('deepspeech');
 
-if (process.argv.length != 3) {
-    console.log('node main.js [AUDIO]');
+if (process.argv.length != 5) {
+    console.log('node main.js [AUDIO] [MODEL] [SCORER]');
     process.exit();
 }
 
-let model_file = 'models.pbmm';
-let scorer_file = 'models.scorer';
 let audio_file = process.argv[2];
+let model_file = process.argv[3];
+let scorer_file = process.argv[4];
 
 let model = new Ds.Model(model_file);
 model.enableExternalScorer(scorer_file);

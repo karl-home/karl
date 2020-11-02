@@ -60,6 +60,8 @@ fn run_stt_node(audio_path: &str) -> Output {
     let mut args = Vec::new();
     args.push(format!("{}/main.js", stt_home));
     args.push(audio_path.to_string());
+    args.push(format!("{}/models.pbmm", stt_home));
+    args.push(format!("{}/models.scorer", stt_home));
     run_cmd(&bin, envs, args)
 }
 
