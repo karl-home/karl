@@ -9,26 +9,24 @@ use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use karl::{import::Import, net::Controller, *};
 
-const AUDIO_FILE: &str = "data/stt/audio/2830-3980-0043.wav";
-
 enum Mode {
     Standalone,
     KarlPython(bool),
     KarlNode(bool),
 }
 
-fn gen_request(mode: Mode) -> ComputeRequest {
+fn gen_request(mode: Mode, audio_file: &str) -> ComputeRequest {
     let now = Instant::now();
     let request = match mode {
-        Mode::KarlPython(import) => gen_python_request(import),
-        Mode::KarlNode(import) => gen_node_request(import),
+        Mode::KarlPython(import) => gen_python_request(import, audio_file),
+        Mode::KarlNode(import) => gen_node_request(import, audio_file),
         _ => unimplemented!(),
     };
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     request
 }
 
-fn gen_python_request(import: bool) -> ComputeRequest {
+fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
     if import {
         ComputeRequestBuilder::new("python")
         .args(vec![
@@ -38,7 +36,7 @@ fn gen_python_request(import: bool) -> ComputeRequest {
             "--scorer",
             "models.scorer",
             "--audio",
-            AUDIO_FILE,
+            audio_file,
         ])
         .envs(vec!["PYTHONPATH=\
             lib/python3.6/:\
@@ -60,28 +58,28 @@ fn gen_python_request(import: bool) -> ComputeRequest {
             "--scorer",
             "data/stt/models.scorer",
             "--audio",
-            AUDIO_FILE,
+            audio_file,
         ])
         .envs(vec!["PYTHONPATH=\
             data/stt/lib/python3.6/:\
             data/stt/lib/python3.6/lib-dynload:\
             data/stt/lib/python3.6/site-packages"])
         .build_root().unwrap()
-        .add_file(AUDIO_FILE).unwrap()
+        .add_file(audio_file).unwrap()
         .finalize().unwrap()
     }
 }
 
-fn gen_node_request(import: bool) -> ComputeRequest {
+fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
     if import {
         ComputeRequestBuilder::new("node")
-        .args(vec!["main.js", AUDIO_FILE])
+        .args(vec!["main.js", audio_file])
         .import(Import::Local {
             name: "stt_node".to_string(),
             hash: "TODO".to_string(),
         })
         .build_root().unwrap()
-        .add_file(AUDIO_FILE).unwrap()
+        .add_file(audio_file).unwrap()
         .finalize().unwrap()
     } else {
         unimplemented!();
@@ -89,11 +87,11 @@ fn gen_node_request(import: bool) -> ComputeRequest {
 }
 
 /// Requests computation from the host.
-fn send(c: &mut Controller, mode: Mode) -> Result<(), Error> {
+fn send(c: &mut Controller, mode: Mode, audio_file: &str) -> Result<(), Error> {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
-    let request = gen_request(mode).stdout();
+    let request = gen_request(mode, audio_file).stdout();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     let now = Instant::now();
@@ -109,16 +107,16 @@ fn send(c: &mut Controller, mode: Mode) -> Result<(), Error> {
     Ok(())
 }
 
-fn send_standalone_request(host: SocketAddr) {
+fn send_standalone_request(host: SocketAddr, audio_file: &str) {
     let start = Instant::now();
     debug!("connect...");
     let now = Instant::now();
     let mut stream = TcpStream::connect(&host).unwrap();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
-    info!("sending {:?} to {:?}...", AUDIO_FILE, stream.peer_addr());
+    info!("sending {:?} to {:?}...", audio_file, stream.peer_addr());
     let now = Instant::now();
-    let mut f = fs::File::open(AUDIO_FILE).unwrap();
+    let mut f = fs::File::open(audio_file).unwrap();
     let bytes = karl::read_all(&mut f).unwrap();
     debug!("=> {} s (read file {} bytes)", now.elapsed().as_secs_f32(), bytes.len());
     write_packet(&mut stream, &bytes).unwrap();
@@ -157,6 +155,12 @@ fn main() {
             .long("port")
             .takes_value(true)
             .default_value("59582"))
+        .arg(Arg::with_name("audio")
+            .help("Path to audio file. Suggested: default or data/stt_node/weather.wav")
+            .short("a")
+            .long("audio")
+            .takes_value(true)
+            .default_value("data/stt/audio/2830-3980-0043.wav"))
         .arg(Arg::with_name("import")
             .long("import")
             .help("Whether to send the request with a local STT import."))
@@ -170,13 +174,14 @@ fn main() {
         mode => unimplemented!("unimplemented mode: {}", mode),
     };
 
+    let audio_file = matches.value_of("audio").unwrap();
     match mode {
         Mode::Standalone => {
             let host = matches.value_of("host").unwrap();
             let port = matches.value_of("port").unwrap();
             let addr = format!("{}:{}", host, port);
             let host: SocketAddr = addr.parse().expect("malformed host");
-            send_standalone_request(host);
+            send_standalone_request(host, audio_file);
         },
         Mode::KarlPython(_) | Mode::KarlNode(_) => {
             let rt = Runtime::new().unwrap();
@@ -184,7 +189,7 @@ fn main() {
             let mut c = Controller::new(rt, blocking);
             // Wait for the controller to add all hosts.
             std::thread::sleep(Duration::from_secs(5));
-            send(&mut c, mode).unwrap();
+            send(&mut c, mode, audio_file).unwrap();
         },
     }
     info!("done.");
