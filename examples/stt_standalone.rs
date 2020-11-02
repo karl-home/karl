@@ -7,6 +7,7 @@ use std::process::{Command, Output};
 use std::time::Instant;
 use std::net::{TcpStream, TcpListener};
 
+use clap::{Arg, App};
 use karl::{self, Error};
 
 fn run_cmd(
@@ -32,7 +33,7 @@ fn run_cmd(
 ///
 /// Call scripts/setup_stt.sh before running the service to initialize
 /// Python dependencies.
-fn run_stt(audio_path: &str) -> Output {
+fn run_stt_python(audio_path: &str) -> Output {
     let home = env::var("HOME").unwrap();
     let stt_home = format!("{}/.karl/local/stt", home);
     let bin = format!("{}/bin/python", stt_home);
@@ -51,8 +52,19 @@ fn run_stt(audio_path: &str) -> Output {
     run_cmd(&bin, envs, args)
 }
 
+fn run_stt_node(audio_path: &str) -> Output {
+    let home = env::var("HOME").unwrap();
+    let stt_home = format!("{}/.karl/local/stt_node", home);
+    let bin = format!("{}/bin/node", stt_home);
+    let envs = vec![];
+    let mut args = Vec::new();
+    args.push(format!("{}/main.js", stt_home));
+    args.push(audio_path.to_string());
+    run_cmd(&bin, envs, args)
+}
+
 /// Handle an incoming TCP stream.
-fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
+fn handle_client(mut stream: TcpStream, mode: &str) -> Result<(), Error> {
     // Read the request from the TCP stream.
     let now = Instant::now();
     info!("reading packet");
@@ -70,7 +82,11 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
     // Call the STT handler.
     info!("run stt");
     let now = Instant::now();
-    let output = run_stt(&path);
+    let output = match mode {
+        "python" => run_stt_python(&path),
+        "node" => run_stt_node(&path),
+        _ => unimplemented!(),
+    };
     println!("{}", String::from_utf8_lossy(&output.stdout));
     println!("{}", String::from_utf8_lossy(&output.stderr));
     info!("=> {} s", now.elapsed().as_secs_f32());
@@ -84,6 +100,17 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error> {
 }
 
 fn main() {
+    let matches = App::new("Standalone speech-to-text")
+        .arg(Arg::with_name("mode")
+            .help("Possible values: ['python', 'node'].")
+            .short("m")
+            .long("mode")
+            .takes_value(true)
+            .required(true))
+        .get_matches();
+    let mode = matches.value_of("mode").unwrap();
+    assert!(mode == "python" || mode == "node");
+
     env_logger::builder().format_timestamp(None).init();
     let listener = TcpListener::bind("0.0.0.0:59582").unwrap();
     warn!("listening on port {}", listener.local_addr().unwrap().port());
@@ -91,7 +118,7 @@ fn main() {
         let stream = stream.unwrap();
         debug!("incoming stream {:?}", stream.local_addr());
         let now = Instant::now();
-        if let Err(e) = handle_client(stream) {
+        if let Err(e) = handle_client(stream, mode) {
             error!("{:?}", e);
         }
         warn!("total: {} s", now.elapsed().as_secs_f32());
