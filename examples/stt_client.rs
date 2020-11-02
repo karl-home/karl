@@ -47,7 +47,7 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
             hash: "TODO".to_string(),
         })
         .build_root().unwrap()
-        .add_dir("data/stt/audio/").unwrap()
+        .add_file(audio_file).unwrap()
         .finalize().unwrap()
     } else {
         ComputeRequestBuilder::new("stt/python")
