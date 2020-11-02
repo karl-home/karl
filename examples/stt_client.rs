@@ -11,9 +11,25 @@ use karl::{import::Import, net::Controller, *};
 
 const AUDIO_FILE: &str = "data/stt/audio/2830-3980-0043.wav";
 
-fn gen_request(import: bool) -> ComputeRequest {
+enum Mode {
+    Standalone,
+    KarlPython(bool),
+    KarlNode(bool),
+}
+
+fn gen_request(mode: Mode) -> ComputeRequest {
     let now = Instant::now();
-    let request = if import {
+    let request = match mode {
+        Mode::KarlPython(import) => gen_python_request(import),
+        Mode::KarlNode(import) => gen_node_request(import),
+        _ => unimplemented!(),
+    };
+    debug!("build request => {} s", now.elapsed().as_secs_f32());
+    request
+}
+
+fn gen_python_request(import: bool) -> ComputeRequest {
+    if import {
         ComputeRequestBuilder::new("python")
         .args(vec![
             "client.py",
@@ -51,19 +67,33 @@ fn gen_request(import: bool) -> ComputeRequest {
             data/stt/lib/python3.6/lib-dynload:\
             data/stt/lib/python3.6/site-packages"])
         .build_root().unwrap()
-        .add_dir("data/stt").unwrap()
+        .add_file(AUDIO_FILE).unwrap()
         .finalize().unwrap()
-    };
-    debug!("build request => {} s", now.elapsed().as_secs_f32());
-    request
+    }
+}
+
+fn gen_node_request(import: bool) -> ComputeRequest {
+    if import {
+        ComputeRequestBuilder::new("node")
+        .args(vec!["main.js", AUDIO_FILE])
+        .import(Import::Local {
+            name: "stt_node".to_string(),
+            hash: "TODO".to_string(),
+        })
+        .build_root().unwrap()
+        .add_file(AUDIO_FILE).unwrap()
+        .finalize().unwrap()
+    } else {
+        unimplemented!();
+    }
 }
 
 /// Requests computation from the host.
-fn send(c: &mut Controller, import: bool) -> Result<(), Error> {
+fn send(c: &mut Controller, mode: Mode) -> Result<(), Error> {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
-    let request = gen_request(import).stdout();
+    let request = gen_request(mode).stdout();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     let now = Instant::now();
@@ -107,9 +137,10 @@ fn main() {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Speech-to-text")
         .arg(Arg::with_name("mode")
-            .help("Whether to request the 'cloud' or 'local' service. The \
-                former indicates a standalone STT service while the latter \
-                indicates a generic computation service based on karl.")
+            .help("Possible values: ['standalone', 'karl_python', 'karl_node']. \
+                The 'standalone' mode indicates a standalone STT service. The \
+                karl modes indicate a generic computation service based on \
+                karl, either using the Python or NodeJS backend.")
             .short("m")
             .long("mode")
             .takes_value(true)
@@ -131,24 +162,30 @@ fn main() {
             .help("Whether to send the request with a local STT import."))
         .get_matches();
 
-    match matches.value_of("mode").unwrap() {
-        "cloud" => {
+    let import = matches.is_present("import");
+    let mode = match matches.value_of("mode").unwrap() {
+        "standalone" => Mode::Standalone,
+        "karl_python" => Mode::KarlPython(import),
+        "karl_node" => Mode::KarlNode(import),
+        mode => unimplemented!("unimplemented mode: {}", mode),
+    };
+
+    match mode {
+        Mode::Standalone => {
             let host = matches.value_of("host").unwrap();
             let port = matches.value_of("port").unwrap();
             let addr = format!("{}:{}", host, port);
             let host: SocketAddr = addr.parse().expect("malformed host");
             send_standalone_request(host);
         },
-        "local" => {
+        Mode::KarlPython(_) | Mode::KarlNode(_) => {
             let rt = Runtime::new().unwrap();
-            let import = matches.is_present("import");
             let blocking = true;
             let mut c = Controller::new(rt, blocking);
             // Wait for the controller to add all hosts.
             std::thread::sleep(Duration::from_secs(5));
-            send(&mut c, import).unwrap();
+            send(&mut c, mode).unwrap();
         },
-        mode => unimplemented!("unimplemented mode: {}", mode),
     }
     info!("done.");
 }
