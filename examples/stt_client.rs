@@ -124,13 +124,14 @@ fn send_standalone_request(host: SocketAddr, audio_file: &str) {
     let mut f = fs::File::open(audio_file).unwrap();
     let bytes = karl::read_all(&mut f).unwrap();
     debug!("=> {} s (read file {} bytes)", now.elapsed().as_secs_f32(), bytes.len());
-    write_packet(&mut stream, &bytes).unwrap();
+    write_packet(&mut stream, HT_RAW_BYTES, &bytes).unwrap();
     debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
 
     // Wait for the response.
     debug!("waiting for response...");
     let now = Instant::now();
-    let bytes = &read_packets(&mut stream, 1).unwrap()[0];
+    let (header, bytes) = &read_packets(&mut stream, 1).unwrap()[0];
+    assert_eq!(header.ty, HT_RAW_BYTES);
     debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
     debug!("stdout:\n{}", String::from_utf8_lossy(bytes));
     info!("total: {} s", start.elapsed().as_secs_f32());

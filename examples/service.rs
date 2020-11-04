@@ -15,11 +15,7 @@ use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use karl::{
-    self, Error, import::Import, backend::Backend,
-    KarlRequest, KarlResult,
-    ComputeRequest, ComputeResult, PingRequest, PingResult,
-};
+use karl::{self, *, import::Import, backend::Backend};
 
 struct Listener {
     /// Node/service ID
@@ -239,33 +235,51 @@ impl Listener {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let buf = karl::read_packets(&mut stream, 1)?.remove(0);
+        let (header, buf) = karl::read_packets(&mut stream, 1)?.remove(0);
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
         // Deserialize the request.
         debug!("deserialize packet");
         let now = Instant::now();
-        let req_bytes = bincode::deserialize(&buf[..])
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let req_bytes = match header.ty {
+            HT_PING_REQUEST => KarlRequest::Ping(
+                bincode::deserialize(&buf[..])
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?),
+            HT_COMPUTE_REQUEST => KarlRequest::Compute(
+                bincode::deserialize(&buf[..])
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?),
+            ty => return Err(Error::InvalidPacketType(ty)),
+        };
         debug!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
-        let res = match req_bytes {
-            KarlRequest::Ping(req) => KarlResult::Ping(self.handle_ping(req)),
-            KarlRequest::Compute(req) => KarlResult::Compute(self.handle_compute(req)?),
+        let (res_bytes, ty) = match req_bytes {
+            KarlRequest::Ping(req) => {
+                let res = self.handle_ping(req);
+                debug!("serialize packet");
+                debug!("=> {:?}", res);
+                let now = Instant::now();
+                let res_bytes = bincode::serialize(&res)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
+                (res_bytes, HT_PING_RESULT)
+            },
+            KarlRequest::Compute(req) => {
+                let res = self.handle_compute(req)?;
+                debug!("serialize packet");
+                debug!("=> {:?}", res);
+                let now = Instant::now();
+                let res_bytes = bincode::serialize(&res)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
+                (res_bytes, HT_COMPUTE_RESULT)
+            },
         };
 
         // Return the result to sender.
-        debug!("serialize packet");
-        debug!("=> {:?}", res);
-        let now = Instant::now();
-        let res_bytes = bincode::serialize(&res)
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-
         debug!("writing packet");
         let now = Instant::now();
-        karl::write_packet(&mut stream, &res_bytes)?;
+        karl::write_packet(&mut stream, ty, &res_bytes)?;
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }

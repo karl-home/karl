@@ -8,7 +8,7 @@ use std::time::Instant;
 use std::net::{TcpStream, TcpListener};
 
 use clap::{Arg, App};
-use karl::{self, Error};
+use karl::{self, *};
 
 fn run_cmd(
     bin: &str,
@@ -70,7 +70,10 @@ fn handle_client(mut stream: TcpStream, mode: &str) -> Result<(), Error> {
     // Read the request from the TCP stream.
     let now = Instant::now();
     info!("reading packet");
-    let buf = karl::read_packets(&mut stream, 1)?.remove(0);
+    let (header, buf) = karl::read_packets(&mut stream, 1)?.remove(0);
+    if header.ty != HT_RAW_BYTES {
+        return Err(Error::InvalidPacketType(header.ty));
+    }
     info!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
     // The bytes are just the audio file.
@@ -96,7 +99,7 @@ fn handle_client(mut stream: TcpStream, mode: &str) -> Result<(), Error> {
     // Return the result to sender.
     info!("writing packet");
     let now = Instant::now();
-    karl::write_packet(&mut stream, &output.stdout)?;
+    karl::write_packet(&mut stream, HT_RAW_BYTES, &output.stdout)?;
     info!("=> {} s", now.elapsed().as_secs_f32());
     Ok(())
 }

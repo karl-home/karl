@@ -28,6 +28,8 @@ pub enum Error {
     MissingHeader,
     /// No available hosts.
     NoAvailableHosts,
+    /// Unexpected packet type.
+    InvalidPacketType(HeaderType),
     /// Invalid input root. Either the input root is uninitialized, or
     /// you initialized the root as an existing directory rather than a
     /// custom-built one.
@@ -57,10 +59,11 @@ impl From<String> for Error {
 }
 
 pub type HeaderType = u32;
-pub const HT_PING_REQUEST: HeaderType = 0;
-pub const HT_PING_RESULT: HeaderType = 1;
-pub const HT_COMPUTE_REQUEST: HeaderType = 2;
-pub const HT_COMPUTE_RESULT: HeaderType = 3;
+pub const HT_RAW_BYTES: HeaderType = 0;
+pub const HT_PING_REQUEST: HeaderType = 1;
+pub const HT_PING_RESULT: HeaderType = 2;
+pub const HT_COMPUTE_REQUEST: HeaderType = 3;
+pub const HT_COMPUTE_RESULT: HeaderType = 4;
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Header {
