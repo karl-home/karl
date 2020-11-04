@@ -141,10 +141,20 @@ impl Controller {
     fn send(mut stream: TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
         info!("sending {:?} to {:?}...", req, stream.peer_addr());
         let now = Instant::now();
-        let bytes = bincode::serialize(&req)
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let (bytes, ty) = match req {
+            KarlRequest::Ping(req) => (
+                bincode::serialize(&req)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
+                HT_PING_REQUEST,
+            ),
+            KarlRequest::Compute(req) => (
+                bincode::serialize(&req)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
+                HT_COMPUTE_REQUEST,
+            ),
+        };
         debug!("=> {} s (serialize)", now.elapsed().as_secs_f32());
-        write_packet(&mut stream, &bytes)?;
+        write_packet(&mut stream, ty, &bytes)?;
         debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
 
         // Wait for the response.
@@ -152,8 +162,18 @@ impl Controller {
         let now = Instant::now();
         let bytes = read_packets(&mut stream, 1)?;
         debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
-        let res = bincode::deserialize(&bytes[0])
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let (header, packet) = &bytes[0];
+        let res = match header.ty {
+            HT_PING_RESULT => KarlResult::Ping(
+                bincode::deserialize::<PingResult>(&packet)
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?
+            ),
+            HT_COMPUTE_RESULT => KarlResult::Compute(
+                bincode::deserialize::<ComputeResult>(&packet)
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?
+            ),
+            ty => unimplemented!("{:?}", ty),
+        };
         debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
         Ok(res)
     }
