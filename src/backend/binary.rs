@@ -142,6 +142,7 @@ pub fn run(
     res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
     let now = Instant::now();
+    let previous_dir = fs::canonicalize(".").unwrap();
     assert!(base_path.is_dir());
     let root_path = base_path.join("root");
     assert!(root_path.is_dir());
@@ -194,15 +195,155 @@ pub fn run(
         }
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
+    env::set_current_dir(&previous_dir).unwrap();
     #[cfg(target_os = "linux")]
     {
         // Note that a filesystem cannot be unmounted when it is 'busy' - for
         // example, when there are open files on it, or when some process has
         // its working directory there, or when a swap file on it is in use.
-        env::set_current_dir(&base_path).unwrap();
         if let Err(e) = mount_result.unmount(UnmountFlags::DETACH) {
             error!("error unmounting: {:?}", e);
         }
     }
     Ok(res)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use serial_test::serial;
+
+    /// Temporary base path 'data/<name>' corresponding to '~/.karl/<ID>'.
+    /// Base path is initialized with root path 'root' containing input
+    /// filesystem (the audio file).
+    /// Workdir path 'work' is also created on Linux for overlayfs.
+    fn init_base_path() -> PathBuf {
+        let base_path = Path::new("data/tmp-test");
+        if base_path.exists() {
+            fs::remove_dir_all(&base_path).unwrap();
+        }
+        fs::create_dir_all(&base_path).unwrap();
+        let base_path = fs::canonicalize(&base_path).unwrap();
+        fs::create_dir(&base_path.join("root")).expect("create root path");
+        #[cfg(target_os = "linux")]
+        fs::create_dir(&base_path.join("work")).expect("create work path");
+        base_path
+    }
+
+    /// Runs STT example contained in a temporary base path in this directory.
+    /// Data path 'data/stt' should be initialized with 'scripts/setup_stt.sh'.
+    ///
+    /// Inputs to package config are as follows. Binary path is an absolute
+    /// path to the binary in the root path, which will be mounted.
+    /// Data path is mapped to the root.
+    /// Arguments assume the process will run in the root path and are relative
+    /// paths. PYTHONPATH is also set with relative paths.
+    ///
+    /// Check stdout and stderr.
+    #[test]
+    #[serial]
+    fn run_stt_python() {
+        let base_path = init_base_path();
+        fs::copy(
+            "data/stt/audio/2830-3980-0043.wav",
+            "data/tmp-test/root/2830-3980-0043.wav",
+        ).unwrap();
+        let root_path = base_path.join("root");
+        let binary_path = fs::canonicalize(root_path).unwrap().join("bin/python");
+        let data_path = {
+            let path = Path::new("data/stt");
+            assert!(path.exists(), "run scripts/setup_stt.sh");
+            let path = fs::canonicalize(path).unwrap();
+            path.into_os_string().into_string().unwrap()
+        };
+        let config = PkgConfig {
+            binary_path: Some(binary_path),
+            mapped_dirs: vec![format!(".:{}", data_path)],
+            args: vec![
+                "client.py".to_string(),
+                "--model".to_string(),
+                "models.pbmm".to_string(),
+                "--scorer".to_string(),
+                "models.scorer".to_string(),
+                "--audio".to_string(),
+                "2830-3980-0043.wav".to_string(),
+            ],
+            envs: vec![
+                "PYTHONPATH=\
+                lib/python3.6/:\
+                lib/python3.6/lib-dynload:\
+                lib/python3.6/site-packages".to_string()
+            ],
+        };
+        let res_stdout = true;
+        let res_stderr = true;
+        let res_files = HashSet::new();
+        let res = run(config, &base_path, res_stdout, res_stderr, res_files);
+        fs::remove_dir_all(&base_path).unwrap();
+        match res {
+            Ok(res) => {
+                let stdout = String::from_utf8_lossy(&res.stdout);
+                let stderr = String::from_utf8_lossy(&res.stderr);
+                assert_eq!("experience proves this", stdout.trim());
+                assert!(!stderr.is_empty(), "stderr output requested");
+                assert!(res.files.is_empty(), "not expecting any files");
+            },
+            Err(e) => assert!(false, format!("failed run: {:?}", e)),
+        }
+    }
+
+    /// Runs STT example contained in a temporary base path in this directory.
+    /// Data path 'data/stt_node' should be initialized with
+    /// 'scripts/setup_stt_node.sh'.
+    ///
+    /// Inputs to package config are as follows. Binary path is an absolute
+    /// path to the binary in the root path, which will be mounted.
+    /// Data path is mapped to the root.
+    /// Arguments assume the process will run in the root path and are relative
+    /// paths.
+    ///
+    /// Check stdout and stderr.
+    #[test]
+    #[serial]
+    fn run_stt_node() {
+        let base_path = init_base_path();
+        fs::copy(
+            "data/stt/audio/2830-3980-0043.wav",
+            "data/tmp-test/root/2830-3980-0043.wav",
+        ).unwrap();
+        let root_path = base_path.join("root");
+        let binary_path = fs::canonicalize(root_path).unwrap().join("bin/node");
+        let data_path = {
+            let path = Path::new("data/stt_node");
+            assert!(path.exists(), "run scripts/setup_stt_node.sh");
+            let path = fs::canonicalize(path).unwrap();
+            path.into_os_string().into_string().unwrap()
+        };
+        let config = PkgConfig {
+            binary_path: Some(binary_path),
+            mapped_dirs: vec![format!(".:{}", data_path)],
+            args: vec![
+                "main.js".to_string(),
+                "weather.wav".to_string(),
+                "models.pbmm".to_string(),
+                "models.scorer".to_string(),
+            ],
+            envs: vec![],
+        };
+        let res_stdout = true;
+        let res_stderr = true;
+        let res_files = HashSet::new();
+        let res = run(config, &base_path, res_stdout, res_stderr, res_files);
+        fs::remove_dir_all(&base_path).unwrap();
+        match res {
+            Ok(res) => {
+                let stdout = String::from_utf8_lossy(&res.stdout);
+                let stderr = String::from_utf8_lossy(&res.stderr);
+                assert_eq!("what is the weather to day in san francisco california", stdout.trim());
+                assert!(!stderr.is_empty(), "stderr output requested");
+                assert!(res.files.is_empty(), "not expecting any files");
+            },
+            Err(e) => assert!(false, format!("failed run: {:?}", e)),
+        }
+    }
 }
