@@ -303,10 +303,12 @@ mod test {
     #[test]
     fn read_two_packets() {
         let mut buf = vec![];
-        let mut file1 = fs::File::open("data/stt_node/weather.wav").unwrap();
+        let path1 = fs::canonicalize("data/stt_node/weather.wav").unwrap();
+        let path2 = fs::canonicalize("data/stt/audio/2830-3980-0043.wav").unwrap();
+        let mut file1 = fs::File::open(path1).unwrap();
+        let mut file2 = fs::File::open(path2).unwrap();
         let input1 = read_all(&mut file1).unwrap();
         assert_eq!(input1.len(), 130842);
-        let mut file2 = fs::File::open("data/stt/audio/2830-3980-0043.wav").unwrap();
         let input2 = read_all(&mut file2).unwrap();
         assert_eq!(input2.len(), 63244);
         // assume write packet works correctly
