@@ -2,6 +2,7 @@
 extern crate log;
 extern crate clap;
 
+use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
@@ -52,7 +53,13 @@ fn send_all(c: &mut Controller, n: usize, backend: &Backend) -> Result<(), Error
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
     for request in requests.into_iter() {
-        let handle = c.compute_async(request)?;
+        debug!("connect...");
+        let now = Instant::now();
+        let host = c.find_host()?;
+        debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
+        let stream = TcpStream::connect(&host)?;
+        debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
+        let handle = c.compute_async(stream, request)?;
         handles.push(handle);
     }
     info!("queue {} requests: {} s", n, now.elapsed().as_secs_f32());

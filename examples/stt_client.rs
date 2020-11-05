@@ -98,9 +98,16 @@ fn send(c: &mut Controller, mode: Mode, audio_file: &str) -> Result<(), Error> {
     let request = gen_request(mode, audio_file).stdout();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
+    debug!("connect...");
+    let now = Instant::now();
+    let host = c.find_host()?;
+    debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
+    let stream = TcpStream::connect(&host)?;
+    debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
+
     let now = Instant::now();
     debug!("queue request");
-    let handle = c.compute_async(request)?;
+    let handle = c.compute_async(stream, request)?;
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     let now = Instant::now();

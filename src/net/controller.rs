@@ -116,7 +116,7 @@ impl Controller {
     }
 
     /// Find a host to connect to round-robin.
-    fn find_host(&mut self) -> Result<SocketAddr, Error> {
+    pub fn find_host(&mut self) -> Result<SocketAddr, Error> {
         loop {
             let hosts = self.hosts.lock().unwrap();
             if !hosts.is_empty() {
@@ -133,17 +133,6 @@ impl Controller {
             trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
         }
-    }
-
-    /// Connect to a host, returning the tcp stream.
-    fn connect(&mut self) -> Result<TcpStream, Error> {
-        debug!("connect...");
-        let now = Instant::now();
-        let host = self.find_host()?;
-        debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
-        let stream = TcpStream::connect(&host)?;
-        debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
-        Ok(stream)
     }
 
     /// Send a request to the connected host.
@@ -165,8 +154,7 @@ impl Controller {
     }
 
     /// Ping the host.
-    pub fn ping(&mut self) -> Result<PingResult, Error> {
-        let stream = self.connect()?;
+    pub fn ping(&mut self, stream: TcpStream) -> Result<PingResult, Error> {
         let req = PingRequest::new();
         let now = Instant::now();
         info!("sending {:?} to {:?}...", req, stream.peer_addr());
@@ -194,9 +182,9 @@ impl Controller {
     /// client should try again.
     pub fn compute(
         &mut self,
+        stream: TcpStream,
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
-        let stream = self.connect()?;
         let now = Instant::now();
         info!("sending {:?} to {:?}...", req, stream.peer_addr());
         debug!("serializing request");
@@ -219,9 +207,9 @@ impl Controller {
     /// returns the result.
     pub fn compute_async(
         &mut self,
+        stream: TcpStream,
         req: ComputeRequest,
     ) -> Result<JoinHandle<Result<ComputeResult, Error>>, Error> {
-        let stream = self.connect()?;
         let now = Instant::now();
         debug!("serializing request");
         let req_bytes = bincode::serialize(&req)
