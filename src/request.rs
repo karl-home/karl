@@ -1,7 +1,7 @@
 use std::io;
 use std::fs;
 use std::fmt;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Serialize, Deserialize};
@@ -16,6 +16,10 @@ use crate::import::Import;
 /// Ping request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingRequest {}
+
+/// Ping result.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PingResult {}
 
 enum InputRoot {
     /// Uninitialized
@@ -53,10 +57,27 @@ pub struct ComputeRequest {
     pub imports: Vec<Import>,
 }
 
+/// Compute result.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComputeResult {
+    /// Stdout.
+    pub stdout: Vec<u8>,
+    /// Stderr.
+    pub stderr: Vec<u8>,
+    /// Files.
+    pub files: HashMap<String, Vec<u8>>,
+}
+
 impl PingRequest {
     /// Create a new ping request.
     pub fn new() -> Self {
         PingRequest {}
+    }
+}
+
+impl PingResult {
+    pub fn new() -> Self {
+        PingResult {}
     }
 }
 
@@ -237,5 +258,15 @@ impl ComputeRequest {
     pub fn file(mut self, filename: &str) -> Self {
         self.files.insert(filename.to_string());
         self
+    }
+}
+
+impl ComputeResult {
+    pub fn new() -> Self {
+        ComputeResult {
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            files: HashMap::new(),
+        }
     }
 }
