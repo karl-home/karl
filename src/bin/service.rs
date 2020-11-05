@@ -15,6 +15,7 @@ use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
+use karl_common::Error;
 use karl::{self, *, import::Import, backend::Backend};
 
 struct Listener {

@@ -10,6 +10,7 @@
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use std::net::TcpStream;
 use bincode;
+use karl_common::Error;
 use crate::common::*;
 use crate::request::*;
 

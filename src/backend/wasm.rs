@@ -5,7 +5,8 @@ use std::time::Instant;
 
 use wasmer::executor::{Run, PkgConfig, replay_with_config};
 use crate::ComputeResult;
-use crate::{read_all, Error};
+use crate::read_all;
+use karl_common::Error;
 
 /// Run the compute request with the wasm backend.
 ///

@@ -9,6 +9,7 @@ use std::net::{TcpStream, TcpListener};
 
 use clap::{Arg, App};
 use karl::{self, *};
+use karl_common::Error;
 
 fn run_cmd(
     bin: &str,

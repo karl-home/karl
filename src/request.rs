@@ -10,7 +10,7 @@ use wasmer::executor::PkgConfig;
 use tar::{Builder, Header};
 use flate2::{Compression, write::GzEncoder};
 
-use crate::common::Error;
+use karl_common::Error;
 use crate::import::Import;
 
 /// Ping request.

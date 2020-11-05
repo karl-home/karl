@@ -9,7 +9,8 @@ use std::time::Instant;
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
 use wasmer::executor::PkgConfig;
 use crate::ComputeResult;
-use crate::{read_all, Error};
+use crate::read_all;
+use karl_common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     let mut cmd = Command::new(bin);

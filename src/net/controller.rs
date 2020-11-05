@@ -8,6 +8,7 @@ use bincode;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
+use karl_common::Error;
 use crate::*;
 
 type ServiceName = String;

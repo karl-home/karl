@@ -6,6 +6,7 @@ use std::time::Instant;
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use karl::{self, backend::Backend, import::Import, *};
+use karl_common::Error;
 
 fn gen_request(backend: &Backend) -> ComputeRequest {
     let now = Instant::now();
