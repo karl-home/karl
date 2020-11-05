@@ -17,19 +17,19 @@ fn gen_request(backend: &Backend) -> ComputeRequest {
                     name: "python".to_string(),
                     version: "0.1.0".to_string(),
                 })
-                .build_root().unwrap()
-                .add_file("data/add/add.py").unwrap()
-                .finalize().unwrap()
+                .add_file("data/add/add.py")
+                .finalize()
+                .unwrap()
         },
         Backend::Binary => {
             ComputeRequestBuilder::new("data/add/python")
                 .args(vec!["data/add/add.py", "20"])
                 .envs(vec!["PYTHONPATH=data/add/lib/python3.6/"])
-                .build_root().unwrap()
-                .add_file("data/add/add.py").unwrap()
-                .add_file("data/add/python").unwrap()
-                .add_dir("data/add/lib/").unwrap()
-                .finalize().unwrap()
+                .add_file("data/add/add.py")
+                .add_file("data/add/python")
+                .add_dir("data/add/lib/")
+                .finalize()
+                .unwrap()
         },
     };
     debug!("build request => {} s", now.elapsed().as_secs_f32());

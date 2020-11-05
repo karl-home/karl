@@ -46,9 +46,9 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
             name: "stt".to_string(),
             hash: "TODO".to_string(),
         })
-        .build_root().unwrap()
-        .add_file(audio_file).unwrap()
-        .finalize().unwrap()
+        .add_file(audio_file)
+        .finalize()
+        .unwrap()
     } else {
         ComputeRequestBuilder::new("stt/python")
         .args(vec![
@@ -64,9 +64,9 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
             data/stt/lib/python3.6/:\
             data/stt/lib/python3.6/lib-dynload:\
             data/stt/lib/python3.6/site-packages"])
-        .build_root().unwrap()
-        .add_file(audio_file).unwrap()
-        .finalize().unwrap()
+        .add_file(audio_file)
+        .finalize()
+        .unwrap()
     }
 }
 
@@ -84,9 +84,9 @@ fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
             name: "stt_node".to_string(),
             hash: "TODO".to_string(),
         })
-        .build_root().unwrap()
-        .add_file(audio_file).unwrap()
-        .finalize().unwrap()
+        .add_file(audio_file)
+        .finalize()
+        .unwrap()
     } else {
         unimplemented!();
     }

@@ -32,16 +32,10 @@ pub struct HostResult {
     pub port: String,
 }
 
-enum InputRoot {
-    /// Uninitialized
-    Uninitialized,
-    /// Directory to be built
-    CustomDir(TempDir),
-}
-
 /// Compute request builder.
 pub struct ComputeRequestBuilder {
-    root: InputRoot,
+    dirs: Vec<String>,
+    files: Vec<String>,
     imports: Vec<Import>,
     config: PkgConfig,
 }
@@ -105,7 +99,8 @@ fn cp(root: &Path, path: &Path) -> io::Result<()> {
 impl ComputeRequestBuilder {
     pub fn new(binary_path: &str) -> ComputeRequestBuilder {
         ComputeRequestBuilder {
-            root: InputRoot::Uninitialized,
+            dirs: Vec::new(),
+            files: Vec::new(),
             imports: Vec::new(),
             config: PkgConfig {
                 binary_path: Some(Path::new(binary_path).to_path_buf()),
@@ -140,59 +135,39 @@ impl ComputeRequestBuilder {
         self
     }
 
-    /// Build input root from scratch.
-    ///
-    /// Root must be uninitialized to begin with.
-    pub fn build_root(mut self) -> Result<ComputeRequestBuilder, Error> {
-        self.root = match &self.root {
-            InputRoot::Uninitialized => {
-                let dir = TempDir::new("karl").unwrap();
-                InputRoot::CustomDir(dir)
-            },
-            _ => return Err(Error::DoubleInputInitialization),
-        };
-        Ok(self)
-    }
-
     /// Add a file to the input root from the home filesystem, overwriting
-    /// files with the same name. Root must be initialized as InputRoot::Dir.
-    pub fn add_file(self, path: &str) -> Result<ComputeRequestBuilder, Error> {
-        let path = Path::new(path);
-        match &self.root {
-            InputRoot::CustomDir(root) => {
-                let new_path = root.path().join(path);
-                let parent = new_path.parent().unwrap();
-                fs::create_dir_all(parent)?;
-                fs::copy(path, new_path)?
-            },
-            _ => return Err(Error::InvalidInputRoot),
-        };
-        Ok(self)
+    /// files with the same name.
+    pub fn add_file(mut self, path: &str) -> ComputeRequestBuilder {
+        self.files.push(path.to_string());
+        self
     }
 
     /// Add a directory to the input root from the home filesystem, overwriting
-    /// files with the same name. Root must be initialized as InputRoot::Dir.
-    pub fn add_dir(self, path: &str) -> Result<ComputeRequestBuilder, Error> {
-        let path = Path::new(path);
-        match &self.root {
-            InputRoot::CustomDir(root) => cp(root.path(), path)?,
-            _ => return Err(Error::InvalidInputRoot),
-        };
-        Ok(self)
+    /// files with the same name.
+    pub fn add_dir(mut self, path: &str) -> ComputeRequestBuilder {
+        self.dirs.push(path.to_string());
+        self
     }
 
     /// Finalize the compute request.
     pub fn finalize(self) -> Result<ComputeRequest, Error> {
-        let root_path = match &self.root {
-            InputRoot::Uninitialized => return Err(Error::InvalidInputRoot),
-            InputRoot::CustomDir(root_dir) => root_dir.path(),
-        };
+        // Create input root.
+        let root = TempDir::new("karl").unwrap();
+        for path in &self.dirs {
+            cp(root.path(), Path::new(&path))?;
+        }
+        for path in &self.files {
+            let new_path = root.path().join(path);
+            let parent = new_path.parent().unwrap();
+            fs::create_dir_all(parent)?;
+            fs::copy(path, new_path)?;
+        }
 
         // Tar it up.
         let mut buffer = Vec::new();
         let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
-        tar.append_dir_all("root", root_path)?;
+        tar.append_dir_all("root", root.path())?;
 
         // Tar the config.
         let config = bincode::serialize(&self.config).unwrap();
