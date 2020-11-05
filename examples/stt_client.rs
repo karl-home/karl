@@ -3,10 +3,10 @@ extern crate log;
 
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use clap::{Arg, App};
-use karl::{import::Import, net::Controller, *};
+use karl::{import::Import, *};
 
 enum Mode {
     Standalone,
@@ -91,7 +91,12 @@ fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
 }
 
 /// Requests computation from the host.
-fn send(c: &mut Controller, mode: Mode, audio_file: &str) -> Result<(), Error> {
+///
+/// Params:
+/// - controller: <IP>:<PORT>
+/// - mode: python or node
+/// - audio_file: path to audio file
+fn send(controller: &str, mode: Mode, audio_file: &str) -> Result<(), Error> {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
@@ -100,19 +105,13 @@ fn send(c: &mut Controller, mode: Mode, audio_file: &str) -> Result<(), Error> {
 
     debug!("connect...");
     let now = Instant::now();
-    let host = c.find_host()?;
+    let host = net::get_host(controller);
     debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
-    let stream = TcpStream::connect(&host)?;
-    debug!("=> {} s (connect)", now.elapsed().as_secs_f32());
 
     let now = Instant::now();
-    debug!("queue request");
-    let handle = c.compute_async(stream, request)?;
-    debug!("=> {} s", now.elapsed().as_secs_f32());
-
-    let now = Instant::now();
-    let result = c.rt.block_on(async { handle.await.unwrap() }).unwrap().stdout;
-    let result = String::from_utf8_lossy(&result);
+    debug!("send request");
+    let result = net::send_compute(&host, request);
+    let result = String::from_utf8_lossy(&result.stdout);
     debug!("finished: {} s\n{}", now.elapsed().as_secs_f32(), result);
     info!("total: {} s", start.elapsed().as_secs_f32());
     Ok(())
@@ -156,13 +155,13 @@ fn main() {
             .takes_value(true)
             .required(true))
         .arg(Arg::with_name("host")
-            .help("Host address of the standalone STT service")
+            .help("Host address of the standalone STT service / controller")
             .short("h")
             .long("host")
             .takes_value(true)
             .default_value("127.0.0.1"))
         .arg(Arg::with_name("port")
-            .help("Port of the standalone STT service.")
+            .help("Port of the standalone STT service / controller")
             .short("p")
             .long("port")
             .takes_value(true)
@@ -185,22 +184,18 @@ fn main() {
         "karl_node" => Mode::KarlNode(import),
         mode => unimplemented!("unimplemented mode: {}", mode),
     };
+    let host = matches.value_of("host").unwrap();
+    let port = matches.value_of("port").unwrap();
+    let addr = format!("{}:{}", host, port);
 
     let audio_file = matches.value_of("audio").unwrap();
     match mode {
         Mode::Standalone => {
-            let host = matches.value_of("host").unwrap();
-            let port = matches.value_of("port").unwrap();
-            let addr = format!("{}:{}", host, port);
             let host: SocketAddr = addr.parse().expect("malformed host");
             send_standalone_request(host, audio_file);
         },
         Mode::KarlPython(_) | Mode::KarlNode(_) => {
-            let blocking = true;
-            let mut c = Controller::new(blocking);
-            // Wait for the controller to add all hosts.
-            std::thread::sleep(Duration::from_secs(5));
-            send(&mut c, mode, audio_file).unwrap();
+            send(&addr, mode, audio_file).unwrap();
         },
     }
     info!("done.");

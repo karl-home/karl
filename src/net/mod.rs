@@ -10,6 +10,8 @@
 //! include a central controller where clients request available services.
 mod controller;
 mod register;
+mod executor;
 
+pub use executor::*;
 pub use controller::Controller;
 pub use register::register;

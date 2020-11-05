@@ -146,6 +146,7 @@ impl Controller {
         let res_bytes = match header.ty {
             HT_HOST_REQUEST => {
                 let host = self.find_host().unwrap();
+                info!("picked host => {:?}", host);
                 bincode::serialize(&HostResult {
                     ip: host.ip().to_string(),
                     port: host.port().to_string(),

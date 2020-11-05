@@ -9,7 +9,7 @@ fn main() {
             .short("p")
             .long("port")
             .takes_value(true)
-            .default_value("54297"))
+            .default_value("59582"))
         .arg(Arg::with_name("no-register")
             .help("If the flag is included, does not automatically register \
                 the service with DNS-SD. The default is to register.")
