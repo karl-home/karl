@@ -105,7 +105,7 @@ fn send(controller: &str, mode: Mode, audio_file: &str) {
     let request = gen_request(mode, audio_file).stdout();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
-    debug!("connect...");
+    debug!("get host from controller");
     let now = Instant::now();
     let host = karl::net::get_host(controller);
     debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);

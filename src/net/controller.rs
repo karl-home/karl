@@ -6,7 +6,7 @@ use std::thread;
 
 use bincode;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
-use tokio::{task::JoinHandle, runtime::Runtime};
+use tokio::runtime::Runtime;
 
 use crate::*;
 
@@ -164,7 +164,7 @@ impl Controller {
     }
 
     /// Find a host to connect to round-robin.
-    pub fn find_host(&mut self) -> Result<SocketAddr, Error> {
+    fn find_host(&mut self) -> Result<SocketAddr, Error> {
         loop {
             let hosts = self.hosts.lock().unwrap();
             if !hosts.is_empty() {
@@ -181,99 +181,5 @@ impl Controller {
             trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
         }
-    }
-
-    /// Send a request to the connected host.
-    fn send(
-        mut stream: TcpStream,
-        req_bytes: Vec<u8>,
-        req_ty: HeaderType,
-    ) -> Result<(Header, Vec<u8>), Error> {
-        let now = Instant::now();
-        write_packet(&mut stream, req_ty, &req_bytes)?;
-        debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
-
-        // Wait for the response.
-        debug!("waiting for response...");
-        let now = Instant::now();
-        let mut bytes = read_packets(&mut stream, 1)?;
-        debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
-        Ok(bytes.remove(0))
-    }
-
-    /// Ping the host.
-    pub fn ping(&mut self, stream: TcpStream) -> Result<PingResult, Error> {
-        let req = PingRequest::new();
-        let now = Instant::now();
-        info!("sending {:?} to {:?}...", req, stream.peer_addr());
-        debug!("serializing request");
-        let req_bytes = bincode::serialize(&req)
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        let req_ty = HT_PING_REQUEST;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-        let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
-        let now = Instant::now();
-        let res: PingResult = match header.ty {
-            HT_PING_RESULT => bincode::deserialize(&res_bytes)
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
-            ty => { return Err(Error::InvalidPacketType(ty)); },
-        };
-        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
-        Ok(res)
-    }
-
-    /// Execute a compute request and return the result.
-    ///
-    /// Errors if there are network connection issues with the service.
-    /// The controller may have found a service that is no longer available,
-    /// or disconnected after the initial handshake. In this case, the
-    /// client should try again.
-    pub fn compute(
-        &mut self,
-        stream: TcpStream,
-        req: ComputeRequest,
-    ) -> Result<ComputeResult, Error> {
-        let now = Instant::now();
-        info!("sending {:?} to {:?}...", req, stream.peer_addr());
-        debug!("serializing request");
-        let req_bytes = bincode::serialize(&req)
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        let req_ty = HT_COMPUTE_REQUEST;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-        let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
-        let now = Instant::now();
-        let res: ComputeResult = match header.ty {
-            HT_COMPUTE_RESULT => bincode::deserialize(&res_bytes)
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
-            ty => { return Err(Error::InvalidPacketType(ty)); },
-        };
-        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
-        Ok(res)
-    }
-
-    /// Asynchronously execute a compute request and return a handle that
-    /// returns the result.
-    pub fn compute_async(
-        &mut self,
-        stream: TcpStream,
-        req: ComputeRequest,
-    ) -> Result<JoinHandle<Result<ComputeResult, Error>>, Error> {
-        let now = Instant::now();
-        debug!("serializing request");
-        let req_bytes = bincode::serialize(&req)
-            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-        let req_ty = HT_COMPUTE_REQUEST;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-        Ok(self.rt.spawn(async move {
-            let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
-            let now = Instant::now();
-            let res: ComputeResult = match header.ty {
-                HT_COMPUTE_RESULT => bincode::deserialize(&res_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
-                ty => { return Err(Error::InvalidPacketType(ty)); },
-            };
-            debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
-            Ok(res)
-        }))
     }
 }
