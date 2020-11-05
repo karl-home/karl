@@ -7,9 +7,7 @@ use std::time::Instant;
 
 #[cfg(target_os = "linux")]
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
-use wasmer::executor::PkgConfig;
-use crate::ComputeResult;
-use karl_common::Error;
+use karl_common::{Error, PkgConfig, ComputeResult};
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     let mut cmd = Command::new(bin);

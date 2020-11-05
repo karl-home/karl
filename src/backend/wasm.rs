@@ -3,9 +3,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use wasmer::executor::{Run, PkgConfig, replay_with_config};
-use crate::ComputeResult;
-use karl_common::Error;
+use wasmer::executor::{Run, replay_with_config};
+use karl_common::{Error, PkgConfig, ComputeResult};
 
 /// Run the compute request with the wasm backend.
 ///

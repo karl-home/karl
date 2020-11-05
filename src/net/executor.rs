@@ -12,7 +12,7 @@ use std::net::TcpStream;
 use bincode;
 use karl_common::Error;
 use crate::common::*;
-use crate::request::*;
+use karl_common::*;
 
 /// Returns a host address given by the controller.
 pub fn get_host(controller_addr: &str) -> String {

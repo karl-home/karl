@@ -6,7 +6,8 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::Instant;
 
 use clap::{Arg, App};
-use karl::{self, ComputeRequest};
+use karl;
+use karl_common::{ComputeRequest, HT_RAW_BYTES};
 
 enum Mode {
     Standalone,
@@ -26,7 +27,7 @@ fn gen_request(mode: Mode, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::{ComputeRequestBuilder, import::Import};
+    use karl_common::{ComputeRequestBuilder, Import};
     if import {
         ComputeRequestBuilder::new("python")
         .args(vec![
@@ -71,7 +72,7 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::{ComputeRequestBuilder, import::Import};
+    use karl_common::{ComputeRequestBuilder, Import};
     if import {
         ComputeRequestBuilder::new("node")
         .args(vec![

@@ -15,8 +15,12 @@ use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use karl_common::Error;
-use karl::{self, *, import::Import, backend::Backend};
+use karl_common::{
+    Error, Import,
+    HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
+    ComputeRequest, ComputeResult, PingRequest, PingResult,
+};
+use karl::{self, backend::Backend};
 
 struct Listener {
     /// Node/service ID

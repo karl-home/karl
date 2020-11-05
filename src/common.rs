@@ -1,16 +1,8 @@
 use std::io;
 use std::io::{BufRead, Read, Write};
 use serde::{Serialize, Deserialize};
-use karl_common::Error;
+use karl_common::*;
 
-pub type HeaderType = u32;
-pub const HT_RAW_BYTES: HeaderType = 0;
-pub const HT_PING_REQUEST: HeaderType = 1;
-pub const HT_PING_RESULT: HeaderType = 2;
-pub const HT_COMPUTE_REQUEST: HeaderType = 3;
-pub const HT_COMPUTE_RESULT: HeaderType = 4;
-pub const HT_HOST_REQUEST: HeaderType = 5;
-pub const HT_HOST_RESULT: HeaderType = 6;
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Header {
