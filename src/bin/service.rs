@@ -11,16 +11,16 @@ use bincode;
 use dirs;
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
-use wasmer::executor::PkgConfig;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
+use karl;
 use karl_common::{
-    Error, Import,
+    Error, Import, PkgConfig,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
     ComputeRequest, ComputeResult, PingRequest, PingResult,
 };
-use karl::{self, backend::Backend};
+use karl_backend::{self, Backend};
 
 struct Listener {
     /// Node/service ID
@@ -209,14 +209,14 @@ impl Listener {
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = match self.backend {
-            Backend::Wasm => karl::backend::wasm::run(
+            Backend::Wasm => karl_backend::wasm::run(
                 config,
                 &root_path,
                 req.stdout,
                 req.stderr,
                 req.files,
             )?,
-            Backend::Binary => karl::backend::binary::run(
+            Backend::Binary => karl_backend::binary::run(
                 config,
                 &self.base_path,
                 req.stdout,

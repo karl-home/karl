@@ -4,16 +4,9 @@ version = "0.1.0"
 authors = ["Gina Yuan <gina.yuan@gmail.com>"]
 edition = "2018"
 
-[dependencies.wasmer]
-path = "submodules/wasmer"
-default-features = false
-features = ["backend-cranelift", "wasi"]
-
-[target."cfg(target_os = \"linux\")".dependencies.sys-mount]
-version = "1.2.1"
-
 [dependencies]
 karl-common = { path = "lib/common" }
+karl-backend = { path = "lib/backend" }
 astro-dnssd = { path = "submodules/astro-dnssd" }
 bincode = "1.3.1"
 env_logger = "0.7"
@@ -25,6 +18,3 @@ tar = "0.4.30"
 clap = "2.33.3"
 dirs = "1.0.5"
 rand = "0.7.3"
-
-[dev-dependencies]
-serial_test = "*"
