@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
 use std::thread;
@@ -34,6 +34,9 @@ impl Controller {
     /// available hosts, adding and removing hosts as specified by DNS-SD
     /// messages. On request, a host selected by the controller is not
     /// guaranteed to be available, and the client may have to try again.
+    ///
+    /// Call `start()` after constructing the controller to ensure it is
+    /// listening for host requests.
     ///
     /// Parameters:
     /// - `blocking`: Whether the controller should block until it finds
@@ -113,6 +116,50 @@ impl Controller {
             }
         });
         c
+    }
+
+    /// Start the TCP listener for incoming host requests
+    pub fn start(&mut self, port: u16) -> Result<(), Error> {
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
+        info!("Karl controller listening on port {}", listener.local_addr()?.port());
+        for stream in listener.incoming() {
+            let stream = stream?;
+            debug!("incoming stream {:?}", stream.local_addr());
+            let now = Instant::now();
+            if let Err(e) = self.handle_client(stream) {
+                error!("{:?}", e);
+            }
+            warn!("total: {} s", now.elapsed().as_secs_f32());
+        }
+        Ok(())
+    }
+
+    /// Handle an incoming TCP stream.
+    fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
+        // Read the computation request from the TCP stream.
+        let now = Instant::now();
+        debug!("reading packet");
+        let (header, _) = read_packets(&mut stream, 1)?.remove(0);
+        debug!("=> {} s", now.elapsed().as_secs_f32());
+
+        // Deploy the request to correct handler.
+        let res_bytes = match header.ty {
+            HT_HOST_REQUEST => {
+                let host = self.find_host().unwrap();
+                bincode::serialize(&HostResult {
+                    ip: host.ip().to_string(),
+                    port: host.port().to_string(),
+                }).unwrap()
+            },
+            ty => return Err(Error::InvalidPacketType(ty)),
+        };
+
+        // Return the result to sender.
+        debug!("writing packet");
+        let now = Instant::now();
+        write_packet(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+        debug!("=> {} s", now.elapsed().as_secs_f32());
+        Ok(())
     }
 
     /// Find a host to connect to round-robin.
