@@ -23,17 +23,9 @@ tempdir = "0.3"
 tokio = { version = "0.2", features = ["rt-threaded"] }
 flate2 = "1.0.17"
 tar = "0.4.30"
-
-[dev-dependencies]
 clap = "2.33.3"
 dirs = "1.0.5"
 rand = "0.7.3"
+
+[dev-dependencies]
 serial_test = "*"
-
-[[example]]
-name = "service"
-crate-type = ["bin"]
-
-[[example]]
-name = "parallel"
-crate-type = ["bin"]
