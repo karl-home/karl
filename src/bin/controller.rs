@@ -1,5 +1,5 @@
 use clap::{Arg, App};
-use karl::net::Controller;
+use karl::Controller;
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();

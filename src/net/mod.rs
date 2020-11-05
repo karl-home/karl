@@ -8,10 +8,8 @@
 //! DNS-SD. Currently, each client runs its own controller, which is aware of
 //! all available Karl services. Eventually, the network configuration may
 //! include a central controller where clients request available services.
-mod controller;
 mod register;
 mod executor;
 
 pub use executor::*;
-pub use controller::Controller;
 pub use register::register;

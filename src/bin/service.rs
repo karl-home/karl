@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use karl;
+use karl::packet;
 use karl_common::{
     Error, Import, PkgConfig,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
@@ -240,7 +240,7 @@ impl Listener {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let (header, buf) = karl::read_packets(&mut stream, 1)?.remove(0);
+        let (header, buf) = packet::read(&mut stream, 1)?.remove(0);
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
         // Deploy the request to correct handler.
@@ -281,7 +281,7 @@ impl Listener {
         // Return the result to sender.
         debug!("writing packet");
         let now = Instant::now();
-        karl::write_packet(&mut stream, ty, &res_bytes)?;
+        packet::write(&mut stream, ty, &res_bytes)?;
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }

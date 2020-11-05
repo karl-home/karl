@@ -36,7 +36,7 @@ impl Header {
 /// - NoReply - connection closed before all packets were read.
 ///
 /// WARNING: blocking
-pub fn read_packets(
+pub fn read(
     inner: &mut dyn Read,
     npackets: usize,
 ) -> Result<Vec<(Header, Vec<u8>)>, Error> {
@@ -121,7 +121,7 @@ pub fn read_packets(
 }
 
 /// Write bytes into a stream. Include the packet length as the first byte.
-pub fn write_packet(inner: &mut dyn Write, ty: HeaderType, buffer: &Vec<u8>) -> io::Result<()> {
+pub fn write(inner: &mut dyn Write, ty: HeaderType, buffer: &Vec<u8>) -> io::Result<()> {
     trace!("writing packet... ({} bytes)", buffer.len());
     assert!(buffer.len() <= 4294967294);
     let header = bincode::serialize(&Header {
@@ -147,7 +147,7 @@ mod test {
         let mut buf = vec![];
         let input = b"helloworld".to_vec();
         let ty = HT_PING_REQUEST;
-        match write_packet(&mut buf, ty, &input) {
+        match write(&mut buf, ty, &input) {
             Ok(()) => {},
             Err(e) => assert!(false, format!("failed to write packet: {:?}", e)),
         }
@@ -173,7 +173,7 @@ mod test {
         let input = fs::read(audio_file).unwrap();
         assert!(input.len() > 65535, "input length still fits in u16");
         let ty = HT_COMPUTE_REQUEST;
-        match write_packet(&mut buf, ty, &input) {
+        match write(&mut buf, ty, &input) {
             Ok(()) => {},
             Err(e) => assert!(false, format!("failed to write packet: {:?}", e)),
         }
@@ -197,9 +197,9 @@ mod test {
         let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
         // assume write packet works correctly
-        write_packet(&mut buf, 0, &input).unwrap();
+        write(&mut buf, 0, &input).unwrap();
         let mut cursor = io::Cursor::new(buf);
-        let packets = match read_packets(&mut cursor, 1) {
+        let packets = match read(&mut cursor, 1) {
             Ok(packets) => packets,
             Err(e) => {
                 assert!(false, format!("{:?}", e));
@@ -223,11 +223,11 @@ mod test {
         let input2 = fs::read(path2).unwrap();
         assert_eq!(input2.len(), 63244);
         // assume write packet works correctly
-        write_packet(&mut buf, 0, &input1).unwrap();
-        write_packet(&mut buf, 0, &input2).unwrap();
+        write(&mut buf, 0, &input1).unwrap();
+        write(&mut buf, 0, &input2).unwrap();
         assert_eq!(buf.len(), 130842 + 63244 + Header::size() * 2);
         let mut cursor = io::Cursor::new(buf);
-        let packets = match read_packets(&mut cursor, 2) {
+        let packets = match read(&mut cursor, 2) {
             Ok(packets) => packets,
             Err(e) => {
                 assert!(false, format!("{:?}", e));
@@ -249,7 +249,7 @@ mod test {
     fn read_empty_buffer() {
         let buf = vec![];
         let mut cursor = io::Cursor::new(buf);
-        match read_packets(&mut cursor, 1) {
+        match read(&mut cursor, 1) {
             Ok(_) => assert!(false, "expected incorrect number of packets"),
             Err(e) => match e {
                 Error::NoReply => {},
@@ -264,9 +264,9 @@ mod test {
         let input = fs::read("data/stt/audio/2830-3980-0043.wav").unwrap();
         assert_eq!(input.len(), 63244);
         // assume write packet works correctly
-        write_packet(&mut buf, 0, &input).unwrap();
+        write(&mut buf, 0, &input).unwrap();
         let mut cursor = io::Cursor::new(buf);
-        match read_packets(&mut cursor, 2) {
+        match read(&mut cursor, 2) {
             Ok(_) => assert!(false, "expected incorrect number of packets"),
             Err(e) => match e {
                 Error::IncorrectNumPackets { actual, expected } => {
@@ -283,13 +283,13 @@ mod test {
         let mut buf = vec![];
         let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
-        write_packet(&mut buf, 0, &input).unwrap();
+        write(&mut buf, 0, &input).unwrap();
         // pretend some bytes got lost at the end
         assert_eq!(buf.len(), 130842 + Header::size());
         let _ = buf.split_off(130840 + Header::size());
         assert!(buf.len() < 130842 + Header::size());
         let mut cursor = io::Cursor::new(buf);
-        match read_packets(&mut cursor, 1) {
+        match read(&mut cursor, 1) {
             Ok(_) => assert!(false, "expected incorrect packet length"),
             Err(e) => match e {
                 Error::IncorrectPacketLength { actual, expected } => {

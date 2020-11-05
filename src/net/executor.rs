@@ -10,8 +10,7 @@
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use std::net::TcpStream;
 use bincode;
-use karl_common::Error;
-use crate::common::*;
+use crate::packet;
 use karl_common::*;
 
 /// Returns a host address given by the controller.
@@ -23,8 +22,8 @@ pub fn get_host(controller_addr: &str) -> String {
     let req_bytes = bincode::serialize(&req)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    write_packet(&mut stream, HT_HOST_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &read_packets(&mut stream, 1).unwrap()[0];
+    packet::write(&mut stream, HT_HOST_REQUEST, &req_bytes).unwrap();
+    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_HOST_RESULT);
     let res: HostResult = bincode::deserialize(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
@@ -39,8 +38,8 @@ pub fn send_ping(host: &str) -> PingResult {
     let req_bytes = bincode::serialize(&req)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    write_packet(&mut stream, HT_PING_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &read_packets(&mut stream, 1).unwrap()[0];
+    packet::write(&mut stream, HT_PING_REQUEST, &req_bytes).unwrap();
+    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_PING_RESULT);
     bincode::deserialize(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
@@ -53,8 +52,8 @@ pub fn send_compute(host: &str, req: ComputeRequest) -> ComputeResult {
     let req_bytes = bincode::serialize(&req)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    write_packet(&mut stream, HT_COMPUTE_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &read_packets(&mut stream, 1).unwrap()[0];
+    packet::write(&mut stream, HT_COMPUTE_REQUEST, &req_bytes).unwrap();
+    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_COMPUTE_RESULT);
     bincode::deserialize(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))

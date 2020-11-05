@@ -8,7 +8,7 @@ use std::time::Instant;
 use std::net::{TcpStream, TcpListener};
 
 use clap::{Arg, App};
-use karl;
+use karl::packet;
 use karl_common::{Error, HT_RAW_BYTES};
 
 fn run_cmd(
@@ -71,7 +71,7 @@ fn handle_client(mut stream: TcpStream, mode: &str) -> Result<(), Error> {
     // Read the request from the TCP stream.
     let now = Instant::now();
     info!("reading packet");
-    let (header, buf) = karl::read_packets(&mut stream, 1)?.remove(0);
+    let (header, buf) = packet::read(&mut stream, 1)?.remove(0);
     if header.ty != HT_RAW_BYTES {
         return Err(Error::InvalidPacketType(header.ty));
     }
@@ -100,7 +100,7 @@ fn handle_client(mut stream: TcpStream, mode: &str) -> Result<(), Error> {
     // Return the result to sender.
     info!("writing packet");
     let now = Instant::now();
-    karl::write_packet(&mut stream, HT_RAW_BYTES, &output.stdout)?;
+    packet::write(&mut stream, HT_RAW_BYTES, &output.stdout)?;
     info!("=> {} s", now.elapsed().as_secs_f32());
     Ok(())
 }

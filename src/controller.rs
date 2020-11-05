@@ -8,7 +8,7 @@ use bincode;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
-use crate::*;
+use crate::packet;
 use karl_common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT, HostResult};
 
 type ServiceName = String;
@@ -140,7 +140,7 @@ impl Controller {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let (header, _) = read_packets(&mut stream, 1)?.remove(0);
+        let (header, _) = packet::read(&mut stream, 1)?.remove(0);
         debug!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
@@ -159,7 +159,7 @@ impl Controller {
         // Return the result to sender.
         debug!("writing packet");
         let now = Instant::now();
-        write_packet(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+        packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }
