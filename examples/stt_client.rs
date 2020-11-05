@@ -6,7 +6,6 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
-use tokio::runtime::Runtime;
 use karl::{import::Import, net::Controller, *};
 
 enum Mode {
@@ -190,9 +189,8 @@ fn main() {
             send_standalone_request(host, audio_file);
         },
         Mode::KarlPython(_) | Mode::KarlNode(_) => {
-            let rt = Runtime::new().unwrap();
             let blocking = true;
-            let mut c = Controller::new(rt, blocking);
+            let mut c = Controller::new(blocking);
             // Wait for the controller to add all hosts.
             std::thread::sleep(Duration::from_secs(5));
             send(&mut c, mode, audio_file).unwrap();

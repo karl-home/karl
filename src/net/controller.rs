@@ -32,13 +32,12 @@ impl Controller {
     /// guaranteed to be available, and the client may have to try again.
     ///
     /// Parameters:
-    /// - `rt`: The Tokio runtime.
     /// - `blocking`: Whether the controller should block until it finds
     ///   an available host on request. Otherwise, if no hosts are available,
     ///   the controller will error.
-    pub fn new(rt: Runtime, blocking: bool) -> Self {
+    pub fn new(blocking: bool) -> Self {
         let c = Controller {
-            rt,
+            rt: Runtime::new().unwrap(),
             blocking,
             hosts: Arc::new(Mutex::new(Vec::new())),
             prev_host_i: 0,

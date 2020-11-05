@@ -5,7 +5,6 @@ extern crate clap;
 use std::time::{Duration, Instant};
 
 use clap::{Arg, App};
-use tokio::runtime::Runtime;
 use karl::{backend::Backend, net::Controller, import::Import, *};
 
 fn gen_request(backend: &Backend) -> ComputeRequest {
@@ -81,7 +80,6 @@ fn send_all(c: &mut Controller, n: usize, backend: &Backend) -> Result<(), Error
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
-    let rt = Runtime::new().unwrap();
     let matches = App::new("Parallel Compute")
         .arg(Arg::with_name("backend")
             .help("Service backend. Either 'wasm' for wasm executables or \
@@ -103,7 +101,7 @@ fn main() {
         backend => unimplemented!("unimplemented backend: {}", backend),
     };
     let blocking = true;
-    let mut c = Controller::new(rt, blocking);
+    let mut c = Controller::new(blocking);
     // Wait for the controller to add all hosts.
     std::thread::sleep(Duration::from_secs(5));
     send_all(&mut c, n, &backend).unwrap();
