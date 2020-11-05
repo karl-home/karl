@@ -128,29 +128,6 @@ pub fn read_packets(
     }
 }
 
-/// Read bytes from the stream into a buffer. Reads until EOF.
-///
-/// WARNING: blocking
-pub fn read_all(
-    inner: &mut dyn Read,
-) -> Result<Vec<u8>, Error> {
-    let mut buffer = Vec::new();
-    let mut reader = io::BufReader::new(inner);
-    loop {
-        let mut inner = reader.fill_buf()?.to_vec();
-        trace!("read {} bytes", inner.len());
-        if inner.len() == 0 {
-            break;
-        }
-        reader.consume(inner.len());
-        buffer.append(&mut inner);
-    }
-    if buffer.is_empty() {
-        return Err(Error::NoReply);
-    }
-    Ok(buffer)
-}
-
 /// Write bytes into a stream. Include the packet length as the first byte.
 pub fn write_packet(inner: &mut dyn Write, ty: HeaderType, buffer: &Vec<u8>) -> io::Result<()> {
     trace!("writing packet... ({} bytes)", buffer.len());
@@ -225,8 +202,7 @@ mod test {
     #[test]
     fn read_one_packet() {
         let mut buf = vec![];
-        let mut file = fs::File::open("data/stt_node/weather.wav").unwrap();
-        let input = read_all(&mut file).unwrap();
+        let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
         // assume write packet works correctly
         write_packet(&mut buf, 0, &input).unwrap();
@@ -250,11 +226,9 @@ mod test {
         let mut buf = vec![];
         let path1 = fs::canonicalize("data/stt_node/weather.wav").unwrap();
         let path2 = fs::canonicalize("data/stt/audio/2830-3980-0043.wav").unwrap();
-        let mut file1 = fs::File::open(path1).unwrap();
-        let mut file2 = fs::File::open(path2).unwrap();
-        let input1 = read_all(&mut file1).unwrap();
+        let input1 = fs::read(path1).unwrap();
         assert_eq!(input1.len(), 130842);
-        let input2 = read_all(&mut file2).unwrap();
+        let input2 = fs::read(path2).unwrap();
         assert_eq!(input2.len(), 63244);
         // assume write packet works correctly
         write_packet(&mut buf, 0, &input1).unwrap();
@@ -295,8 +269,7 @@ mod test {
     #[test]
     fn read_too_many_packets() {
         let mut buf = vec![];
-        let mut file = fs::File::open("data/stt/audio/2830-3980-0043.wav").unwrap();
-        let input = read_all(&mut file).unwrap();
+        let input = fs::read("data/stt/audio/2830-3980-0043.wav").unwrap();
         assert_eq!(input.len(), 63244);
         // assume write packet works correctly
         write_packet(&mut buf, 0, &input).unwrap();
@@ -316,8 +289,7 @@ mod test {
     #[test]
     fn read_incorrect_packet_length() {
         let mut buf = vec![];
-        let mut file = fs::File::open("data/stt_node/weather.wav").unwrap();
-        let input = read_all(&mut file).unwrap();
+        let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
         write_packet(&mut buf, 0, &input).unwrap();
         // pretend some bytes got lost at the end

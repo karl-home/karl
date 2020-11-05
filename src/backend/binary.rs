@@ -9,7 +9,6 @@ use std::time::Instant;
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
 use wasmer::executor::PkgConfig;
 use crate::ComputeResult;
-use crate::read_all;
 use karl_common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
@@ -188,11 +187,9 @@ pub fn run(
     }
     for path in res_files {
         let f = root_path.join(&path);
-        match fs::File::open(&f) {
-            Ok(mut file) => {
-                res.files.push((path, read_all(&mut file)?));
-            },
-            Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
+        match fs::read(&f) {
+            Ok(bytes) => res.files.push((path, bytes)),
+            Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
         }
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());

@@ -128,8 +128,7 @@ fn send_standalone_request(host: SocketAddr, audio_file: &str) {
 
     info!("sending {:?} to {:?}...", audio_file, stream.peer_addr());
     let now = Instant::now();
-    let mut f = fs::File::open(audio_file).unwrap();
-    let bytes = karl::read_all(&mut f).unwrap();
+    let bytes = fs::read(audio_file).unwrap();
     debug!("=> {} s (read file {} bytes)", now.elapsed().as_secs_f32(), bytes.len());
     write_packet(&mut stream, HT_RAW_BYTES, &bytes).unwrap();
     debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());

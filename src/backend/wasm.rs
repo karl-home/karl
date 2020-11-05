@@ -1,11 +1,10 @@
 use std::collections::HashSet;
-use std::fs::File;
+use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
 use wasmer::executor::{Run, PkgConfig, replay_with_config};
 use crate::ComputeResult;
-use crate::read_all;
 use karl_common::Error;
 
 /// Run the compute request with the wasm backend.
@@ -50,11 +49,9 @@ pub fn run(
     }
     for path in res_files {
         let f = root_path.join(&path);
-        match File::open(&f) {
-            Ok(mut file) => {
-                res.files.push((path, read_all(&mut file)?));
-            },
-            Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
+        match fs::read(&f) {
+            Ok(bytes) => res.files.push((path, bytes)),
+            Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
         }
     }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
