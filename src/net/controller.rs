@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
@@ -9,6 +10,8 @@ use tokio::{task::JoinHandle, runtime::Runtime};
 
 use crate::*;
 
+type ServiceName = String;
+
 /// Controller used for discovering available Karl services via DNS-SD.
 ///
 /// Currently, each client runs its own controller, which is aware of all
@@ -18,7 +21,8 @@ use crate::*;
 pub struct Controller {
     pub rt: Runtime,
     blocking: bool,
-    hosts: Arc<Mutex<Vec<SocketAddr>>>,
+    hosts: Arc<Mutex<Vec<ServiceName>>>,
+    unique_hosts: Arc<Mutex<HashMap<ServiceName, (SocketAddr, usize)>>>,
     prev_host_i: usize,
 }
 
@@ -40,9 +44,11 @@ impl Controller {
             rt: Runtime::new().unwrap(),
             blocking,
             hosts: Arc::new(Mutex::new(Vec::new())),
+            unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             prev_host_i: 0,
         };
         let hosts = c.hosts.clone();
+        let unique_hosts = c.unique_hosts.clone();
         debug!("Listening...");
         c.rt.spawn(async move {
             let mut browser = ServiceBrowserBuilder::new("_karl._tcp")
@@ -53,46 +59,49 @@ impl Controller {
                     let results = service.resolve();
                     for r in results.unwrap() {
                         let status = r.txt_record.as_ref().unwrap().get("status");
-                        let addrs_iter = match r.to_socket_addrs() {
-                            Ok(addrs) => addrs,
+                        debug!("Status: {:?}", status);
+                        let addrs = match r.to_socket_addrs() {
+                            Ok(addrs) => addrs.filter(|addr| addr.is_ipv4()).collect::<Vec<_>>(),
                             Err(e) => {
                                 error!("Failed to resolve\n=> addrs: {:?}\n=> {:?}", r, e);
                                 return;
                             },
                         };
-                        for addr in addrs_iter {
-                            if !addr.is_ipv4() {
-                                continue;
-                            }
-                            // Update hosts with IPv4 address.
-                            // Log the discovered service
-                            debug!("Addr: {}", addr);
-                            match service.event_type {
-                                ServiceEventType::Added => {
-                                    info!(
-                                        "ADD if: {} name: {} type: {} domain: {} => {:?}",
-                                        service.interface_index, service.name,
-                                        service.regtype, service.domain, addr,
-                                    );
-                                    hosts.lock().unwrap().push(addr);
-                                },
-                                ServiceEventType::Removed => {
-                                    info!(
-                                        "RMV if: {} name: {} type: {} domain: {} => {:?}",
-                                        service.interface_index, service.name,
-                                        service.regtype, service.domain, addr,
-                                    );
-                                    let mut hosts = hosts.lock().unwrap();
-                                    for i in 0..hosts.len() {
-                                        if hosts[i] == addr {
-                                            hosts.remove(i);
-                                            break;
-                                        }
-                                    }
-                                },
-                            }
+                        if addrs.is_empty() {
+                            error!("No addresses found: {:?}", r);
+                            return;
                         }
-                        debug!("Status: {:?}", status);
+                        // Update hosts with IPv4 address.
+                        // Log the discovered service
+                        // NOTE: only adds the first IPv4 address...
+                        let mut hosts = hosts.lock().unwrap();
+                        let mut unique_hosts = unique_hosts.lock().unwrap();
+                        match service.event_type {
+                            ServiceEventType::Added => {
+                                if unique_hosts.contains_key(&service.name) {
+                                    continue;
+                                }
+                                info!(
+                                    "ADD if: {} name: {} type: {} domain: {} => {:?}",
+                                    service.interface_index, service.name,
+                                    service.regtype, service.domain, addrs,
+                                );
+                                unique_hosts.insert(service.name.clone(), (addrs[0], hosts.len()));
+                                hosts.push(service.name.clone());
+                            },
+                            ServiceEventType::Removed => {
+                                if let Some((_, i)) = unique_hosts.remove(&service.name) {
+                                    hosts.remove(i);
+                                } else {
+                                    continue;
+                                }
+                                info!(
+                                    "RMV if: {} name: {} type: {} domain: {} => {:?}",
+                                    service.interface_index, service.name,
+                                    service.regtype, service.domain, addrs,
+                                );
+                            },
+                        }
                     }
                 }
                 Err(e) => error!("Error: {:?}", e),
@@ -108,10 +117,14 @@ impl Controller {
 
     /// Find a host to connect to round-robin.
     fn find_host(&mut self) -> Result<SocketAddr, Error> {
-        let hosts = loop {
+        loop {
             let hosts = self.hosts.lock().unwrap();
             if !hosts.is_empty() {
-                break hosts;
+                let i = (self.prev_host_i + 1) % hosts.len();
+                let service_name = &hosts[i];
+                self.prev_host_i = i;
+                let unique_hosts = self.unique_hosts.lock().unwrap();
+                return Ok(unique_hosts.get(service_name).unwrap().0);
             }
             if !self.blocking {
                 return Err(Error::NoAvailableHosts);
@@ -119,10 +132,7 @@ impl Controller {
             drop(hosts);
             trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
-        };
-        let i = (self.prev_host_i + 1) % hosts.len();
-        self.prev_host_i = i;
-        Ok(hosts[i])
+        }
     }
 
     /// Connect to a host, returning the tcp stream.
