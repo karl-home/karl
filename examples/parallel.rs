@@ -76,10 +76,17 @@ fn send_all(controller: &str, n: usize, backend: &Backend) -> Result<(), Error> 
             rt.block_on(async { handle.await })
         })
         .map(|result| result.unwrap())
-        .map(|result| (
-            to_i64(&result.stdout),
-            result.files.get("output.txt").map(to_i64),
-        ))
+        .map(|result| {
+            let stdout_res = to_i64(&result.stdout);
+            let mut file_res = None;
+            for (path, bytes) in &result.files {
+                if path == "output.txt" {
+                    file_res = Some(to_i64(bytes));
+                    break;
+                }
+            }
+            (stdout_res, file_res.unwrap())
+        })
         .collect::<Vec<_>>();
     info!("finished: {} s\n{:?}", now.elapsed().as_secs_f32(), results);
     info!("total: {} s", start.elapsed().as_secs_f32());

@@ -1,7 +1,7 @@
 use std::io;
 use std::fs;
 use std::fmt;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
 use serde::{Serialize, Deserialize};
@@ -14,18 +14,22 @@ use crate::common::Error;
 use crate::import::Import;
 
 /// Ping request.
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingRequest {}
 
 /// Ping result.
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingResult {}
 
 /// Host request.
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HostRequest {}
 
 /// Host result.
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HostResult {
     pub ip: String,
@@ -33,14 +37,17 @@ pub struct HostResult {
 }
 
 /// Compute request builder.
+#[repr(C)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ComputeRequestBuilder {
-    dirs: Vec<String>,
-    files: Vec<String>,
-    imports: Vec<Import>,
-    config: PkgConfig,
+    pub dirs: Vec<String>,
+    pub files: Vec<String>,
+    pub imports: Vec<Import>,
+    pub config: PkgConfig,
 }
 
 /// Compute request.
+#[repr(C)]
 #[derive(Serialize, Deserialize)]
 pub struct ComputeRequest {
     /// Formatted tar.gz directory.
@@ -61,6 +68,7 @@ pub struct ComputeRequest {
 }
 
 /// Compute result.
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComputeResult {
     /// Stdout.
@@ -68,7 +76,7 @@ pub struct ComputeResult {
     /// Stderr.
     pub stderr: Vec<u8>,
     /// Files.
-    pub files: HashMap<String, Vec<u8>>,
+    pub files: Vec<(String, Vec<u8>)>,
 }
 
 impl PingRequest {
@@ -237,7 +245,7 @@ impl ComputeResult {
         ComputeResult {
             stdout: Vec::new(),
             stderr: Vec::new(),
-            files: HashMap::new(),
+            files: Vec::new(),
         }
     }
 }

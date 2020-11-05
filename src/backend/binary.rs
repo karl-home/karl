@@ -189,7 +189,7 @@ pub fn run(
         let f = root_path.join(&path);
         match fs::File::open(&f) {
             Ok(mut file) => {
-                res.files.insert(path, read_all(&mut file)?);
+                res.files.push((path, read_all(&mut file)?));
             },
             Err(e) => warn!("error opening output file {:?}: {:?}", f, e),
         }
