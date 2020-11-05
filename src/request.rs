@@ -13,13 +13,6 @@ use flate2::{Compression, write::GzEncoder};
 use crate::common::Error;
 use crate::import::Import;
 
-/// Requests.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum KarlRequest {
-    Ping(PingRequest),
-    Compute(ComputeRequest),
-}
-
 /// Ping request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingRequest {}

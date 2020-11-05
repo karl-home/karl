@@ -138,54 +138,43 @@ impl Controller {
     }
 
     /// Send a request to the connected host.
-    fn send(mut stream: TcpStream, req: KarlRequest) -> Result<KarlResult, Error> {
-        info!("sending {:?} to {:?}...", req, stream.peer_addr());
+    fn send(
+        mut stream: TcpStream,
+        req_bytes: Vec<u8>,
+        req_ty: HeaderType,
+    ) -> Result<(Header, Vec<u8>), Error> {
         let now = Instant::now();
-        let (bytes, ty) = match req {
-            KarlRequest::Ping(req) => (
-                bincode::serialize(&req)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
-                HT_PING_REQUEST,
-            ),
-            KarlRequest::Compute(req) => (
-                bincode::serialize(&req)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
-                HT_COMPUTE_REQUEST,
-            ),
-        };
-        debug!("=> {} s (serialize)", now.elapsed().as_secs_f32());
-        write_packet(&mut stream, ty, &bytes)?;
+        write_packet(&mut stream, req_ty, &req_bytes)?;
         debug!("=> {} s (write to stream)", now.elapsed().as_secs_f32());
 
         // Wait for the response.
         debug!("waiting for response...");
         let now = Instant::now();
-        let bytes = read_packets(&mut stream, 1)?;
+        let mut bytes = read_packets(&mut stream, 1)?;
         debug!("=> {} s (read from stream)", now.elapsed().as_secs_f32());
-        let (header, packet) = &bytes[0];
-        let res = match header.ty {
-            HT_PING_RESULT => KarlResult::Ping(
-                bincode::deserialize::<PingResult>(&packet)
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?
-            ),
-            HT_COMPUTE_RESULT => KarlResult::Compute(
-                bincode::deserialize::<ComputeResult>(&packet)
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?
-            ),
-            ty => unimplemented!("{:?}", ty),
-        };
-        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
-        Ok(res)
+        Ok(bytes.remove(0))
     }
 
     /// Ping the host.
     pub fn ping(&mut self) -> Result<PingResult, Error> {
         let stream = self.connect()?;
-        let req = KarlRequest::Ping(PingRequest::new());
-        match Controller::send(stream, req)? {
-            KarlResult::Ping(res) => Ok(res),
-            KarlResult::Compute(_) => Err(Error::InvalidResponseType),
-        }
+        let req = PingRequest::new();
+        let now = Instant::now();
+        info!("sending {:?} to {:?}...", req, stream.peer_addr());
+        debug!("serializing request");
+        let req_bytes = bincode::serialize(&req)
+            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let req_ty = HT_PING_REQUEST;
+        debug!("=> {} s", now.elapsed().as_secs_f32());
+        let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
+        let now = Instant::now();
+        let res: PingResult = match header.ty {
+            HT_PING_RESULT => bincode::deserialize(&res_bytes)
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
+            ty => { return Err(Error::InvalidPacketType(ty)); },
+        };
+        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
+        Ok(res)
     }
 
     /// Execute a compute request and return the result.
@@ -199,11 +188,22 @@ impl Controller {
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
         let stream = self.connect()?;
-        let req = KarlRequest::Compute(req);
-        match Controller::send(stream, req)? {
-            KarlResult::Compute(res) => Ok(res),
-            KarlResult::Ping(_) => Err(Error::InvalidResponseType),
-        }
+        let now = Instant::now();
+        info!("sending {:?} to {:?}...", req, stream.peer_addr());
+        debug!("serializing request");
+        let req_bytes = bincode::serialize(&req)
+            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let req_ty = HT_COMPUTE_REQUEST;
+        debug!("=> {} s", now.elapsed().as_secs_f32());
+        let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
+        let now = Instant::now();
+        let res: ComputeResult = match header.ty {
+            HT_COMPUTE_RESULT => bincode::deserialize(&res_bytes)
+                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
+            ty => { return Err(Error::InvalidPacketType(ty)); },
+        };
+        debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
+        Ok(res)
     }
 
     /// Asynchronously execute a compute request and return a handle that
@@ -213,12 +213,22 @@ impl Controller {
         req: ComputeRequest,
     ) -> Result<JoinHandle<Result<ComputeResult, Error>>, Error> {
         let stream = self.connect()?;
-        let req = KarlRequest::Compute(req);
+        let now = Instant::now();
+        debug!("serializing request");
+        let req_bytes = bincode::serialize(&req)
+            .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+        let req_ty = HT_COMPUTE_REQUEST;
+        debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(self.rt.spawn(async move {
-            match Controller::send(stream, req)? {
-                KarlResult::Compute(res) => Ok(res),
-                KarlResult::Ping(_) => Err(Error::InvalidResponseType),
-            }
+            let (header, res_bytes) = Controller::send(stream, req_bytes, req_ty)?;
+            let now = Instant::now();
+            let res: ComputeResult = match header.ty {
+                HT_COMPUTE_RESULT => bincode::deserialize(&res_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?,
+                ty => { return Err(Error::InvalidPacketType(ty)); },
+            };
+            debug!("=> {} s (deserialize)", now.elapsed().as_secs_f32());
+            Ok(res)
         }))
     }
 }

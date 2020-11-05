@@ -238,42 +238,39 @@ impl Listener {
         let (header, buf) = karl::read_packets(&mut stream, 1)?.remove(0);
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
-        // Deserialize the request.
-        debug!("deserialize packet");
-        let now = Instant::now();
-        let req_bytes = match header.ty {
-            HT_PING_REQUEST => KarlRequest::Ping(
-                bincode::deserialize(&buf[..])
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?),
-            HT_COMPUTE_REQUEST => KarlRequest::Compute(
-                bincode::deserialize(&buf[..])
-                .map_err(|e| Error::SerializationError(format!("{:?}", e)))?),
-            ty => return Err(Error::InvalidPacketType(ty)),
-        };
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-
         // Deploy the request to correct handler.
-        let (res_bytes, ty) = match req_bytes {
-            KarlRequest::Ping(req) => {
+        let (res_bytes, ty) = match header.ty {
+            HT_PING_REQUEST => {
+                debug!("deserialize packet");
+                let now = Instant::now();
+                let req = bincode::deserialize(&buf[..])
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
                 let res = self.handle_ping(req);
-                debug!("serialize packet");
                 debug!("=> {:?}", res);
+                debug!("serialize packet");
                 let now = Instant::now();
                 let res_bytes = bincode::serialize(&res)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 (res_bytes, HT_PING_RESULT)
             },
-            KarlRequest::Compute(req) => {
+            HT_COMPUTE_REQUEST => {
+                debug!("deserialize packet");
+                let now = Instant::now();
+                let req = bincode::deserialize(&buf[..])
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
                 let res = self.handle_compute(req)?;
-                debug!("serialize packet");
                 debug!("=> {:?}", res);
+                debug!("serialize packet");
                 let now = Instant::now();
                 let res_bytes = bincode::serialize(&res)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 (res_bytes, HT_COMPUTE_RESULT)
             },
+            ty => return Err(Error::InvalidPacketType(ty)),
         };
 
         // Return the result to sender.

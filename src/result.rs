@@ -1,13 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
-/// Results.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum KarlResult {
-    Ping(PingResult),
-    Compute(ComputeResult),
-}
-
 /// Ping result.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingResult {}
