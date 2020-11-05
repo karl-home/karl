@@ -21,6 +21,17 @@ pub struct PingRequest {}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingResult {}
 
+/// Host request.
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct HostRequest {}
+
+/// Host result.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HostResult {
+    pub ip: String,
+    pub port: String,
+}
+
 enum InputRoot {
     /// Uninitialized
     Uninitialized,

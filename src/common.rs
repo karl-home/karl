@@ -64,16 +64,21 @@ pub const HT_PING_REQUEST: HeaderType = 1;
 pub const HT_PING_RESULT: HeaderType = 2;
 pub const HT_COMPUTE_REQUEST: HeaderType = 3;
 pub const HT_COMPUTE_RESULT: HeaderType = 4;
+pub const HT_HOST_REQUEST: HeaderType = 5;
+pub const HT_HOST_RESULT: HeaderType = 6;
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Header {
     /// Type of struct in the packet.
     ///
     /// Possible values:
-    ///   HT_PING_REQUEST
-    ///   HT_PING_RESULT
-    ///   HT_COMPUTE_REQUEST
-    ///   HT_COMPUTE_RESULT
+    ///   HT_RAW_BYTES = 0
+    ///   HT_PING_REQUEST = 1
+    ///   HT_PING_RESULT = 2
+    ///   HT_COMPUTE_REQUEST = 3
+    ///   HT_COMPUTE_RESULT = 4
+    ///   HT_HOST_REQUEST = 5
+    ///   HT_HOST_RESULT = 6
     pub ty: HeaderType,
     /// Number of bytes in the packet
     pub length: u32,
