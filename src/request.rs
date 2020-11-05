@@ -2,7 +2,7 @@ use std::io;
 use std::fs;
 use std::fmt;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Serialize, Deserialize};
 use tempdir::TempDir;
@@ -35,8 +35,6 @@ pub struct HostResult {
 enum InputRoot {
     /// Uninitialized
     Uninitialized,
-    /// Path to root
-    Path(PathBuf),
     /// Directory to be built
     CustomDir(TempDir),
 }
@@ -142,18 +140,6 @@ impl ComputeRequestBuilder {
         self
     }
 
-    /// Initialize input root as an existing directory.
-    ///
-    /// Root must be uninitialized to begin with.
-    pub fn init_root(mut self, path: &str) -> Result<ComputeRequestBuilder, Error> {
-        let path = Path::new(path);
-        self.root = match &self.root {
-            InputRoot::Uninitialized => InputRoot::Path(path.to_path_buf()),
-            _ => return Err(Error::DoubleInputInitialization),
-        };
-        Ok(self)
-    }
-
     /// Build input root from scratch.
     ///
     /// Root must be uninitialized to begin with.
@@ -199,7 +185,6 @@ impl ComputeRequestBuilder {
     pub fn finalize(self) -> Result<ComputeRequest, Error> {
         let root_path = match &self.root {
             InputRoot::Uninitialized => return Err(Error::InvalidInputRoot),
-            InputRoot::Path(path) => path,
             InputRoot::CustomDir(root_dir) => root_dir.path(),
         };
 
