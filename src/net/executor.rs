@@ -21,17 +21,18 @@ pub fn get_host(controller_addr: &str) -> String {
     // TODO: handle network errors with connecting, writing, reading.
     // Deserialization may also fail due to the other side.
     let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let req = HostRequest::default();
-    let req_bytes = bincode::serialize(&req)
+    let req = protos::HostRequest::default();
+    let req_bytes = req
+        .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, HT_HOST_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_HOST_RESULT);
-    let res: HostResult = bincode::deserialize(&res_bytes)
+    let res = protobuf::parse_from_bytes::<protos::HostResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    format!("{}:{}", res.ip, res.port)
+    format!("{}:{}", res.get_ip(), res.get_port())
 }
 
 /// Pings the given host and returns the result.

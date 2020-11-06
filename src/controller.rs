@@ -4,12 +4,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
 use std::thread;
 
-use bincode;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
+use protobuf::Message;
 use crate::packet;
-use crate::common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT, HostResult};
+use crate::protos;
+use crate::common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT};
 
 type ServiceName = String;
 
@@ -148,10 +149,10 @@ impl Controller {
             HT_HOST_REQUEST => {
                 let host = self.find_host().unwrap();
                 info!("picked host => {:?}", host);
-                bincode::serialize(&HostResult {
-                    ip: host.ip().to_string(),
-                    port: host.port().to_string(),
-                }).unwrap()
+                let mut res = protos::HostResult::default();
+                res.set_ip(host.ip().to_string());
+                res.set_port(host.port().into());
+                res.write_to_bytes().unwrap()
             },
             ty => return Err(Error::InvalidPacketType(ty)),
         };

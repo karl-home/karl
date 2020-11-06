@@ -9,19 +9,6 @@ use flate2::{Compression, write::GzEncoder};
 
 use super::{Error, Import, PkgConfig};
 
-/// Host request.
-#[repr(C)]
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HostRequest {}
-
-/// Host result.
-#[repr(C)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HostResult {
-    pub ip: String,
-    pub port: String,
-}
-
 /// Compute request builder.
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
