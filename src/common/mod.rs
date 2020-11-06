@@ -15,6 +15,6 @@ pub use error::Error;
 pub use import::Import;
 pub use request::{
 	ComputeRequest, ComputeRequestBuilder, ComputeResult,
-	PingRequest, PingResult, HostRequest, HostResult,
+	HostRequest, HostResult,
 };
 pub use wasmer::executor::PkgConfig;

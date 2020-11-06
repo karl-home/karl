@@ -5,6 +5,7 @@ extern crate sys_mount;
 #[cfg(test)]
 extern crate serial_test;
 
+pub mod protos;
 pub mod net;
 pub mod packet;
 pub mod backend;

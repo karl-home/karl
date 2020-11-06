@@ -9,16 +9,6 @@ use flate2::{Compression, write::GzEncoder};
 
 use super::{Error, Import, PkgConfig};
 
-/// Ping request.
-#[repr(C)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PingRequest {}
-
-/// Ping result.
-#[repr(C)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PingResult {}
-
 /// Host request.
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -72,19 +62,6 @@ pub struct ComputeResult {
     pub stderr: Vec<u8>,
     /// Files.
     pub files: Vec<(String, Vec<u8>)>,
-}
-
-impl PingRequest {
-    /// Create a new ping request.
-    pub fn new() -> Self {
-        PingRequest {}
-    }
-}
-
-impl PingResult {
-    pub fn new() -> Self {
-        PingResult {}
-    }
 }
 
 impl ComputeRequestBuilder {

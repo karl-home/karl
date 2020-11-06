@@ -10,6 +10,9 @@
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use std::net::TcpStream;
 use bincode;
+use protobuf;
+use protobuf::Message;
+use crate::protos;
 use crate::packet;
 use crate::common::*;
 
@@ -32,16 +35,17 @@ pub fn get_host(controller_addr: &str) -> String {
 }
 
 /// Pings the given host and returns the result.
-pub fn send_ping(host: &str) -> PingResult {
+pub fn send_ping(host: &str) -> protos::PingResult {
     let mut stream = TcpStream::connect(&host).unwrap();
-    let req = PingRequest {};
-    let req_bytes = bincode::serialize(&req)
+    let req = protos::PingRequest::default();
+    let req_bytes = req
+        .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, HT_PING_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_PING_RESULT);
-    bincode::deserialize(&res_bytes)
+    protobuf::parse_from_bytes::<protos::PingResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
 }

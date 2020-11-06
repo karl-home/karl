@@ -13,11 +13,16 @@ use tokio::runtime::Runtime;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
+use protobuf;
+use protobuf::Message;
 use karl::{self, packet, backend::Backend};
+use karl::protos::{
+    PingRequest, PingResult,
+};
 use karl::common::{
     Error, Import, PkgConfig,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
-    ComputeRequest, ComputeResult, PingRequest, PingResult,
+    ComputeRequest, ComputeResult,
 };
 
 struct Listener {
@@ -177,7 +182,7 @@ impl Listener {
 
     /// Handle a ping request.
     fn handle_ping(&mut self, _req: PingRequest) -> PingResult {
-        PingResult::new()
+        PingResult::default()
     }
 
     /// Handle a compute request.
@@ -240,14 +245,14 @@ impl Listener {
             HT_PING_REQUEST => {
                 debug!("deserialize packet");
                 let now = Instant::now();
-                let req = bincode::deserialize(&buf[..])
+                let req = protobuf::parse_from_bytes::<PingRequest>(&buf[..])
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 let res = self.handle_ping(req);
                 debug!("=> {:?}", res);
                 debug!("serialize packet");
                 let now = Instant::now();
-                let res_bytes = bincode::serialize(&res)
+                let res_bytes = res.write_to_bytes()
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 (res_bytes, HT_PING_RESULT)
