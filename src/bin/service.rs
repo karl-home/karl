@@ -2,7 +2,6 @@
 extern crate log;
 
 use std::fs;
-use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -46,30 +45,17 @@ fn get_karl_path() -> PathBuf {
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.
+/// This is the input root which will be overlayed on top of any imports.
 ///
-/// A properly formatted request will produce a `config` file and the `root`
-/// compute directory at the base path. Returns the deserialized config file
-/// and the root path.
-///
-/// TODO: Avoid this extra serialization step.
-fn unpack_request(req: &ComputeRequest, base: &Path) -> PkgConfig {
+/// Creates the root path directory if it does not already exist.
+fn unpack_request(req: &ComputeRequest, root: &Path) -> Result<(), Error> {
     let now = Instant::now();
-    std::fs::create_dir_all(base).unwrap();
     let tar = GzDecoder::new(&req.package[..]);
     let mut archive = Archive::new(tar);
-    archive.unpack(base).expect(&format!("malformed tar.gz in request"));
-    info!("=> unpacked request to {:?}: {} s", base, now.elapsed().as_secs_f32());
-
-    // Deserialize the config file.
-    let config_path = base.join("config");
-    let config = {
-        let mut buffer = vec![];
-        let mut f = fs::File::open(&config_path).expect(
-            &format!("malformed package: no config file at {:?}", config_path));
-        f.read_to_end(&mut buffer).expect("error reading config");
-        bincode::deserialize(&buffer).expect("malformed config file")
-    };
-    config
+    fs::create_dir_all(root).unwrap();
+    archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
+    info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
+    Ok(())
 }
 
 /// Resolve imports.
@@ -195,28 +181,31 @@ impl Listener {
     }
 
     /// Handle a compute request.
-    fn handle_compute(&mut self, req: ComputeRequest) -> Result<ComputeResult, Error> {
+    fn handle_compute(
+        &mut self,
+        mut req: ComputeRequest,
+    ) -> Result<ComputeResult, Error> {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
         let now = Instant::now();
-        let mut config = unpack_request(&req, &self.base_path);
         let root_path = self.base_path.join("root");
+        unpack_request(&req, &root_path)?;
         let import_paths = resolve_import_paths(&self.karl_path, &req.imports)?;
-        config.binary_path = Some(resolve_binary_path(
-            &config, &root_path, &import_paths)?);
-        config.mapped_dirs = get_mapped_dirs(import_paths);
+        req.config.binary_path = Some(resolve_binary_path(
+            &req.config, &root_path, &import_paths)?);
+        req.config.mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = match self.backend {
             Backend::Wasm => karl::backend::wasm::run(
-                config,
+                req.config,
                 &root_path,
                 req.stdout,
                 req.stderr,
                 req.files,
             )?,
             Backend::Binary => karl::backend::binary::run(
-                config,
+                req.config,
                 &self.base_path,
                 req.stdout,
                 req.stderr,
@@ -230,7 +219,11 @@ impl Listener {
         if let Err(e) = std::fs::remove_dir_all(&self.base_path) {
             error!("error resetting root: {:?}", e);
         }
-        info!("reset directory at {:?} => {} s", self.base_path, now.elapsed().as_secs_f32());
+        info!(
+            "reset directory at {:?} => {} s",
+            self.base_path,
+            now.elapsed().as_secs_f32(),
+        );
         Ok(res)
     }
 
