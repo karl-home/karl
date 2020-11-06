@@ -7,15 +7,19 @@ message Import {
   string hash = 2;
 }
 
-message ComputeRequest {
+message PkgConfig {
   string binary_path = 1;
   repeated string args = 2;
   repeated string envs = 3;
-  bytes package = 4;
-  bool stdout = 5;
-  bool stderr = 6;
-  repeated string files = 7;
-  repeated Import imports = 8;
+}
+
+message ComputeRequest {
+  bytes package = 1;
+  PkgConfig config = 2;
+  bool stdout = 3;
+  bool stderr = 4;
+  repeated string files = 5;
+  repeated Import imports = 6;
 }
 
 message ComputeResult {

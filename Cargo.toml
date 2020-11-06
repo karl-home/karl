@@ -25,9 +25,11 @@ tar = "0.4.30"
 clap = "2.33.3"
 dirs = "1.0.5"
 rand = "0.7.3"
+protobuf = "2.18.0"
+bytes = "0.6"
 
 [build-dependencies]
-protoc-rust = "2.0"
+protoc-rust = "2.18.0"
 
 [dev-dependencies]
 tempdir = "0.3"

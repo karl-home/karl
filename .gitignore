@@ -9,3 +9,7 @@ data/*/bin/
 python
 *.svg
 node_modules/
+
+# Protobuf
+protos/js/
+protos/rust/
