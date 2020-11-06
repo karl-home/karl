@@ -7,7 +7,8 @@ use std::time::Instant;
 
 #[cfg(target_os = "linux")]
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
-use crate::common::{Error, PkgConfig, ComputeResult};
+use crate::protos::ComputeResult;
+use crate::common::{Error, PkgConfig};
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     let mut cmd = Command::new(bin);
@@ -176,17 +177,17 @@ pub fn run(
     warn!("{}", String::from_utf8_lossy(&output.stdout));
     warn!("{}", String::from_utf8_lossy(&output.stderr));
     let now = Instant::now();
-    let mut res = ComputeResult::new();
+    let mut res = ComputeResult::default();
     if res_stdout {
-        res.stdout = output.stdout;
+        res.set_stdout(output.stdout);
     }
     if res_stderr {
-        res.stderr = output.stderr;
+        res.set_stderr(output.stderr);
     }
     for path in res_files {
         let f = root_path.join(&path);
         match fs::read(&f) {
-            Ok(bytes) => res.files.push((path, bytes)),
+            Ok(bytes) => { res.mut_files().insert(path, bytes); },
             Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
         }
     }

@@ -6,7 +6,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::Instant;
 
 use clap::{Arg, App};
-use karl::{self, common::{ComputeRequest, HT_RAW_BYTES}};
+use karl::{self, protos::{Import, ComputeRequest}, common::HT_RAW_BYTES};
 
 enum Mode {
     Standalone,
@@ -26,7 +26,7 @@ fn gen_request(mode: Mode, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::common::{ComputeRequestBuilder, Import};
+    use karl::common::ComputeRequestBuilder;
     if import {
         ComputeRequestBuilder::new("python")
         .args(vec![
@@ -42,9 +42,10 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
             lib/python3.6/:\
             lib/python3.6/lib-dynload:\
             lib/python3.6/site-packages"])
-        .import(Import::Local {
+        .import(Import {
             name: "stt".to_string(),
             hash: "TODO".to_string(),
+            ..Default::default()
         })
         .add_file(audio_file)
         .finalize()
@@ -71,7 +72,7 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::common::{ComputeRequestBuilder, Import};
+    use karl::common::ComputeRequestBuilder;
     if import {
         ComputeRequestBuilder::new("node")
         .args(vec![
@@ -80,9 +81,10 @@ fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
             "models.pbmm",
             "models.scorer",
         ])
-        .import(Import::Local {
+        .import(Import {
             name: "stt_node".to_string(),
             hash: "TODO".to_string(),
+            ..Default::default()
         })
         .add_file(audio_file)
         .finalize()
@@ -102,7 +104,8 @@ fn send(controller: &str, mode: Mode, audio_file: &str) {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
-    let request = gen_request(mode, audio_file).stdout();
+    let mut request = gen_request(mode, audio_file);
+    request.set_stdout(true);
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     debug!("get host from controller");

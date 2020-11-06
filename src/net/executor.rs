@@ -9,7 +9,6 @@
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use std::net::TcpStream;
-use bincode;
 use protobuf;
 use protobuf::Message;
 use crate::protos;
@@ -52,15 +51,19 @@ pub fn send_ping(host: &str) -> protos::PingResult {
 }
 
 /// Sends a compute request to the given host and returns the result.
-pub fn send_compute(host: &str, req: ComputeRequest) -> ComputeResult {
+pub fn send_compute(
+    host: &str,
+    req: protos::ComputeRequest,
+) -> protos::ComputeResult {
     let mut stream = TcpStream::connect(&host).unwrap();
-    let req_bytes = bincode::serialize(&req)
+    let req_bytes = req
+        .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, HT_COMPUTE_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_COMPUTE_RESULT);
-    bincode::deserialize(&res_bytes)
+    protobuf::parse_from_bytes::<protos::ComputeResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
 }

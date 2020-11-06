@@ -4,7 +4,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use wasmer::executor::{Run, replay_with_config};
-use crate::common::{Error, PkgConfig, ComputeResult};
+use crate::protos::ComputeResult;
+use crate::common::{Error, PkgConfig};
 
 /// Run the compute request with the wasm backend.
 ///
@@ -39,17 +40,17 @@ pub fn run(
 
     // Return the requested results.
     let now = Instant::now();
-    let mut res = ComputeResult::new();
+    let mut res = ComputeResult::default();
     if res_stdout {
-        res.stdout = result.stdout;
+        res.set_stdout(result.stdout);
     }
     if res_stderr {
-        res.stderr = result.stderr;
+        res.set_stderr(result.stderr);
     }
     for path in res_files {
         let f = root_path.join(&path);
         match fs::read(&f) {
-            Ok(bytes) => res.files.push((path, bytes)),
+            Ok(bytes) => { res.mut_files().insert(path, bytes); },
             Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
         }
     }

@@ -7,7 +7,8 @@ use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use karl::{
     self,
-    common::{Error, ComputeRequest, ComputeRequestBuilder, Import},
+    protos::ComputeRequest,
+    common::{Error, ComputeRequestBuilder},
     backend::Backend,
 };
 
@@ -17,10 +18,10 @@ fn gen_request(backend: &Backend) -> ComputeRequest {
         Backend::Wasm => {
             ComputeRequestBuilder::new("data/add/python.wasm")
                 .args(vec!["data/add/add.py", "20"])
-                .import(Import::Wapm {
-                    name: "python".to_string(),
-                    version: "0.1.0".to_string(),
-                })
+                // .import(Import::Wapm {
+                //     name: "python".to_string(),
+                //     version: "0.1.0".to_string(),
+                // })
                 .add_file("data/add/add.py")
                 .finalize()
                 .unwrap()
@@ -52,7 +53,10 @@ fn send_all(controller: &str, n: usize, backend: &Backend) -> Result<(), Error> 
     let mut rt = Runtime::new().unwrap();
     let mut requests = vec![];
     for _ in 0..n {
-        requests.push(gen_request(backend).stdout().file("output.txt"));
+        let mut request = gen_request(backend);
+        request.set_stdout(true);
+        request.mut_files().push("output.txt".to_string());
+        requests.push(request);
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
@@ -125,6 +129,7 @@ fn main() {
             .required(true))
         .get_matches();
 
+    warn!("UNIMPLEMENTED WAPM IMPORTS");
     let n = matches.value_of("n").unwrap().parse::<usize>().unwrap();
     let host = matches.value_of("host").unwrap();
     let port = matches.value_of("port").unwrap();

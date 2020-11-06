@@ -1,3 +1,4 @@
+/*
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use wapm_cli::commands;
@@ -77,3 +78,4 @@ impl Import {
         }
     }
 }
+*/

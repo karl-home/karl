@@ -6,7 +6,6 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use bincode;
 use dirs;
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
@@ -17,12 +16,11 @@ use protobuf;
 use protobuf::Message;
 use karl::{self, packet, backend::Backend};
 use karl::protos::{
-    PingRequest, PingResult,
+    Import, ComputeRequest, ComputeResult, PingRequest, PingResult,
 };
 use karl::common::{
-    Error, Import, PkgConfig,
+    Error, PkgConfig,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
-    ComputeRequest, ComputeResult,
 };
 
 struct Listener {
@@ -55,7 +53,7 @@ fn get_karl_path() -> PathBuf {
 /// Creates the root path directory if it does not already exist.
 fn unpack_request(req: &ComputeRequest, root: &Path) -> Result<(), Error> {
     let now = Instant::now();
-    let tar = GzDecoder::new(&req.package[..]);
+    let tar = GzDecoder::new(&req.get_package()[..]);
     let mut archive = Archive::new(tar);
     fs::create_dir_all(root).unwrap();
     archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
@@ -70,7 +68,7 @@ fn resolve_import_paths(
 ) -> Result<Vec<PathBuf>, Error> {
     let mut import_paths = vec![];
     for import in imports {
-        let path = import.install_if_missing(karl_path)?;
+        let path = karl::common::import_path(&import, karl_path);
         import_paths.push(path);
     }
     Ok(import_paths)
@@ -94,14 +92,13 @@ fn get_mapped_dirs(import_paths: Vec<PathBuf>) -> Vec<String> {
 /// 2. Relative to import paths.
 /// 3. Otherwise, errors with Error::BinaryNotFound.
 fn resolve_binary_path(
-    config: &PkgConfig,
+    config: &karl::protos::PkgConfig,
     pkg_root: &Path,
     import_paths: &Vec<PathBuf>,
 ) -> Result<PathBuf, Error> {
     assert!(pkg_root.is_absolute());
     // 1.
-    let bin_path = config.binary_path.as_ref().ok_or(
-        Error::BinaryNotFound("binary path did not exist in config".to_string()))?;
+    let bin_path = Path::new(config.get_binary_path());
     let path = pkg_root.join(&bin_path);
     if path.exists() {
         return Ok(path);
@@ -188,33 +185,40 @@ impl Listener {
     /// Handle a compute request.
     fn handle_compute(
         &mut self,
-        mut req: ComputeRequest,
+        req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
         info!("handling compute: (len {}) stdout={} stderr={} {:?}",
             req.package.len(), req.stdout, req.stderr, req.files);
         let now = Instant::now();
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
-        let import_paths = resolve_import_paths(&self.karl_path, &req.imports)?;
-        req.config.binary_path = Some(resolve_binary_path(
-            &req.config, &root_path, &import_paths)?);
-        req.config.mapped_dirs = get_mapped_dirs(import_paths);
+        let import_paths = resolve_import_paths(
+            &self.karl_path, &req.imports.to_vec())?;
+        let binary_path = Some(resolve_binary_path(
+            req.get_config(), &root_path, &import_paths)?);
+        let mapped_dirs = get_mapped_dirs(import_paths);
+        let config = PkgConfig {
+            binary_path,
+            mapped_dirs,
+            args: req.get_config().get_args().to_vec(),
+            envs: req.get_config().get_envs().to_vec(),
+        };
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = match self.backend {
             Backend::Wasm => karl::backend::wasm::run(
-                req.config,
+                config,
                 &root_path,
                 req.stdout,
                 req.stderr,
-                req.files,
+                req.files.to_vec().into_iter().collect(),
             )?,
             Backend::Binary => karl::backend::binary::run(
-                req.config,
+                config,
                 &self.base_path,
                 req.stdout,
                 req.stderr,
-                req.files,
+                req.files.to_vec().into_iter().collect(),
             )?,
         };
 
@@ -260,14 +264,14 @@ impl Listener {
             HT_COMPUTE_REQUEST => {
                 debug!("deserialize packet");
                 let now = Instant::now();
-                let req = bincode::deserialize(&buf[..])
+                let req = protobuf::parse_from_bytes::<ComputeRequest>(&buf[..])
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 let res = self.handle_compute(req)?;
                 debug!("=> {:?}", res);
                 debug!("serialize packet");
                 let now = Instant::now();
-                let res_bytes = bincode::serialize(&res)
+                let res_bytes = res.write_to_bytes()
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 (res_bytes, HT_COMPUTE_RESULT)
