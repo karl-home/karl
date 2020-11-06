@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package request;
+
+message Import {
+  string name = 1;
+  string hash = 2;
+}
+
+message ComputeRequest {
+  string binary_path = 1;
+  repeated string args = 2;
+  repeated string envs = 3;
+  bytes package = 4;
+  bool stdout = 5;
+  bool stderr = 6;
+  repeated string files = 7;
+  repeated Import imports = 8;
+}
+
+message ComputeResult {
+  bytes stdout = 1;
+  bytes stderr = 2;
+  map<string, bytes> files = 3;
+}
+
+message PingRequest {
+}
+
+message PingResult {
+}
+
+message HostRequest {
+}
+
+message HostResult {
+  string ip = 1;
+  uint32 port = 2;
+}
