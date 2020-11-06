@@ -206,6 +206,8 @@ pub fn run(
 
 #[cfg(test)]
 mod test {
+    //! NOTE: Tests cannot be run concurrently with any other test.
+    //! Use `cargo test -- --ignored` or `cargo test -- --test-threads=1`.
     use super::*;
     use serial_test::serial;
 
@@ -237,6 +239,7 @@ mod test {
     ///
     /// Check stdout and stderr.
     #[test]
+    #[ignore]
     #[serial]
     fn run_stt_python() {
         let base_path = init_base_path();
@@ -300,6 +303,7 @@ mod test {
     ///
     /// Check stdout and stderr.
     #[test]
+    #[ignore]
     #[serial]
     fn run_stt_node() {
         let base_path = init_base_path();

@@ -1,12 +1,10 @@
-use std::io;
 use std::fs;
 use std::fmt;
 use std::collections::HashSet;
 use std::path::Path;
 
 use serde::{Serialize, Deserialize};
-use tempdir::TempDir;
-use tar::{Builder, Header};
+use tar::Builder;
 use flate2::{Compression, write::GzEncoder};
 
 use super::{Error, Import, PkgConfig};
@@ -48,13 +46,12 @@ pub struct ComputeRequestBuilder {
 #[repr(C)]
 #[derive(Serialize, Deserialize)]
 pub struct ComputeRequest {
-    /// Formatted tar.gz directory.
+    /// Input root directory formatted as tar.gz.
     ///
-    /// config
-    /// package/
-    /// -- binary.wasm
-    /// -- files
+    /// Should be unpackaged into a directory called `root`.
     pub package: Vec<u8>,
+    /// Package config.
+    pub config: PkgConfig,
     /// Whether to include stdout in the results.
     pub stdout: bool,
     /// Whether to include stderr in the results.
@@ -88,18 +85,6 @@ impl PingResult {
     pub fn new() -> Self {
         PingResult {}
     }
-}
-
-fn cp(root: &Path, path: &Path) -> io::Result<()> {
-    if path.is_dir() {
-        fs::create_dir_all(root.join(path))?;
-        for entry in fs::read_dir(path)? {
-            cp(root, &entry?.path())?;
-        }
-    } else {
-        fs::copy(path, root.join(path))?;
-    }
-    Ok(())
 }
 
 impl ComputeRequestBuilder {
@@ -150,6 +135,8 @@ impl ComputeRequestBuilder {
 
     /// Add a directory to the input root from the home filesystem, overwriting
     /// files with the same name.
+    ///
+    /// TODO: needs to be a relative path. should be forward searching only.
     pub fn add_dir(mut self, path: &str) -> ComputeRequestBuilder {
         self.dirs.push(path.to_string());
         self
@@ -157,36 +144,29 @@ impl ComputeRequestBuilder {
 
     /// Finalize the compute request.
     pub fn finalize(self) -> Result<ComputeRequest, Error> {
-        // Create input root.
-        let root = TempDir::new("karl").unwrap();
-        for path in &self.dirs {
-            cp(root.path(), Path::new(&path))?;
-        }
-        for path in &self.files {
-            let new_path = root.path().join(path);
-            let parent = new_path.parent().unwrap();
-            fs::create_dir_all(parent)?;
-            fs::copy(path, new_path)?;
-        }
-
-        // Tar it up.
+        // Tar up the input root.
         let mut buffer = Vec::new();
         let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
-        tar.append_dir_all("root", root.path())?;
-
-        // Tar the config.
-        let config = bincode::serialize(&self.config).unwrap();
-        let mut header = Header::new_gnu();
-        header.set_size(config.len() as _);
-        header.set_cksum();
-        tar.append_data(&mut header, "config", &config[..])?;
-        tar.into_inner()?;
+        for path in &self.dirs {
+            tar.append_dir_all(path, path)?;
+        }
+        for path in &self.files {
+            let path = Path::new(path);
+            let parent = path.parent().unwrap();
+            if parent.exists() {
+                tar.append_dir(parent, parent)?;
+            }
+            tar.append_file(path, &mut fs::File::open(path)?)?;
+        }
 
         // Generate the default compute request.
-        let mut request = ComputeRequest::new(buffer);
-        request.imports = self.imports;
-        Ok(request)
+        drop(tar);
+        Ok(ComputeRequest::new(
+            buffer,
+            self.config,
+            self.imports,
+        ))
     }
 }
 
@@ -209,13 +189,18 @@ impl ComputeRequest {
     /// package/
     /// -- binary.wasm
     /// -- files
-    pub fn new(tar_gz_bytes: Vec<u8>) -> Self {
+    pub fn new(
+        tar_gz_bytes: Vec<u8>,
+        config: PkgConfig,
+        imports: Vec<Import>,
+    ) -> Self {
         ComputeRequest {
             package: tar_gz_bytes,
+            config,
             stdout: false,
             stderr: false,
             files: HashSet::new(),
-            imports: Vec::new(),
+            imports,
         }
     }
 
@@ -245,5 +230,122 @@ impl ComputeResult {
             stderr: Vec::new(),
             files: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::path::PathBuf;
+    use tempdir::TempDir;
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    fn unpack_targz(bytes: &[u8]) -> TempDir {
+        use rand::Rng;
+        let id: u32 = rand::thread_rng().gen();
+        let tar = GzDecoder::new(bytes);
+        let mut archive = Archive::new(tar);
+        let root = TempDir::new(&id.to_string()).unwrap();
+        if let Err(e) = archive.unpack(root.path()) {
+            assert!(false, format!("malformed archive: {:?}", e));
+        }
+        root
+    }
+
+    #[test]
+    fn compute_request_builder_basic() {
+        let import = Import::Local {
+            name: "numpy".to_string(),
+            hash: "abc123".to_string(),
+        };
+        let builder = ComputeRequestBuilder::new("python")
+            .args(vec!["run.py", "10"])
+            .envs(vec!["VAR1=1", "VAR2=abc"])
+            .import(import.clone());
+        let request = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, format!("{:?}", e));
+                unreachable!()
+            },
+        };
+        let config = request.config;
+        assert_eq!(config.binary_path, Some(PathBuf::from("python")));
+        assert!(config.mapped_dirs.is_empty());
+        assert_eq!(config.args, vec!["run.py", "10"]);
+        assert_eq!(config.envs, vec!["VAR1=1", "VAR2=abc"]);
+        assert_eq!(request.imports, vec![import]);
+    }
+
+    #[test]
+    fn compute_request_builder_add_file_simple() {
+        let builder = ComputeRequestBuilder::new("python")
+            .add_file("Cargo.toml");
+        let request = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, format!("{:?}", e));
+                unreachable!()
+            },
+        };
+        let root = unpack_targz(&request.package);
+        assert!(root.path().join("Cargo.toml").exists());
+        assert!(root.path().join("Cargo.toml").is_file());
+    }
+
+    #[test]
+    fn compute_request_builder_add_file_layered() {
+        let builder = ComputeRequestBuilder::new("node")
+            .add_file("data/stt_node/weather.wav");
+        let request = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, format!("{:?}", e));
+                unreachable!()
+            },
+        };
+        let root = unpack_targz(&request.package);
+        assert!(root.path().join("data").is_dir());
+        assert!(root.path().join("data/stt_node").is_dir());
+        assert!(root.path().join("data/stt_node/weather.wav").exists());
+        assert!(root.path().join("data/stt_node/weather.wav").is_file());
+    }
+
+    #[test]
+    fn compute_request_builder_add_dir_simple() {
+        let builder = ComputeRequestBuilder::new("python")
+            .add_dir("examples");
+        let request = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, format!("{:?}", e));
+                unreachable!()
+            },
+        };
+        let root = unpack_targz(&request.package);
+        assert!(root.path().join("examples").is_dir());
+        assert!(root.path().join("examples/stt_client.rs").exists());
+        assert!(root.path().join("examples/stt_client.rs").is_file());
+    }
+
+    #[test]
+    fn compute_request_builder_add_dir_layered() {
+        let builder = ComputeRequestBuilder::new("python")
+            .add_dir("data/add");
+        let request = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, format!("{:?}", e));
+                unreachable!()
+            },
+        };
+        let root = unpack_targz(&request.package);
+        assert!(root.path().join("data").is_dir());
+        assert!(root.path().join("data/add").is_dir());
+        assert!(root.path().join("data/add/add.py").exists());
+        assert!(root.path().join("data/add/add.py").is_file());
+        assert!(root.path().join("data/add/lib").exists(), "run setup script?");
+        assert!(root.path().join("data/add/lib").is_dir());
     }
 }

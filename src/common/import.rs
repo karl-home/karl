@@ -5,7 +5,7 @@ use wapm_cli::commands;
 use super::Error;
 
 /// External import.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[repr(C)]
 pub enum Import {
     /// Wasm package manager
