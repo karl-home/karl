@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{BufRead, Read, Write};
 use serde::{Serialize, Deserialize};
-use karl_common::*;
+use crate::common::*;
 
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]

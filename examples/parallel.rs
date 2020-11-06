@@ -5,9 +5,11 @@ extern crate clap;
 use std::time::Instant;
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
-use karl;
-use karl_common::{Error, ComputeRequest, ComputeRequestBuilder, Import};
-use karl_backend::Backend;
+use karl::{
+    self,
+    common::{Error, ComputeRequest, ComputeRequestBuilder, Import},
+    backend::Backend,
+};
 
 fn gen_request(backend: &Backend) -> ComputeRequest {
     let now = Instant::now();

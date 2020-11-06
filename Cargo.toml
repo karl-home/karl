@@ -4,9 +4,16 @@ version = "0.1.0"
 authors = ["Gina Yuan <gina.yuan@gmail.com>"]
 edition = "2018"
 
+[dependencies.wasmer]
+path = "submodules/wasmer"
+default-features = false
+features = ["backend-cranelift", "wasi"]
+
+[target."cfg(target_os = \"linux\")".dependencies.sys-mount]
+version = "1.2.1"
+
 [dependencies]
-karl-common = { path = "lib/common" }
-karl-backend = { path = "lib/backend" }
+wapm-cli = { path = "submodules/wapm-cli" }
 astro-dnssd = { path = "submodules/astro-dnssd" }
 bincode = "1.3.1"
 env_logger = "0.7"
@@ -14,6 +21,7 @@ log = "0.4"
 serde = "1.0.115"
 tokio = { version = "0.2", features = ["rt-threaded"] }
 flate2 = "1.0.17"
+tempdir = "0.3"
 tar = "0.4.30"
 clap = "2.33.3"
 dirs = "1.0.5"
@@ -21,3 +29,6 @@ rand = "0.7.3"
 
 [build-dependencies]
 protoc-rust = "2.0"
+
+[dev-dependencies]
+serial_test = "*"

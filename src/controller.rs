@@ -9,7 +9,7 @@ use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use crate::packet;
-use karl_common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT, HostResult};
+use crate::common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT, HostResult};
 
 type ServiceName = String;
 

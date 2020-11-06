@@ -8,8 +8,7 @@ use std::time::Instant;
 use std::net::{TcpStream, TcpListener};
 
 use clap::{Arg, App};
-use karl::packet;
-use karl_common::{Error, HT_RAW_BYTES};
+use karl::{packet, common::{Error, HT_RAW_BYTES}};
 
 fn run_cmd(
     bin: &str,

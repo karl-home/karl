@@ -9,7 +9,7 @@ use tempdir::TempDir;
 use tar::{Builder, Header};
 use flate2::{Compression, write::GzEncoder};
 
-use crate::{Error, Import, PkgConfig};
+use super::{Error, Import, PkgConfig};
 
 /// Ping request.
 #[repr(C)]

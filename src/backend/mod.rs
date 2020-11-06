@@ -2,13 +2,6 @@
 //!
 //! Specifies the format of the computation request it receives. It could
 //! be WebAssembly, a generic binary, a Docker container...
-#[macro_use]
-extern crate log;
-#[cfg(target_os = "linux")]
-extern crate sys_mount;
-#[cfg(test)]
-extern crate serial_test;
-
 pub mod wasm;
 pub mod binary;
 

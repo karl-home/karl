@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use wapm_cli::commands;
 
-use crate::Error;
+use super::Error;
 
 /// External import.
 #[derive(Debug, Serialize, Deserialize)]

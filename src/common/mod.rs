@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 mod error;
 mod import;
 mod request;

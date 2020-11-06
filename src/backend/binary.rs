@@ -7,7 +7,7 @@ use std::time::Instant;
 
 #[cfg(target_os = "linux")]
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
-use karl_common::{Error, PkgConfig, ComputeResult};
+use crate::common::{Error, PkgConfig, ComputeResult};
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     let mut cmd = Command::new(bin);
@@ -214,7 +214,7 @@ mod test {
     /// filesystem (the audio file).
     /// Workdir path 'work' is also created on Linux for overlayfs.
     fn init_base_path() -> PathBuf {
-        let base_path = Path::new("../../data/tmp-test");
+        let base_path = Path::new("data/tmp-test");
         if base_path.exists() {
             fs::remove_dir_all(&base_path).unwrap();
         }
@@ -241,13 +241,13 @@ mod test {
     fn run_stt_python() {
         let base_path = init_base_path();
         fs::copy(
-            "../../data/stt/audio/2830-3980-0043.wav",
-            "../../data/tmp-test/root/2830-3980-0043.wav",
+            "data/stt/audio/2830-3980-0043.wav",
+            "data/tmp-test/root/2830-3980-0043.wav",
         ).unwrap();
         let root_path = base_path.join("root");
         let binary_path = fs::canonicalize(root_path).unwrap().join("bin/python");
         let data_path = {
-            let path = Path::new("../../data/stt");
+            let path = Path::new("data/stt");
             assert!(path.exists(), "run scripts/setup_stt.sh");
             let path = fs::canonicalize(path).unwrap();
             path.into_os_string().into_string().unwrap()
@@ -304,13 +304,13 @@ mod test {
     fn run_stt_node() {
         let base_path = init_base_path();
         fs::copy(
-            "../../data/stt/audio/2830-3980-0043.wav",
-            "../../data/tmp-test/root/2830-3980-0043.wav",
+            "data/stt/audio/2830-3980-0043.wav",
+            "data/tmp-test/root/2830-3980-0043.wav",
         ).unwrap();
         let root_path = base_path.join("root");
         let binary_path = fs::canonicalize(root_path).unwrap().join("bin/node");
         let data_path = {
-            let path = Path::new("../../data/stt_node");
+            let path = Path::new("data/stt_node");
             assert!(path.exists(), "run scripts/setup_stt_node.sh");
             let path = fs::canonicalize(path).unwrap();
             path.into_os_string().into_string().unwrap()
