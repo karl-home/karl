@@ -1,6 +1,6 @@
 mod error;
 mod import;
-mod request;
+mod builder;
 
 pub type HeaderType = u32;
 pub const HT_RAW_BYTES: HeaderType = 0;
@@ -13,7 +13,7 @@ pub const HT_HOST_RESULT: HeaderType = 6;
 
 pub use error::Error;
 pub use import::Import;
-pub use request::{
+pub use builder::{
 	ComputeRequest, ComputeRequestBuilder, ComputeResult,
 	HostRequest, HostResult,
 };
