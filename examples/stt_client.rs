@@ -6,7 +6,10 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::Instant;
 
 use clap::{Arg, App};
-use karl::{self, protos::{Import, ComputeRequest}, common::HT_RAW_BYTES};
+use karl::protos::{Import, ComputeRequest};
+use karl::common::HT_RAW_BYTES;
+use karl::common::ComputeRequestBuilder;
+use karl::net::{get_host, send_compute};
 
 enum Mode {
     Standalone,
@@ -26,7 +29,6 @@ fn gen_request(mode: Mode, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::common::ComputeRequestBuilder;
     if import {
         ComputeRequestBuilder::new("python")
         .args(vec![
@@ -72,7 +74,6 @@ fn gen_python_request(import: bool, audio_file: &str) -> ComputeRequest {
 }
 
 fn gen_node_request(import: bool, audio_file: &str) -> ComputeRequest {
-    use karl::common::ComputeRequestBuilder;
     if import {
         ComputeRequestBuilder::new("node")
         .args(vec![
@@ -110,12 +111,12 @@ fn send(controller: &str, mode: Mode, audio_file: &str) {
 
     debug!("get host from controller");
     let now = Instant::now();
-    let host = karl::net::get_host(controller);
+    let host = get_host(controller);
     debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
 
     let now = Instant::now();
     debug!("send request");
-    let result = karl::net::send_compute(&host, request);
+    let result = send_compute(&host, request);
     let result = String::from_utf8_lossy(&result.stdout);
     debug!("finished: {} s\n{}", now.elapsed().as_secs_f32(), result);
     info!("total: {} s", start.elapsed().as_secs_f32());
