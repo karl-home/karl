@@ -2375,6 +2375,71 @@ impl ::protobuf::reflect::ProtobufValue for NotifyEnd {
     }
 }
 
+#[derive(Clone,PartialEq,Eq,Debug,Hash)]
+pub enum MessageType {
+    RAW_BYTES = 0,
+    PING_REQUEST = 1,
+    PING_RESULT = 2,
+    COMPUTE_REQUEST = 3,
+    COMPUTE_RESULT = 4,
+    HOST_REQUEST = 5,
+    HOST_RESULT = 6,
+}
+
+impl ::protobuf::ProtobufEnum for MessageType {
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<MessageType> {
+        match value {
+            0 => ::std::option::Option::Some(MessageType::RAW_BYTES),
+            1 => ::std::option::Option::Some(MessageType::PING_REQUEST),
+            2 => ::std::option::Option::Some(MessageType::PING_RESULT),
+            3 => ::std::option::Option::Some(MessageType::COMPUTE_REQUEST),
+            4 => ::std::option::Option::Some(MessageType::COMPUTE_RESULT),
+            5 => ::std::option::Option::Some(MessageType::HOST_REQUEST),
+            6 => ::std::option::Option::Some(MessageType::HOST_RESULT),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn values() -> &'static [Self] {
+        static values: &'static [MessageType] = &[
+            MessageType::RAW_BYTES,
+            MessageType::PING_REQUEST,
+            MessageType::PING_RESULT,
+            MessageType::COMPUTE_REQUEST,
+            MessageType::COMPUTE_RESULT,
+            MessageType::HOST_REQUEST,
+            MessageType::HOST_RESULT,
+        ];
+        values
+    }
+
+    fn enum_descriptor_static() -> &'static ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            ::protobuf::reflect::EnumDescriptor::new_pb_name::<MessageType>("MessageType", file_descriptor_proto())
+        })
+    }
+}
+
+impl ::std::marker::Copy for MessageType {
+}
+
+impl ::std::default::Default for MessageType {
+    fn default() -> Self {
+        MessageType::RAW_BYTES
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for MessageType {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Enum(::protobuf::ProtobufEnum::descriptor(self))
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\rrequest.proto\x12\x07request\"0\n\x06Import\x12\x12\n\x04name\x18\
     \x01\x20\x01(\tR\x04name\x12\x12\n\x04hash\x18\x02\x20\x01(\tR\x04hash\"\
@@ -2399,7 +2464,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     Result\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
     \x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescript\
     ion\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bservic\
-    eNameb\x06proto3\
+    eName*\x8b\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPI\
+    NG_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE\
+    _REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_R\
+    EQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

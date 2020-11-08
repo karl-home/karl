@@ -2,6 +2,16 @@ syntax = "proto3";
 
 package request;
 
+enum MessageType {
+  RAW_BYTES = 0;
+  PING_REQUEST = 1;
+  PING_RESULT = 2;
+  COMPUTE_REQUEST = 3;
+  COMPUTE_RESULT = 4;
+  HOST_REQUEST = 5;
+  HOST_RESULT = 6;
+}
+
 message Import {
   string name = 1;
   string hash = 2;
