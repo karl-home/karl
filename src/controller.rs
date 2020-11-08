@@ -1,13 +1,13 @@
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, IpAddr};
 use std::path::{Path, PathBuf};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, Ipv4Addr, IpAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
 use std::fs;
 
 use serde::Serialize;
-use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
+use astro_dnssd::browser::{Service, ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use protobuf::Message;
@@ -90,6 +90,52 @@ impl Request {
     }
 }
 
+fn add_host(
+    service: &Service,
+    addr: SocketAddr,
+    hosts: &mut Vec<ServiceName>,
+    unique_hosts: &mut HashMap<ServiceName, Host>,
+) {
+    if unique_hosts.contains_key(&service.name) {
+        return;
+    }
+    info!(
+        "ADD if: {} name: {} type: {} domain: {}, addr: {:?}",
+        service.interface_index, service.name,
+        service.regtype, service.domain, addr,
+    );
+    // TODO: arbitrarily take the last address
+    // and hope that it is a private IP
+    unique_hosts.insert(
+        service.name.clone(),
+        Host {
+            name: service.name.clone(),
+            index: hosts.len(),
+            addr,
+            active_request: None,
+            last_request: None,
+        },
+    );
+    hosts.push(service.name.clone());
+}
+
+fn remove_host(
+    service: &Service,
+    hosts: &mut Vec<ServiceName>,
+    unique_hosts: &mut HashMap<ServiceName, Host>,
+) {
+    if let Some(host) = unique_hosts.remove(&service.name) {
+        hosts.remove(host.index);
+    } else {
+        return;
+    }
+    info!(
+        "RMV if: {} name: {} type: {} domain: {}",
+        service.interface_index, service.name,
+        service.regtype, service.domain,
+    );
+}
+
 impl Controller {
     /// Create a new controller.
     ///
@@ -128,16 +174,19 @@ impl Controller {
                     let results = service.resolve();
                     for r in results.unwrap() {
                         let status = r.txt_record.as_ref().unwrap().get("status");
-                        debug!("Status: {:?}", status);
+                        trace!("Status: {:?}", status);
                         let addrs = match r.to_socket_addrs() {
-                            Ok(addrs) => addrs.filter(|addr| addr.is_ipv4()).collect::<Vec<_>>(),
+                            Ok(addrs) => addrs
+                                .filter(|addr| addr.is_ipv4())
+                                .filter(|addr| addr.ip() != Ipv4Addr::LOCALHOST)
+                                .collect::<Vec<_>>(),
                             Err(e) => {
                                 error!("Failed to resolve\n=> addrs: {:?}\n=> {:?}", r, e);
                                 return;
                             },
                         };
                         if addrs.is_empty() {
-                            error!("No addresses found: {:?}", r);
+                            warn!("no addresses found\n=> {:?}", r);
                             return;
                         }
                         // Update hosts with IPv4 address.
@@ -145,39 +194,14 @@ impl Controller {
                         // NOTE: only adds the first IPv4 address...
                         let mut hosts = hosts.lock().unwrap();
                         let mut unique_hosts = unique_hosts.lock().unwrap();
+                        debug!("{:?}", addrs);
                         match service.event_type {
                             ServiceEventType::Added => {
-                                if unique_hosts.contains_key(&service.name) {
-                                    continue;
-                                }
-                                info!(
-                                    "ADD if: {} name: {} type: {} domain: {} => {:?}",
-                                    service.interface_index, service.name,
-                                    service.regtype, service.domain, addrs,
-                                );
-                                unique_hosts.insert(
-                                    service.name.clone(),
-                                    Host {
-                                        name: service.name.clone(),
-                                        index: hosts.len(),
-                                        addr: addrs[0],
-                                        active_request: None,
-                                        last_request: None,
-                                    },
-                                );
-                                hosts.push(service.name.clone());
+                                let addr = addrs[0];
+                                add_host(&service, addr, &mut hosts, &mut unique_hosts);
                             },
                             ServiceEventType::Removed => {
-                                if let Some(host) = unique_hosts.remove(&service.name) {
-                                    hosts.remove(host.index);
-                                } else {
-                                    continue;
-                                }
-                                info!(
-                                    "RMV if: {} name: {} type: {} domain: {} => {:?}",
-                                    service.interface_index, service.name,
-                                    service.regtype, service.domain, addrs,
-                                );
+                                remove_host(&service, &mut hosts, &mut unique_hosts);
                             },
                         }
                     }
