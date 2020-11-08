@@ -11,6 +11,9 @@ use crate::protos::ComputeResult;
 use crate::common::{Error, PkgConfig};
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
+    debug!("bin: {:?}", bin);
+    debug!("envs: {:?}", envs);
+    debug!("args: {:?}", args);
     let mut cmd = Command::new(bin);
     for arg in args {
         cmd.arg(arg);
