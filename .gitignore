@@ -4,8 +4,11 @@ logs/
 # Data
 data/*/lib/
 data/*/bin/
+data/*/env/
+data/person-detection/PennFudanPed/
 *.pbmm
 *.scorer
+*.pth
 python
 *.svg
 node_modules/
