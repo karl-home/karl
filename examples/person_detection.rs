@@ -4,21 +4,30 @@ extern crate log;
 use std::time::Instant;
 
 use clap::{Arg, App};
-use karl::{self, common::ComputeRequestBuilder, protos::ComputeRequest};
+use karl::{self, common::ComputeRequestBuilder, protos::{Import, ComputeRequest}};
 
 fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
     let model_path = "torch/checkpoints/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth";
     let dst_img_path = std::path::Path::new(img_path)
         .file_name().unwrap()
         .to_str().unwrap();
-    ComputeRequestBuilder::new("env/bin/python")
+    let mut request = ComputeRequestBuilder::new("env/bin/python")
         .args(vec!["detect.py", dst_img_path])
         .add_file("data/person-detection/detect.py", "detect.py")
+        .add_file(img_path, dst_img_path);
+    request = if import {
+        request
+        .import(Import {
+            name: "person-detection".to_string(),
+            hash: "TODO".to_string(),
+            ..Default::default()
+        })
+    } else {
+        request
         .add_file(&format!("data/person-detection/{}", model_path), model_path)
-        .add_file(img_path, dst_img_path)
         .add_dir("data/person-detection/env/", "env/")
-        .finalize()
-        .unwrap()
+    };
+    request.finalize().unwrap()
 }
 
 /// Requests computation from the host.
