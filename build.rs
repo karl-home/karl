@@ -6,5 +6,5 @@ fn main() {
         .inputs(&["protos/request.proto"])
         .include("protos")
         .run()
-        .expect("protoc");
+        .expect("protoc failed");
 }

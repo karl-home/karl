@@ -155,13 +155,17 @@ pub fn run(
         info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
     }
     #[cfg(target_os = "linux")]
-    let mount_result = {
+    let mount_result = if config.mapped_dirs.is_empty() {
+        env::set_current_dir(&root_path).unwrap();
+        info!("=> no mapped dirs, set current dir to {:?}", &root_path);
+        None
+    } else {
         let work_path = base_path.join("work");
         fs::create_dir_all(&work_path).unwrap();
         let mount_result = mount(config.mapped_dirs, &root_path, &work_path);
         env::set_current_dir(&root_path).unwrap();
         info!("=> mounted fs: {} s", now.elapsed().as_secs_f32());
-        mount_result
+        Some(mount_result)
     };
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
@@ -194,7 +198,7 @@ pub fn run(
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
     env::set_current_dir(&previous_dir).unwrap();
     #[cfg(target_os = "linux")]
-    {
+    if let Some(mount_result) = mount_result {
         // Note that a filesystem cannot be unmounted when it is 'busy' - for
         // example, when there are open files on it, or when some process has
         // its working directory there, or when a swap file on it is in use.
