@@ -11,8 +11,8 @@ use super::Error;
 #[repr(C)]
 #[derive(Debug)]
 pub struct ComputeRequestBuilder {
-    pub dirs: Vec<String>,
-    pub files: Vec<String>,
+    pub dirs: Vec<(String, String)>,
+    pub files: Vec<(String, String)>,
     pub imports: Vec<protos::Import>,
     pub config: protos::PkgConfig,
 }
@@ -55,8 +55,8 @@ impl ComputeRequestBuilder {
 
     /// Add a file to the input root from the home filesystem, overwriting
     /// files with the same name.
-    pub fn add_file(mut self, path: &str) -> ComputeRequestBuilder {
-        self.files.push(path.to_string());
+    pub fn add_file(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
+        self.files.push((src_path.to_string(), dst_path.to_string()));
         self
     }
 
@@ -64,8 +64,8 @@ impl ComputeRequestBuilder {
     /// files with the same name.
     ///
     /// TODO: needs to be a relative path. should be forward searching only.
-    pub fn add_dir(mut self, path: &str) -> ComputeRequestBuilder {
-        self.dirs.push(path.to_string());
+    pub fn add_dir(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
+        self.dirs.push((src_path.to_string(), dst_path.to_string()));
         self
     }
 
@@ -75,16 +75,19 @@ impl ComputeRequestBuilder {
         let mut buffer = Vec::new();
         let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
-        for path in &self.dirs {
-            tar.append_dir_all(path, path)?;
+        for (src_path, dst_path) in &self.dirs {
+            trace!("append_dir_all({:?}, {:?})", dst_path, src_path);
+            tar.append_dir_all(dst_path, src_path)?;
         }
-        for path in &self.files {
-            let path = Path::new(path);
-            let parent = path.parent().unwrap();
-            if parent.exists() {
-                tar.append_dir(parent, parent)?;
+        for (src_path, dst_path) in &self.files {
+            let src_parent = Path::new(src_path).parent().unwrap();
+            let dst_parent = Path::new(dst_path).parent().unwrap();
+            trace!("append_dir({:?}, {:?})", dst_parent, src_parent);
+            if dst_parent.parent().is_some() {
+                tar.append_dir(dst_parent, src_parent)?;
             }
-            tar.append_file(path, &mut fs::File::open(path)?)?;
+            trace!("append_file({:?}, {:?})", dst_path, src_path);
+            tar.append_file(dst_path, &mut fs::File::open(src_path)?)?;
         }
 
         // Generate the default compute request.
