@@ -6,17 +6,17 @@ use std::time::Instant;
 use clap::{Arg, App};
 use karl::{self, common::ComputeRequestBuilder, protos::ComputeRequest};
 
-fn gen_request(img_path: &str) -> ComputeRequest {
+fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
     let model_path = "torch/checkpoints/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth";
     let dst_img_path = std::path::Path::new(img_path)
         .file_name().unwrap()
         .to_str().unwrap();
     ComputeRequestBuilder::new("env/bin/python")
-        .args(vec![""])
+        .args(vec!["detect.py", dst_img_path])
         .add_file("data/person-detection/detect.py", "detect.py")
-        .add_file(model_path, model_path)
+        .add_file(&format!("data/person-detection/{}", model_path), model_path)
         .add_file(img_path, dst_img_path)
-        .add_dir("data/person-detection/env", "env")
+        .add_dir("data/person-detection/env/", "env/")
         .finalize()
         .unwrap()
 }
@@ -25,11 +25,13 @@ fn gen_request(img_path: &str) -> ComputeRequest {
 ///
 /// Params:
 /// - controller: <IP>:<PORT>
-fn send(controller: &str, img_path: &str) {
+/// - import: whether to build the request with an import
+/// - img_path: src path to image
+fn send(controller: &str, import: bool, img_path: &str) {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
-    let mut request = gen_request(img_path);
+    let mut request = gen_request(import, img_path);
     request.set_stdout(true);
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
@@ -67,12 +69,16 @@ fn main() {
              .long("img")
              .takes_value(true)
              .default_value("data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png"))
+        .arg(Arg::with_name("import")
+             .long("import")
+             .help("Whether to send the request with a local STT import."))
         .get_matches();
 
     let host = matches.value_of("host").unwrap();
     let port = matches.value_of("port").unwrap();
     let addr = format!("{}:{}", host, port);
     let img_path = matches.value_of("img").unwrap();
-    send(&addr, img_path);
+    let import = matches.is_present("import");
+    send(&addr, import, img_path);
     info!("done.");
 }
