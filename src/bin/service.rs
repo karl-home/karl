@@ -6,7 +6,6 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use dirs;
 use clap::{Arg, App};
 use tokio::runtime::Runtime;
 use flate2::read::GzDecoder;
@@ -40,11 +39,12 @@ struct Listener {
 }
 
 /// Read from the KARL_PATH environment variable. (TODO)
-///
 /// If not set, defaults to ~/.karl/.
+///
+/// ACTUALLY, hardcoded to "/home/gina/.karl" since homedir can't
+/// resolve correctly when running with root, and root is needed to mount.
 fn get_karl_path() -> PathBuf {
-    let home_dir = dirs::home_dir().unwrap();
-    home_dir.join(".karl")
+    Path::new("/home/gina/.karl").to_path_buf()
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.
