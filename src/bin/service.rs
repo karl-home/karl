@@ -104,11 +104,15 @@ fn resolve_binary_path(
         return Ok(path);
     }
     // 2.
-    let wasm_filename = bin_path.file_name().ok_or(
+    let filename = bin_path.file_name().ok_or(
         Error::BinaryNotFound(format!("malformed: {:?}", bin_path)))?;
     for import_path in import_paths {
         assert!(import_path.is_absolute());
-        let path = import_path.join("bin").join(&wasm_filename);
+        let path = import_path.join("bin").join(&filename);
+        if path.exists() {
+            return Ok(path);
+        }
+        let path = import_path.join(&bin_path);
         if path.exists() {
             return Ok(path);
         }
