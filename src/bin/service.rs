@@ -191,8 +191,8 @@ impl Listener {
         &mut self,
         req: ComputeRequest,
     ) -> Result<ComputeResult, Error> {
-        info!("handling compute: (len {}) stdout={} stderr={} {:?}",
-            req.package.len(), req.stdout, req.stderr, req.files);
+        info!("handling compute from {:?}: (len {}) stdout={} stderr={} storage={} {:?}",
+            req.client_id, req.package.len(), req.stdout, req.stderr, req.storage, req.files);
         let now = Instant::now();
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;

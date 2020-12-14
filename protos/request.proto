@@ -20,6 +20,8 @@ message ComputeRequest {
   bool stderr = 4;
   repeated string files = 5;
   repeated Import imports = 6;
+  string client_id = 7;
+  bool storage = 8;
 }
 
 message ComputeResult {

@@ -474,6 +474,8 @@ pub struct ComputeRequest {
     pub stderr: bool,
     pub files: ::protobuf::RepeatedField<::std::string::String>,
     pub imports: ::protobuf::RepeatedField<Import>,
+    pub client_id: ::std::string::String,
+    pub storage: bool,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -628,6 +630,47 @@ impl ComputeRequest {
     pub fn take_imports(&mut self) -> ::protobuf::RepeatedField<Import> {
         ::std::mem::replace(&mut self.imports, ::protobuf::RepeatedField::new())
     }
+
+    // string client_id = 7;
+
+
+    pub fn get_client_id(&self) -> &str {
+        &self.client_id
+    }
+    pub fn clear_client_id(&mut self) {
+        self.client_id.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_client_id(&mut self, v: ::std::string::String) {
+        self.client_id = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_client_id(&mut self) -> &mut ::std::string::String {
+        &mut self.client_id
+    }
+
+    // Take field
+    pub fn take_client_id(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.client_id, ::std::string::String::new())
+    }
+
+    // bool storage = 8;
+
+
+    pub fn get_storage(&self) -> bool {
+        self.storage
+    }
+    pub fn clear_storage(&mut self) {
+        self.storage = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_storage(&mut self, v: bool) {
+        self.storage = v;
+    }
 }
 
 impl ::protobuf::Message for ComputeRequest {
@@ -675,6 +718,16 @@ impl ::protobuf::Message for ComputeRequest {
                 6 => {
                     ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.imports)?;
                 },
+                7 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_id)?;
+                },
+                8 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.storage = tmp;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -707,6 +760,12 @@ impl ::protobuf::Message for ComputeRequest {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
         };
+        if !self.client_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(7, &self.client_id);
+        }
+        if self.storage != false {
+            my_size += 2;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -735,6 +794,12 @@ impl ::protobuf::Message for ComputeRequest {
             os.write_raw_varint32(v.get_cached_size())?;
             v.write_to_with_cached_sizes(os)?;
         };
+        if !self.client_id.is_empty() {
+            os.write_string(7, &self.client_id)?;
+        }
+        if self.storage != false {
+            os.write_bool(8, self.storage)?;
+        }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -803,6 +868,16 @@ impl ::protobuf::Message for ComputeRequest {
                 |m: &ComputeRequest| { &m.imports },
                 |m: &mut ComputeRequest| { &mut m.imports },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "client_id",
+                |m: &ComputeRequest| { &m.client_id },
+                |m: &mut ComputeRequest| { &mut m.client_id },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "storage",
+                |m: &ComputeRequest| { &m.storage },
+                |m: &mut ComputeRequest| { &mut m.storage },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<ComputeRequest>(
                 "ComputeRequest",
                 fields,
@@ -825,6 +900,8 @@ impl ::protobuf::Clear for ComputeRequest {
         self.stderr = false;
         self.files.clear();
         self.imports.clear();
+        self.client_id.clear();
+        self.storage = false;
         self.unknown_fields.clear();
     }
 }
@@ -1901,21 +1978,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x20\x01(\tR\x04name\x12\x12\n\x04hash\x18\x02\x20\x01(\tR\x04hash\"\
     T\n\tPkgConfig\x12\x1f\n\x0bbinary_path\x18\x01\x20\x01(\tR\nbinaryPath\
     \x12\x12\n\x04args\x18\x02\x20\x03(\tR\x04args\x12\x12\n\x04envs\x18\x03\
-    \x20\x03(\tR\x04envs\"\xc7\x01\n\x0eComputeRequest\x12\x18\n\x07package\
+    \x20\x03(\tR\x04envs\"\xfe\x01\n\x0eComputeRequest\x12\x18\n\x07package\
     \x18\x01\x20\x01(\x0cR\x07package\x12*\n\x06config\x18\x02\x20\x01(\x0b2\
     \x12.request.PkgConfigR\x06config\x12\x16\n\x06stdout\x18\x03\x20\x01(\
     \x08R\x06stdout\x12\x16\n\x06stderr\x18\x04\x20\x01(\x08R\x06stderr\x12\
     \x14\n\x05files\x18\x05\x20\x03(\tR\x05files\x12)\n\x07imports\x18\x06\
-    \x20\x03(\x0b2\x0f.request.ImportR\x07imports\"\xb2\x01\n\rComputeResult\
-    \x12\x16\n\x06stdout\x18\x01\x20\x01(\x0cR\x06stdout\x12\x16\n\x06stderr\
-    \x18\x02\x20\x01(\x0cR\x06stderr\x127\n\x05files\x18\x03\x20\x03(\x0b2!.\
-    request.ComputeResult.FilesEntryR\x05files\x1a8\n\nFilesEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
-    \x0cR\x05value:\x028\x01\"\r\n\x0bPingRequest\"\x0c\n\nPingResult\"\r\n\
-    \x0bHostRequest\"0\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01(\tR\x02\
-    ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\"!\n\x0fRegisterRequest\
-    \x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\"\x10\n\x0eRegisterResultb\
-    \x06proto3\
+    \x20\x03(\x0b2\x0f.request.ImportR\x07imports\x12\x1b\n\tclient_id\x18\
+    \x07\x20\x01(\tR\x08clientId\x12\x18\n\x07storage\x18\x08\x20\x01(\x08R\
+    \x07storage\"\xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\x18\x01\x20\
+    \x01(\x0cR\x06stdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\x0cR\x06stderr\
+    \x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntry\
+    R\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
+    y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
+    ingRequest\"\x0c\n\nPingResult\"\r\n\x0bHostRequest\"0\n\nHostResult\x12\
+    \x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01\
+    (\rR\x04port\"!\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
+    \x02id\"\x10\n\x0eRegisterResultb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

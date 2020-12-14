@@ -6,6 +6,8 @@ use std::time::Instant;
 use clap::{Arg, App};
 use karl::{self, common::ComputeRequestBuilder, protos::{Import, ComputeRequest}};
 
+static CLIENT_ID: &str = "camera";
+
 fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
     let model_path = "torch/checkpoints/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth";
     let dst_img_path = std::path::Path::new(img_path)
@@ -34,14 +36,19 @@ fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
 ///
 /// Params:
 /// - controller: <IP>:<PORT>
+/// - storage: whether to request persistent storage
 /// - import: whether to build the request with an import
 /// - img_path: src path to image
-fn send(controller: &str, import: bool, img_path: &str) {
+fn send(controller: &str, storage: bool, import: bool, img_path: &str) {
     let start = Instant::now();
     debug!("building request");
     let now = Instant::now();
     let mut request = gen_request(import, img_path);
     request.set_stdout(true);
+    request.set_client_id(CLIENT_ID.to_string());
+    if storage {
+        request.set_storage(true);
+    }
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     debug!("get host from controller");
@@ -57,11 +64,10 @@ fn send(controller: &str, import: bool, img_path: &str) {
     info!("total: {} s", start.elapsed().as_secs_f32());
 }
 
-/// Registers a client with ID "camera" with the controller.
+/// Registers a client with id CLIENT_ID with the controller.
 fn register(controller: &str) {
-    let id = "camera";
-    info!("registering client id {:?} with controller", id);
-    karl::net::register_client(controller, id);
+    info!("registering client id {:?} with controller", CLIENT_ID);
+    karl::net::register_client(controller, CLIENT_ID);
 }
 
 fn main() {
@@ -87,7 +93,10 @@ fn main() {
              .default_value("data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png"))
         .arg(Arg::with_name("import")
              .long("import")
-             .help("Whether to send the request with a local STT import."))
+             .help("Whether to send the request with a person-detection import."))
+        .arg(Arg::with_name("storage")
+             .long("storage")
+             .help("Whether to request persistent storage."))
         .get_matches();
 
     let host = matches.value_of("host").unwrap();
@@ -95,7 +104,8 @@ fn main() {
     let addr = format!("{}:{}", host, port);
     let img_path = matches.value_of("img").unwrap();
     let import = matches.is_present("import");
+    let storage = matches.is_present("storage");
     register(&addr);
-    send(&addr, import, img_path);
+    send(&addr, storage, import, img_path);
     info!("done.");
 }
