@@ -1,7 +1,11 @@
 //! Controller dashboard.
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use rocket;
-use tokio::runtime::Runtime;
+use rocket::State;
 use rocket_contrib::templates::Template;
+use tokio::runtime::Runtime;
 use serde::Serialize;
 
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
@@ -14,25 +18,10 @@ struct TemplateContext {
 }
 
 #[get("/")]
-fn index() -> Template {
+fn index(hosts: State<Arc<Mutex<HashMap<String, Host>>>>) -> Template {
     Template::render("index", &TemplateContext {
         title: "Hello",
-        hosts: vec![Host {
-            index: 1,
-            name: "1".to_string(),
-            addr: "10.0.0.1:6334".parse().unwrap(),
-            is_busy: false,
-            active_request: None,
-            last_request: Some(Request::new("Wyze".to_string())),
-        },
-        Host {
-            index: 2,
-            name: "2".to_string(),
-            addr: "10.0.0.1:6335".parse().unwrap(),
-            is_busy: true,
-            active_request: Some(Request::new("Wyze".to_string())),
-            last_request: Some(Request::new("Wyze".to_string())),
-        }],
+        hosts: hosts.lock().unwrap().values().map(|host| host.clone()).collect(),
     })
 }
 
@@ -63,9 +52,10 @@ fn request_helper(
     Ok(())
 }
 
-pub fn start(rt: &mut Runtime) {
+pub fn start(rt: &mut Runtime, hosts: Arc<Mutex<HashMap<String, Host>>>) {
     rt.spawn(async move {
         rocket::ignite()
+        .manage(hosts)
         .mount("/", routes![index])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));

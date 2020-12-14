@@ -21,7 +21,7 @@ use crate::common::{
 type ServiceName = String;
 
 /// Request information.
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Request {
     // Name of request, given by the client.
     pub name: String,
@@ -30,7 +30,7 @@ pub struct Request {
 }
 
 /// Host status and information.
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Host {
     // Index, used internally.
     pub index: usize,
@@ -184,7 +184,7 @@ impl Controller {
         port: u16,
     ) -> Result<(), Error> {
         if use_dashboard {
-            dashboard::start(&mut self.rt);
+            dashboard::start(&mut self.rt, self.unique_hosts.clone());
         }
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
