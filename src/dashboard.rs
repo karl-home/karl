@@ -1,11 +1,11 @@
 //! Controller dashboard.
 use rocket;
 use tokio::runtime::Runtime;
-use std::time::{SystemTime, UNIX_EPOCH};
 use rocket_contrib::templates::Template;
 use serde::Serialize;
 
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
+use crate::controller::{Request, Host};
 
 #[derive(Serialize)]
 struct TemplateContext {
@@ -13,53 +13,22 @@ struct TemplateContext {
     hosts: Vec<Host>,
 }
 
-type TimeSinceEpoch = u64;
-
-#[derive(Serialize)]
-struct Request {
-    name: String,
-    start: TimeSinceEpoch,
-}
-
-impl Request {
-    pub fn new(name: String) -> Self {
-        Request {
-            name,
-            start: now(),
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct Host {
-    id: u32,
-    ip: String,
-    port: u32,
-    is_busy: bool,
-    active_request: Option<Request>,
-    last_request: Option<Request>,
-}
-
-fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
-}
-
 #[get("/")]
 fn index() -> Template {
     Template::render("index", &TemplateContext {
         title: "Hello",
         hosts: vec![Host {
-            id: 1,
-            ip: "10.0.0.1".to_string(),
-            port: 6334,
+            index: 1,
+            name: "1".to_string(),
+            addr: "10.0.0.1:6334".parse().unwrap(),
             is_busy: false,
             active_request: None,
             last_request: Some(Request::new("Wyze".to_string())),
         },
         Host {
-            id: 2,
-            ip: "10.0.0.1".to_string(),
-            port: 6335,
+            index: 2,
+            name: "2".to_string(),
+            addr: "10.0.0.1:6335".parse().unwrap(),
             is_busy: true,
             active_request: Some(Request::new("Wyze".to_string())),
             last_request: Some(Request::new("Wyze".to_string())),
@@ -82,7 +51,7 @@ fn request_helper(
         }
         if let Some(start) = param.value().get("start") {
             if let Some(start) = start.as_u64() {
-                let current_time = now();
+                let current_time = Request::time_since_epoch_s();
                 let elapsed = current_time - start;
                 out.write(" (")?;
                 out.write(&elapsed.to_string())?;

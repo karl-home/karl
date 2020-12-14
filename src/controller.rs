@@ -1,9 +1,10 @@
 use std::collections::{HashSet, HashMap};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
+use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
 
+use serde::Serialize;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
@@ -19,6 +20,32 @@ use crate::common::{
 
 type ServiceName = String;
 
+/// Request information.
+#[derive(Serialize)]
+pub struct Request {
+    // Name of request, given by the client.
+    pub name: String,
+    // Time since UNIX epoch.
+    pub start: u64,
+}
+
+/// Host status and information.
+#[derive(Serialize)]
+pub struct Host {
+    // Index, used internally.
+    pub index: usize,
+    // Service name, as identified by DNS-SD.
+    pub name: ServiceName,
+    // Host address.
+    pub addr: SocketAddr,
+    // Whether the host has been allocated to a client.
+    pub is_busy: bool,
+    // Active request.
+    pub active_request: Option<Request>,
+    // Last request.
+    pub last_request: Option<Request>,
+}
+
 /// Controller used for discovering available Karl services via DNS-SD.
 ///
 /// Currently, each client runs its own controller, which is aware of all
@@ -29,9 +56,22 @@ pub struct Controller {
     pub rt: Runtime,
     blocking: bool,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
-    unique_hosts: Arc<Mutex<HashMap<ServiceName, (SocketAddr, usize)>>>,
+    unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
     clients: HashSet<String>,
     prev_host_i: usize,
+}
+
+impl Request {
+    pub fn time_since_epoch_s() -> u64 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    pub fn new(name: String) -> Self {
+        Request {
+            name,
+            start: Request::time_since_epoch_s(),
+        }
+    }
 }
 
 impl Controller {
@@ -98,12 +138,22 @@ impl Controller {
                                     service.interface_index, service.name,
                                     service.regtype, service.domain, addrs,
                                 );
-                                unique_hosts.insert(service.name.clone(), (addrs[0], hosts.len()));
+                                unique_hosts.insert(
+                                    service.name.clone(),
+                                    Host {
+                                        name: service.name.clone(),
+                                        index: hosts.len(),
+                                        addr: addrs[0],
+                                        is_busy: false,
+                                        active_request: None,
+                                        last_request: None,
+                                    },
+                                );
                                 hosts.push(service.name.clone());
                             },
                             ServiceEventType::Removed => {
-                                if let Some((_, i)) = unique_hosts.remove(&service.name) {
-                                    hosts.remove(i);
+                                if let Some(host) = unique_hosts.remove(&service.name) {
+                                    hosts.remove(host.index);
                                 } else {
                                     continue;
                                 }
@@ -200,7 +250,7 @@ impl Controller {
                 let service_name = &hosts[i];
                 self.prev_host_i = i;
                 let unique_hosts = self.unique_hosts.lock().unwrap();
-                return Ok(unique_hosts.get(service_name).unwrap().0);
+                return Ok(unique_hosts.get(service_name).unwrap().addr);
             }
             if !self.blocking {
                 return Err(Error::NoAvailableHosts);

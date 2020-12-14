@@ -19,8 +19,7 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>IP</th>
-          <th>Port</th>
+          <th>Addr</th>
           <th>Status</th>
           <th>Active Request</th>
           <th>Last Request</th>
@@ -29,9 +28,8 @@
       <tbody>
         {{#each hosts}}
           <tr>
-            <td>{{this.id}}</td>
-            <td>{{this.ip}}</td>
-            <td>{{this.port}}</td>
+            <td>{{this.name}}</td>
+            <td>{{this.addr}}</td>
             <td>{{#if this.is_busy }} BUSY {{else}} AVAILABLE {{/if}}</td>
             <td>{{request this.active_request}}</td>
             <td>{{request this.last_request}}</td>
