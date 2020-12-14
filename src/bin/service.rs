@@ -219,7 +219,10 @@ impl Listener {
             )?,
             Backend::Binary => karl::backend::binary::run(
                 config,
+                &self.karl_path,
                 &self.base_path,
+                req.get_client_id(),
+                req.get_storage(),
                 req.stdout,
                 req.stderr,
                 req.files.to_vec().into_iter().collect(),

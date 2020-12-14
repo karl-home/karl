@@ -70,44 +70,63 @@ fn copy_mapped_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
 /// - root_path - The initial filesystem provided by the client, and the
 ///   eventual working directory.
 /// - work_path - Needed for the overlay fs.
+/// - storage_path - Persistent storage layer, if requested.
 ///
 /// Returns:
 /// An object representing the mounted filesystem. Once the reference to the
 /// object is dropped, the directory is also unmounted.
+/// If no mount is needed i.e. no storage nor mapped dirs, returns None.
 #[cfg(target_os = "linux")]
 fn mount(
     mapped_dirs: Vec<String>,
     root_path: &Path,
     work_path: &Path,
-) -> Mount {
+    storage_path: Option<PathBuf>,
+) -> Option<Mount> {
+    // no storage nor mapped dirs
+    if mapped_dirs.is_empty() && storage_path.is_none() {
+        return None;
+    }
     let fstype = "overlay";
     assert!(SupportedFilesystems::new().unwrap().is_supported(fstype));
-    let lowerdir = mapped_dirs
-        .iter()
-        .map(|mapped_dir| {
-            let mut mapped_dir = mapped_dir.split(":");
-            let new_dir = mapped_dir.next().unwrap();
-            let old_dir = mapped_dir.next().unwrap();
-            assert_eq!(new_dir, ".");
-            assert!(Path::new(old_dir).is_dir());
-            old_dir
-        })
-        .collect::<Vec<_>>()
-        .join(":");
+    let lowerdir = {
+        let mut mapped_dirs = mapped_dirs
+            .iter()
+            .map(|mapped_dir| {
+                let mut mapped_dir = mapped_dir.split(":");
+                let new_dir = mapped_dir.next().unwrap();
+                let old_dir = mapped_dir.next().unwrap();
+                assert_eq!(new_dir, ".");
+                assert!(Path::new(old_dir).is_dir());
+                old_dir
+            })
+            .collect::<Vec<_>>();
+        if storage_path.is_some() {
+            mapped_dirs.push(root_path.to_str().unwrap());
+        }
+        assert!(!mapped_dirs.is_empty());
+        mapped_dirs.join(":")
+    };
+    let upperdir = if let Some(storage_path) = storage_path.as_ref() {
+        storage_path.to_str().unwrap()
+    } else {
+        root_path.to_str().unwrap()
+    };
+
     let options = format!(
         "lowerdir={},upperdir={},workdir={}",
         lowerdir,
-        root_path.to_str().unwrap(),
+        upperdir,
         work_path.to_str().unwrap(),
     );
     debug!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
-    Mount::new(
+    Some(Mount::new(
         "dummy",  // dummy
         root_path,
         fstype,
         MountFlags::empty(),
         Some(&options),
-    ).unwrap()
+    ).unwrap())
 }
 
 /// Run the compute request with the native backend.
@@ -126,16 +145,22 @@ fn mount(
 ///        args,         # Arguments.
 ///        envs,         # Environment variables.
 ///    }
+/// - `karl_path`: Probably `~/.karl`.
 /// - `base_path`: The service base path is usually at `~/.karl/<id>`. The
 ///   path to the computation root should be a directory within the service
 ///   base path, and should exist. The computation root contains the unpacked
 ///   and decompressed bytes of the compute request.
+/// - `client_id`: Client ID, used to determine persistent storage path.
+/// - `storage`: Whether to use persistent storage.
 /// - `res_stdout`: Whether to include stdout in the result.
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
     config: PkgConfig,
+    karl_path: &Path,
     base_path: &Path,
+    client_id: &str,
+    storage: bool,
     res_stdout: bool,
     res_stderr: bool,
     res_files: HashSet<String>,
@@ -145,6 +170,13 @@ pub fn run(
     assert!(base_path.is_dir());
     let root_path = base_path.join("root");
     assert!(root_path.is_dir());
+    let storage_path = if storage {
+        let storage_path = karl_path.join("storage").join(client_id);
+        fs::create_dir_all(&storage_path).unwrap();
+        Some(storage_path)
+    } else {
+        None
+    };
 
     // Map directories using an overlay fs if possible, but otherwise
     // copy all the files into the root path. This can be very slow!
@@ -153,19 +185,16 @@ pub fn run(
         env::set_current_dir(&root_path).unwrap();
         copy_mapped_dirs(config.mapped_dirs)?;
         info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
+        unimplemented!("storage in macos");
     }
     #[cfg(target_os = "linux")]
-    let mount_result = if config.mapped_dirs.is_empty() {
-        env::set_current_dir(&root_path).unwrap();
-        info!("=> no mapped dirs, set current dir to {:?}", &root_path);
-        None
-    } else {
+    let mount_result = {
         let work_path = base_path.join("work");
         fs::create_dir_all(&work_path).unwrap();
-        let mount_result = mount(config.mapped_dirs, &root_path, &work_path);
+        let mount_result = mount(config.mapped_dirs, &root_path, &work_path, storage_path);
         env::set_current_dir(&root_path).unwrap();
         info!("=> mounted fs: {} s", now.elapsed().as_secs_f32());
-        Some(mount_result)
+        mount_result
     };
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
