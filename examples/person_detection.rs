@@ -57,6 +57,13 @@ fn send(controller: &str, import: bool, img_path: &str) {
     info!("total: {} s", start.elapsed().as_secs_f32());
 }
 
+/// Registers a client with ID "camera" with the controller.
+fn register(controller: &str) {
+    let id = "camera";
+    info!("registering client id {:?} with controller", id);
+    karl::net::register_client(controller, id);
+}
+
 fn main() {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Speech-to-text")
@@ -88,6 +95,7 @@ fn main() {
     let addr = format!("{}:{}", host, port);
     let img_path = matches.value_of("img").unwrap();
     let import = matches.is_present("import");
+    register(&addr);
     send(&addr, import, img_path);
     info!("done.");
 }

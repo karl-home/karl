@@ -15,6 +15,20 @@ use crate::protos;
 use crate::packet;
 use crate::common::*;
 
+/// Register an IoT client with the controller.
+pub fn register_client(controller_addr: &str, id: &str) {
+    let mut stream = TcpStream::connect(controller_addr).unwrap();
+    let mut req = protos::RegisterRequest::default();
+    req.set_id(id.to_string());
+    let req_bytes = req
+        .write_to_bytes()
+        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+        .unwrap();
+    packet::write(&mut stream, HT_REGISTER_REQUEST, &req_bytes).unwrap();
+    let (header, _) = &packet::read(&mut stream, 1).unwrap()[0];
+    assert_eq!(header.ty, HT_REGISTER_RESULT);
+}
+
 /// Returns a host address given by the controller.
 pub fn get_host(controller_addr: &str) -> String {
     // TODO: handle network errors with connecting, writing, reading.

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
@@ -8,9 +8,13 @@ use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use protobuf::Message;
+use protobuf::parse_from_bytes;
 use crate::packet;
 use crate::protos;
-use crate::common::{Error, HT_HOST_REQUEST, HT_HOST_RESULT};
+use crate::common::{
+    Error,
+    HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
+};
 
 type ServiceName = String;
 
@@ -25,6 +29,7 @@ pub struct Controller {
     blocking: bool,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, (SocketAddr, usize)>>>,
+    clients: HashSet<String>,
     prev_host_i: usize,
 }
 
@@ -50,6 +55,7 @@ impl Controller {
             blocking,
             hosts: Arc::new(Mutex::new(Vec::new())),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
+            clients: HashSet::new(),
             prev_host_i: 0,
         };
         let hosts = c.hosts.clone();
@@ -141,18 +147,30 @@ impl Controller {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
         debug!("reading packet");
-        let (header, _) = packet::read(&mut stream, 1)?.remove(0);
+        let (req_header, req_bytes) = packet::read(&mut stream, 1)?.remove(0);
         debug!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
-        let res_bytes = match header.ty {
+        let (res_header, res_bytes) = match req_header.ty {
             HT_HOST_REQUEST => {
                 let host = self.find_host().unwrap();
                 info!("picked host => {:?}", host);
                 let mut res = protos::HostResult::default();
                 res.set_ip(host.ip().to_string());
                 res.set_port(host.port().into());
-                res.write_to_bytes().unwrap()
+                (HT_HOST_RESULT, res.write_to_bytes().unwrap())
+            },
+            HT_REGISTER_REQUEST => {
+                let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                if self.clients.insert(req.get_id().to_string()) {
+                    info!("registered client id {:?}", req.get_id());
+                } else {
+                    warn!("client id {:?} already existed!", req.get_id());
+                }
+                let res = protos::RegisterResult::default();
+                (HT_REGISTER_RESULT, res.write_to_bytes().unwrap())
             },
             ty => return Err(Error::InvalidPacketType(ty)),
         };
@@ -160,7 +178,7 @@ impl Controller {
         // Return the result to sender.
         debug!("writing packet");
         let now = Instant::now();
-        packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+        packet::write(&mut stream, res_header, &res_bytes)?;
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }

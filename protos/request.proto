@@ -41,3 +41,10 @@ message HostResult {
   string ip = 1;
   uint32 port = 2;
 }
+
+message RegisterRequest {
+  string id = 1;
+}
+
+message RegisterResult {
+}
