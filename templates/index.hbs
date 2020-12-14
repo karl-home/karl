@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Karl Dashboard - {{ title }}</title>
+    <style>
+      body {
+        font: 12pt Arial;
+      }
+      table, th, td {
+        padding: 5px;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <section id="hosts">
+      <h1>Karl Dashboard</h1>
+      <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>IP</th>
+          <th>Port</th>
+          <th>Status</th>
+          <th>Active Request</th>
+          <th>Last Request</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each hosts}}
+          <tr>
+            <td>{{this.id}}</td>
+            <td>{{this.ip}}</td>
+            <td>{{this.port}}</td>
+            <td>{{#if this.is_busy }} BUSY {{else}} AVAILABLE {{/if}}</td>
+            <td>{{request this.active_request}}</td>
+            <td>{{request this.last_request}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+      </table>
+    </section>
+  </body>
+</html>
+
