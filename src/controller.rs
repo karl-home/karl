@@ -9,6 +9,7 @@ use tokio::runtime::Runtime;
 
 use protobuf::Message;
 use protobuf::parse_from_bytes;
+use crate::dashboard;
 use crate::packet;
 use crate::protos;
 use crate::common::{
@@ -127,7 +128,14 @@ impl Controller {
     }
 
     /// Start the TCP listener for incoming host requests
-    pub fn start(&mut self, port: u16) -> Result<(), Error> {
+    pub fn start(
+        &mut self,
+        use_dashboard: bool,
+        port: u16,
+    ) -> Result<(), Error> {
+        if use_dashboard {
+            dashboard::start(&mut self.rt);
+        }
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
         for stream in listener.incoming() {

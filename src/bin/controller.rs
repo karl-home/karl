@@ -14,10 +14,15 @@ fn main() {
             .help("If the flag is included, does not automatically register \
                 the service with DNS-SD. The default is to register.")
             .long("no-register"))
+        .arg(Arg::with_name("no-dashboard")
+            .help("If the flag is included, does not automatically start a \
+                controller dashboard. The default is to start a dashbaord.")
+            .long("no-dashboard"))
         .get_matches();
 
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let _register = !matches.is_present("no-register");
+    let use_dashboard = !matches.is_present("no-dashboard");
     let mut controller = Controller::new(true);
-    controller.start(port).unwrap();
+    controller.start(use_dashboard, port).unwrap();
 }
