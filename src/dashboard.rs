@@ -9,19 +9,24 @@ use tokio::runtime::Runtime;
 use serde::Serialize;
 
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
-use crate::controller::{Request, Host};
+use crate::controller::{Request, Host, Client};
 
 #[derive(Serialize)]
 struct TemplateContext {
     title: &'static str,
     hosts: Vec<Host>,
+    clients: Vec<Client>,
 }
 
 #[get("/")]
-fn index(hosts: State<Arc<Mutex<HashMap<String, Host>>>>) -> Template {
+fn index(
+    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
+    clients: State<Arc<Mutex<HashMap<String, Client>>>>,
+) -> Template {
     Template::render("index", &TemplateContext {
         title: "Hello",
         hosts: hosts.lock().unwrap().values().map(|host| host.clone()).collect(),
+        clients: clients.lock().unwrap().values().map(|client| client.clone()).collect(),
     })
 }
 
@@ -57,10 +62,15 @@ fn request_helper(
     Ok(())
 }
 
-pub fn start(rt: &mut Runtime, hosts: Arc<Mutex<HashMap<String, Host>>>) {
+pub fn start(
+    rt: &mut Runtime,
+    hosts: Arc<Mutex<HashMap<String, Host>>>,
+    clients: Arc<Mutex<HashMap<String, Client>>>,
+) {
     rt.spawn(async move {
         rocket::ignite()
         .manage(hosts)
+        .manage(clients)
         .mount("/", routes![index])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));

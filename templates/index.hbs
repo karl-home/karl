@@ -36,6 +36,26 @@
       </tbody>
       </table>
     </section>
+
+    <section id="clients">
+      <h1>Registered Clients</h1>
+      <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>IPAddr</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each clients}}
+          <tr>
+            <td>{{this.id}}</td>
+            <td>{{this.addr}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+      </table>
+    </section>
   </body>
 </html>
 

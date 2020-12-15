@@ -1,5 +1,5 @@
-use std::collections::{HashSet, HashMap};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener};
+use std::collections::HashMap;
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, IpAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
@@ -24,27 +24,36 @@ type ServiceName = String;
 /// Request information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Request {
-    // Description of request.
+    /// Description of request.
     pub description: String,
-    // Request start, time since UNIX epoch.
+    /// Request start, time since UNIX epoch.
     pub start: u64,
-    // Request end, time since UNIX epoch, or None if ongoing.
+    /// Request end, time since UNIX epoch, or None if ongoing.
     pub end: Option<u64>,
 }
 
 /// Host status and information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Host {
-    // Index, used internally.
+    /// Index, used internally.
     pub index: usize,
-    // Service name, as identified by DNS-SD.
+    /// Service name, as identified by DNS-SD.
     pub name: ServiceName,
-    // Host address.
+    /// Host address.
     pub addr: SocketAddr,
-    // Active request.
+    /// Active request.
     pub active_request: Option<Request>,
-    // Last request.
+    /// Last request.
     pub last_request: Option<Request>,
+}
+
+/// Client status and information.
+#[derive(Serialize, Debug, Clone)]
+pub struct Client {
+    /// ID, given by the client itself...
+    pub id: String,
+    /// IP address.
+    pub addr: IpAddr,
 }
 
 /// Controller used for discovering available Karl services via DNS-SD.
@@ -58,7 +67,7 @@ pub struct Controller {
     blocking: bool,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
-    clients: HashSet<String>,
+    clients: Arc<Mutex<HashMap<String, Client>>>,
     prev_host_i: usize,
 }
 
@@ -98,7 +107,7 @@ impl Controller {
             blocking,
             hosts: Arc::new(Mutex::new(Vec::new())),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
-            clients: HashSet::new(),
+            clients: Arc::new(Mutex::new(HashMap::new())),
             prev_host_i: 0,
         };
         let hosts = c.hosts.clone();
@@ -185,7 +194,11 @@ impl Controller {
         port: u16,
     ) -> Result<(), Error> {
         if use_dashboard {
-            dashboard::start(&mut self.rt, self.unique_hosts.clone());
+            dashboard::start(
+                &mut self.rt,
+                self.unique_hosts.clone(),
+                self.clients.clone(),
+            );
         }
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
@@ -229,11 +242,17 @@ impl Controller {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                if self.clients.insert(req.get_id().to_string()) {
-                    info!("registered client id {:?}", req.get_id());
+                let client = Client {
+                    id: req.get_id().to_string(),
+                    addr: stream.peer_addr().unwrap().ip(),
+                };
+                let mut clients = self.clients.lock().unwrap();
+                if clients.insert(client.id.clone(), client.clone()).is_none() {
+                    info!("registered client {:?}", client);
                 } else {
-                    warn!("client id {:?} already existed!", req.get_id());
+                    warn!("client {:?} already existed!", client);
                 }
+                drop(clients);
                 let res = protos::RegisterResult::default();
                 let res_bytes = res.write_to_bytes().unwrap();
 
