@@ -20,7 +20,6 @@
         <tr>
           <th>ID</th>
           <th>Addr</th>
-          <th>Status</th>
           <th>Active Request</th>
           <th>Last Request</th>
         </tr>
@@ -30,7 +29,6 @@
           <tr>
             <td>{{this.name}}</td>
             <td>{{this.addr}}</td>
-            <td>{{#if this.is_busy }} BUSY {{else}} AVAILABLE {{/if}}</td>
             <td>{{request this.active_request}}</td>
             <td>{{request this.last_request}}</td>
           </tr>

@@ -36,6 +36,8 @@ struct Listener {
     rt: Runtime,
     /// Whether the listener should register itself on DNS-SD
     register: bool,
+    /// Controller address.
+    controller: String,
 }
 
 /// Read from the KARL_PATH environment variable. (TODO)
@@ -137,7 +139,12 @@ impl Listener {
     ///
     /// Note that the wasmer runtime changes the working directory for
     /// computation, so the listener must change it back immediately after.
-    fn new(backend: Backend, port: u16, register: bool) -> Self {
+    fn new(
+        backend: Backend,
+        port: u16,
+        register: bool,
+        controller: &str,
+    ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let karl_path = get_karl_path();
@@ -156,6 +163,7 @@ impl Listener {
             port,
             rt: Runtime::new().unwrap(),
             register,
+            controller: controller.to_string(),
         }
     }
 
@@ -171,11 +179,14 @@ impl Listener {
         }
         for stream in listener.incoming() {
             let stream = stream?;
-            debug!("incoming stream {:?}", stream.local_addr());
+            debug!("incoming stream {:?}", stream.peer_addr());
+            let description = format!("{:?}", stream.peer_addr().unwrap().ip());
+            karl::net::notify_start(&self.controller, self.id, description);
             let now = Instant::now();
             if let Err(e) = self.handle_client(stream) {
                 error!("{:?}", e);
             }
+            karl::net::notify_end(&self.controller, self.id);
             warn!("total: {} s", now.elapsed().as_secs_f32());
         }
         Ok(())
@@ -312,6 +323,16 @@ fn main() {
             .long("port")
             .takes_value(true)
             .default_value("0"))
+        .arg(Arg::with_name("controller-ip")
+            .help("IP address of the controller")
+            .long("controller-ip")
+            .takes_value(true)
+            .default_value("127.0.0.1"))
+        .arg(Arg::with_name("controller-port")
+            .help("Port of the controller")
+            .long("controller-port")
+            .takes_value(true)
+            .default_value("59582"))
         .arg(Arg::with_name("no-register")
             .help("If the flag is included, does not automatically register \
                 the service with DNS-SD. The default is to register.")
@@ -325,6 +346,11 @@ fn main() {
     };
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let register = !matches.is_present("no-register");
-    let mut listener = Listener::new(backend, port, register);
+    let controller = format!(
+        "{}:{}",
+        matches.value_of("controller-ip").unwrap(),
+        matches.value_of("controller-port").unwrap(),
+    );
+    let mut listener = Listener::new(backend, port, register, &controller);
     listener.start().unwrap();
 }

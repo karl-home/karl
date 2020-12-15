@@ -81,3 +81,31 @@ pub fn send_compute(
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
 }
+
+/*****************************************************************************
+ * Service API
+ *****************************************************************************/
+/// Notify controller about compute request start.
+pub fn notify_start(controller_addr: &str, service_id: u32, description: String) {
+    let mut stream = TcpStream::connect(&controller_addr).unwrap();
+    let mut req = protos::NotifyStart::default();
+    req.set_service_name(format!("KarlService-{}", service_id));
+    req.set_description(description);
+    let req_bytes = req
+        .write_to_bytes()
+        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+        .unwrap();
+    packet::write(&mut stream, HT_NOTIFY_START, &req_bytes).unwrap();
+}
+
+/// Notify controller about compute request end.
+pub fn notify_end(controller_addr: &str, service_id: u32) {
+    let mut stream = TcpStream::connect(&controller_addr).unwrap();
+    let mut req = protos::NotifyEnd::default();
+    req.set_service_name(format!("KarlService-{}", service_id));
+    let req_bytes = req
+        .write_to_bytes()
+        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+        .unwrap();
+    packet::write(&mut stream, HT_NOTIFY_END, &req_bytes).unwrap();
+}

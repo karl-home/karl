@@ -50,3 +50,12 @@ message RegisterRequest {
 
 message RegisterResult {
 }
+
+message NotifyStart {
+  string service_name = 1;
+  string description = 2;
+}
+
+message NotifyEnd {
+  string service_name = 1;
+}

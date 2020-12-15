@@ -33,15 +33,20 @@ fn request_helper(
     out: &mut dyn Output
 ) -> HelperResult {
     if let Some(param) = h.param(0) {
-        if let Some(name) = param.value().get("name") {
-            if let Some(name) = name.as_str() {
-                out.write(name)?;
+        if let Some(description) = param.value().get("description") {
+            if let Some(description) = description.as_str() {
+                out.write(description)?;
             }
         }
         if let Some(start) = param.value().get("start") {
             if let Some(start) = start.as_u64() {
-                let current_time = Request::time_since_epoch_s();
-                let elapsed = current_time - start;
+                let mut end = Request::time_since_epoch_s();
+                if let Some(end_param) = param.value().get("end") {
+                    if let Some(end_param) = end_param.as_u64() {
+                        end = end_param;
+                    }
+                };
+                let elapsed = end - start;
                 out.write(" (")?;
                 out.write(&elapsed.to_string())?;
                 out.write("s)")?;

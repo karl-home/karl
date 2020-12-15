@@ -16,6 +16,7 @@ use crate::protos;
 use crate::common::{
     Error,
     HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
+    HT_NOTIFY_START, HT_NOTIFY_END,
 };
 
 type ServiceName = String;
@@ -23,10 +24,12 @@ type ServiceName = String;
 /// Request information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Request {
-    // Name of request, given by the client.
-    pub name: String,
-    // Time since UNIX epoch.
+    // Description of request.
+    pub description: String,
+    // Request start, time since UNIX epoch.
     pub start: u64,
+    // Request end, time since UNIX epoch, or None if ongoing.
+    pub end: Option<u64>,
 }
 
 /// Host status and information.
@@ -38,8 +41,6 @@ pub struct Host {
     pub name: ServiceName,
     // Host address.
     pub addr: SocketAddr,
-    // Whether the host has been allocated to a client.
-    pub is_busy: bool,
     // Active request.
     pub active_request: Option<Request>,
     // Last request.
@@ -66,10 +67,11 @@ impl Request {
         SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
     }
 
-    pub fn new(name: String) -> Self {
+    pub fn new(description: String) -> Self {
         Request {
-            name,
+            description,
             start: Request::time_since_epoch_s(),
+            end: None,
         }
     }
 }
@@ -144,7 +146,6 @@ impl Controller {
                                         name: service.name.clone(),
                                         index: hosts.len(),
                                         addr: addrs[0],
-                                        is_busy: false,
                                         active_request: None,
                                         last_request: None,
                                     },
@@ -209,14 +210,20 @@ impl Controller {
         debug!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
-        let (res_header, res_bytes) = match req_header.ty {
+        match req_header.ty {
             HT_HOST_REQUEST => {
                 let host = self.find_host().unwrap();
                 info!("picked host => {:?}", host);
                 let mut res = protos::HostResult::default();
                 res.set_ip(host.ip().to_string());
                 res.set_port(host.port().into());
-                (HT_HOST_RESULT, res.write_to_bytes().unwrap())
+                let res_bytes = res.write_to_bytes().unwrap();
+
+                // Return the result to sender.
+                debug!("writing packet");
+                let now = Instant::now();
+                packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
             },
             HT_REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
@@ -228,16 +235,48 @@ impl Controller {
                     warn!("client id {:?} already existed!", req.get_id());
                 }
                 let res = protos::RegisterResult::default();
-                (HT_REGISTER_RESULT, res.write_to_bytes().unwrap())
+                let res_bytes = res.write_to_bytes().unwrap();
+
+                // Return the result to sender.
+                debug!("writing packet");
+                let now = Instant::now();
+                packet::write(&mut stream, HT_REGISTER_RESULT, &res_bytes)?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
+            },
+            HT_NOTIFY_START => {
+                let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                info!("notify start {:?} {:?}", req.service_name, req.description);
+                let mut unique_hosts = self.unique_hosts.lock().unwrap();
+                if let Some(host) = unique_hosts.get_mut(&req.service_name) {
+                    if let Some(req) = &host.active_request {
+                        warn!("overriding active request: {:?}", req)
+                    }
+                    host.active_request = Some(Request::new(req.description));
+                } else {
+                    warn!("missing host");
+                }
+            },
+            HT_NOTIFY_END => {
+                let req = parse_from_bytes::<protos::NotifyEnd>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                info!("notify end {:?}", req.service_name);
+                let mut unique_hosts = self.unique_hosts.lock().unwrap();
+                if let Some(host) = unique_hosts.get_mut(&req.service_name) {
+                    if let Some(mut req) = host.active_request.take() {
+                        req.end = Some(Request::time_since_epoch_s());
+                        host.last_request = Some(req);
+                    } else {
+                        warn!("no active request, null notify end");
+                    }
+                } else {
+                    warn!("missing host");
+                }
             },
             ty => return Err(Error::InvalidPacketType(ty)),
         };
-
-        // Return the result to sender.
-        debug!("writing packet");
-        let now = Instant::now();
-        packet::write(&mut stream, res_header, &res_bytes)?;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }
 
