@@ -26,6 +26,11 @@
       }
 
       function takePicture() {
+        // var xmlHttp = new XMLHttpRequest();
+        // xmlHttp.open("GET", {{ client_ip }}, false);
+        // xmlHttp.send(null);
+        // var buffer = xmlHttp.responseText;
+
         var picture = document.getElementById("picture");
         var base64 = _arrayBufferToBase64(cinnamonBuffer);
         picture.src = `data:image/jpg;base64,${base64}`;
