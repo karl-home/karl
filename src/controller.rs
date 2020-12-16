@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, IpAddr};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
+use std::fs;
 
 use serde::Serialize;
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
@@ -67,6 +69,7 @@ pub struct Client {
 pub struct Controller {
     pub rt: Runtime,
     blocking: bool,
+    karl_path: PathBuf,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
     clients: Arc<Mutex<HashMap<String, Client>>>,
@@ -107,6 +110,7 @@ impl Controller {
         let c = Controller {
             rt: Runtime::new().unwrap(),
             blocking,
+            karl_path: Path::new("/home/gina/.karl").to_path_buf(),
             hosts: Arc::new(Mutex::new(Vec::new())),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
@@ -216,6 +220,17 @@ impl Controller {
         Ok(())
     }
 
+    // Register a client's web app.
+    //
+    // Write the bytes to `<KARL_PATH>/www/<CLIENT_ID>.hbs`.
+    fn register_app(&mut self, id: &str, app_bytes: &[u8]) {
+        let parent = self.karl_path.join("www");
+        let path = parent.join(format!("{}.hbs", id));
+        fs::create_dir_all(parent).unwrap();
+        fs::write(&path, app_bytes).unwrap();
+        info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
+    }
+
     /// Handle an incoming TCP stream.
     fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
         // Read the computation request from the TCP stream.
@@ -247,8 +262,14 @@ impl Controller {
                 let client = Client {
                     id: req.get_id().to_string(),
                     addr: stream.peer_addr().unwrap().ip(),
-                    app: true, // TODO
+                    app: !req.get_app().is_empty(),
                 };
+
+                // register the client's webapp
+                if client.app {
+                    self.register_app(&client.id, req.get_app());
+                }
+                // register the client itself
                 let mut clients = self.clients.lock().unwrap();
                 if clients.insert(client.id.clone(), client.clone()).is_none() {
                     info!("registered client {:?}", client);

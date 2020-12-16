@@ -1,9 +1,9 @@
 [development]
-address = "localhost"
+address = "0.0.0.0"
 port = 8000
-template_dir = "templates/"
+template_dir = "/home/gina/.karl/www/"
 
 [production]
 address = "0.0.0.0"
 port = 8080
-template_dir = "/home/gina/.karl/templates/"
+template_dir = "/home/gina/.karl/www/"
