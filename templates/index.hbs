@@ -44,6 +44,7 @@
         <tr>
           <th>ID</th>
           <th>IPAddr</th>
+          <th>App</th>
         </tr>
       </thead>
       <tbody>
@@ -51,6 +52,7 @@
           <tr>
             <td>{{this.id}}</td>
             <td>{{this.addr}}</td>
+            <td><a href="/app/{{this.id}}">Link</a></td>
           </tr>
         {{/each}}
       </tbody>

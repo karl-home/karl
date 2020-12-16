@@ -54,6 +54,8 @@ pub struct Client {
     pub id: String,
     /// IP address.
     pub addr: IpAddr,
+    /// Whether the client supplied an app.
+    pub app: bool,
 }
 
 /// Controller used for discovering available Karl services via DNS-SD.
@@ -245,6 +247,7 @@ impl Controller {
                 let client = Client {
                     id: req.get_id().to_string(),
                     addr: stream.peer_addr().unwrap().ip(),
+                    app: true, // TODO
                 };
                 let mut clients = self.clients.lock().unwrap();
                 if clients.insert(client.id.clone(), client.clone()).is_none() {

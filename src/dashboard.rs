@@ -12,10 +12,16 @@ use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResul
 use crate::controller::{Request, Host, Client};
 
 #[derive(Serialize)]
-struct TemplateContext {
+struct MainContext {
     title: &'static str,
     hosts: Vec<Host>,
     clients: Vec<Client>,
+}
+
+#[derive(Serialize)]
+struct AppContext {
+    client_id: String,
+    client_ip: String,
 }
 
 #[get("/")]
@@ -23,11 +29,24 @@ fn index(
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
 ) -> Template {
-    Template::render("index", &TemplateContext {
+    Template::render("index", &MainContext {
         title: "Hello",
         hosts: hosts.lock().unwrap().values().map(|host| host.clone()).collect(),
         clients: clients.lock().unwrap().values().map(|client| client.clone()).collect(),
     })
+}
+
+#[get("/app/<client_id>")]
+fn app(
+    client_id: String,
+    clients: State<Arc<Mutex<HashMap<String, Client>>>>,
+) -> Option<Template> {
+    let client_ip = if let Some(client) = clients.lock().unwrap().get(&client_id) {
+        format!("{}", client.addr)
+    } else {
+        return None;
+    };
+    Some(Template::render(client_id.clone(), &AppContext { client_id, client_ip }))
 }
 
 fn request_helper(
@@ -71,7 +90,7 @@ pub fn start(
         rocket::ignite()
         .manage(hosts)
         .manage(clients)
-        .mount("/", routes![index])
+        .mount("/", routes![index, app])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
         }))
