@@ -1702,6 +1702,7 @@ impl ::protobuf::reflect::ProtobufValue for HostResult {
 pub struct RegisterRequest {
     // message fields
     pub id: ::std::string::String,
+    pub app: ::std::vec::Vec<u8>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1743,6 +1744,32 @@ impl RegisterRequest {
     pub fn take_id(&mut self) -> ::std::string::String {
         ::std::mem::replace(&mut self.id, ::std::string::String::new())
     }
+
+    // bytes app = 2;
+
+
+    pub fn get_app(&self) -> &[u8] {
+        &self.app
+    }
+    pub fn clear_app(&mut self) {
+        self.app.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app(&mut self, v: ::std::vec::Vec<u8>) {
+        self.app = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_app(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.app
+    }
+
+    // Take field
+    pub fn take_app(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.app, ::std::vec::Vec::new())
+    }
 }
 
 impl ::protobuf::Message for RegisterRequest {
@@ -1756,6 +1783,9 @@ impl ::protobuf::Message for RegisterRequest {
             match field_number {
                 1 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.id)?;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.app)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -1772,6 +1802,9 @@ impl ::protobuf::Message for RegisterRequest {
         if !self.id.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.id);
         }
+        if !self.app.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(2, &self.app);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -1780,6 +1813,9 @@ impl ::protobuf::Message for RegisterRequest {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
         if !self.id.is_empty() {
             os.write_string(1, &self.id)?;
+        }
+        if !self.app.is_empty() {
+            os.write_bytes(2, &self.app)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1824,6 +1860,11 @@ impl ::protobuf::Message for RegisterRequest {
                 |m: &RegisterRequest| { &m.id },
                 |m: &mut RegisterRequest| { &mut m.id },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+                "app",
+                |m: &RegisterRequest| { &m.app },
+                |m: &mut RegisterRequest| { &mut m.app },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<RegisterRequest>(
                 "RegisterRequest",
                 fields,
@@ -1841,6 +1882,7 @@ impl ::protobuf::Message for RegisterRequest {
 impl ::protobuf::Clear for RegisterRequest {
     fn clear(&mut self) {
         self.id.clear();
+        self.app.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2352,11 +2394,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
     ingRequest\"\x0c\n\nPingResult\"\r\n\x0bHostRequest\"0\n\nHostResult\x12\
     \x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01\
-    (\rR\x04port\"!\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
-    \x02id\"\x10\n\x0eRegisterResult\"R\n\x0bNotifyStart\x12!\n\x0cservice_n\
-    ame\x18\x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\
-    \x20\x01(\tR\x0bdescription\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\
-    \x01\x20\x01(\tR\x0bserviceNameb\x06proto3\
+    (\rR\x04port\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
+    \x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"\x10\n\x0eRegister\
+    Result\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
+    \x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescript\
+    ion\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bservic\
+    eNameb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

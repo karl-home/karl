@@ -16,10 +16,16 @@ use crate::packet;
 use crate::common::*;
 
 /// Register an IoT client with the controller.
-pub fn register_client(controller_addr: &str, id: &str) {
+///
+/// If the client wants to register a web app, it needs to include the bytes
+/// of a single Handlebars template file.
+pub fn register_client(controller_addr: &str, id: &str, app_bytes: Option<Vec<u8>>) {
     let mut stream = TcpStream::connect(controller_addr).unwrap();
     let mut req = protos::RegisterRequest::default();
     req.set_id(id.to_string());
+    if let Some(app) = app_bytes {
+        req.set_app(app);
+    }
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))

@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use std::fs;
 use std::time::Instant;
 
 use clap::{Arg, App};
@@ -65,26 +66,33 @@ fn send(controller: &str, storage: bool, import: bool, img_path: &str) {
 }
 
 /// Registers a client with id CLIENT_ID with the controller.
-fn register(controller: &str) {
-    info!("registering client id {:?} with controller", CLIENT_ID);
-    karl::net::register_client(controller, CLIENT_ID);
+fn register(controller: &str, app_path: &str) {
+    info!("registering client id={:?} app={:?}", CLIENT_ID, app_path);
+    let app_bytes = fs::read(app_path).unwrap();
+    karl::net::register_client(controller, CLIENT_ID, Some(app_bytes));
 }
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
-    let matches = App::new("Speech-to-text")
+    let matches = App::new("Person-detection")
         .arg(Arg::with_name("host")
-            .help("Host address of the standalone STT service / controller")
+            .help("Host address of the controller")
             .short("h")
             .long("host")
             .takes_value(true)
             .default_value("127.0.0.1"))
         .arg(Arg::with_name("port")
-            .help("Port of the standalone STT service / controller")
+            .help("Port of the controller")
             .short("p")
             .long("port")
             .takes_value(true)
             .default_value("59582"))
+        .arg(Arg::with_name("app")
+            .help("Path to webapp handlebars template file.")
+            .short("a")
+            .long("app")
+            .takes_value(true)
+            .default_value("data/person-detection/index.hbs"))
         .arg(Arg::with_name("img")
              .help("Src path of image to detect.")
              .short("i")
@@ -103,9 +111,10 @@ fn main() {
     let port = matches.value_of("port").unwrap();
     let addr = format!("{}:{}", host, port);
     let img_path = matches.value_of("img").unwrap();
+    let app_path = matches.value_of("app").unwrap();
     let import = matches.is_present("import");
     let storage = matches.is_present("storage");
-    register(&addr);
+    register(&addr, app_path);
     send(&addr, storage, import, img_path);
     info!("done.");
 }

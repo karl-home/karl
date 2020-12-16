@@ -46,6 +46,7 @@ message HostResult {
 
 message RegisterRequest {
   string id = 1;
+  bytes app = 2;
 }
 
 message RegisterResult {
