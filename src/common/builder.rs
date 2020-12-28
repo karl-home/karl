@@ -55,8 +55,14 @@ impl ComputeRequestBuilder {
 
     /// Add a file to the input root from the home filesystem, overwriting
     /// files with the same name.
-    pub fn add_file(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
+    pub fn add_file_as(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
         self.files.push((src_path.to_string(), dst_path.to_string()));
+        self
+    }
+
+    /// Same as `add_file_as`, but uses the src path as the dst path.
+    pub fn add_file(mut self, src_path: &str) -> ComputeRequestBuilder {
+        self.files.push((src_path.to_string(), src_path.to_string()));
         self
     }
 
@@ -64,8 +70,14 @@ impl ComputeRequestBuilder {
     /// files with the same name.
     ///
     /// TODO: needs to be a relative path. should be forward searching only.
-    pub fn add_dir(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
+    pub fn add_dir_as(mut self, src_path: &str, dst_path: &str) -> ComputeRequestBuilder {
         self.dirs.push((src_path.to_string(), dst_path.to_string()));
+        self
+    }
+
+    /// Same as `add_dir_as`, but uses the src path as the dst path.
+    pub fn add_dir(mut self, src_path: &str) -> ComputeRequestBuilder {
+        self.dirs.push((src_path.to_string(), src_path.to_string()));
         self
     }
 

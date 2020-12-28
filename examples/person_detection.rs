@@ -16,8 +16,8 @@ fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
         .to_str().unwrap();
     let mut request = ComputeRequestBuilder::new("env/bin/python")
         .args(vec!["detect.py", dst_img_path])
-        .add_file("data/person-detection/detect.py", "detect.py")
-        .add_file(img_path, dst_img_path);
+        .add_file_as("data/person-detection/detect.py", "detect.py")
+        .add_file_as(img_path, dst_img_path);
     request = if import {
         request
         .import(Import {
@@ -27,8 +27,8 @@ fn gen_request(import: bool, img_path: &str) -> ComputeRequest {
         })
     } else {
         request
-        .add_file(&format!("data/person-detection/{}", model_path), model_path)
-        .add_dir("data/person-detection/env/", "env/")
+        .add_file_as(&format!("data/person-detection/{}", model_path), model_path)
+        .add_dir_as("data/person-detection/env/", "env/")
     };
     request.finalize().unwrap()
 }

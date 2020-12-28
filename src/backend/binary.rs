@@ -265,6 +265,11 @@ mod test {
         base_path
     }
 
+    /// Test karl path is 'data'.
+    fn init_karl_path() -> PathBuf {
+        fs::canonicalize(&Path::new("data")).unwrap()
+    }
+
     /// Runs STT example contained in a temporary base path in this directory.
     /// Data path 'data/stt' should be initialized with 'scripts/setup_stt.sh'.
     ///
@@ -311,10 +316,13 @@ mod test {
                 lib/python3.6/site-packages".to_string()
             ],
         };
+        let karl_path = init_karl_path();
+        let client_id = "test_stt_python";
+        let storage = false;
         let res_stdout = true;
         let res_stderr = true;
         let res_files = HashSet::new();
-        let res = run(config, &base_path, res_stdout, res_stderr, res_files);
+        let res = run(config, &karl_path, &base_path, client_id, storage, res_stdout, res_stderr, res_files);
         fs::remove_dir_all(&base_path).unwrap();
         match res {
             Ok(res) => {
@@ -367,10 +375,13 @@ mod test {
             ],
             envs: vec![],
         };
+        let karl_path = init_karl_path();
+        let client_id = "test_stt_node";
+        let storage = false;
         let res_stdout = true;
         let res_stderr = true;
         let res_files = HashSet::new();
-        let res = run(config, &base_path, res_stdout, res_stderr, res_files);
+        let res = run(config, &karl_path, &base_path, client_id, storage, res_stdout, res_stderr, res_files);
         fs::remove_dir_all(&base_path).unwrap();
         match res {
             Ok(res) => {

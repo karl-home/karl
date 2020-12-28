@@ -9,8 +9,8 @@ use karl::{self, common::ComputeRequestBuilder, protos::ComputeRequest};
 fn gen_request() -> ComputeRequest {
     ComputeRequestBuilder::new("env/bin/python")
         .args(vec!["main.py"])
-        .add_dir("data/hello_world/env/", "env/")
-        .add_file("data/hello_world/main.py", "main.py")
+        .add_dir_as("data/hello_world/env/", "env/")
+        .add_file_as("data/hello_world/main.py", "main.py")
         .finalize()
         .unwrap()
 }
