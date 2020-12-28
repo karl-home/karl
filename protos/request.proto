@@ -10,6 +10,10 @@ enum MessageType {
   COMPUTE_RESULT = 4;
   HOST_REQUEST = 5;
   HOST_RESULT = 6;
+  REGISTER_REQUEST = 7;
+  REGISTER_RESULT = 8;
+  NOTIFY_START = 9;
+  NOTIFY_END = 10;
 }
 
 message Import {

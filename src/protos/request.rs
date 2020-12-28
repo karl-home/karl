@@ -2384,6 +2384,10 @@ pub enum MessageType {
     COMPUTE_RESULT = 4,
     HOST_REQUEST = 5,
     HOST_RESULT = 6,
+    REGISTER_REQUEST = 7,
+    REGISTER_RESULT = 8,
+    NOTIFY_START = 9,
+    NOTIFY_END = 10,
 }
 
 impl ::protobuf::ProtobufEnum for MessageType {
@@ -2400,6 +2404,10 @@ impl ::protobuf::ProtobufEnum for MessageType {
             4 => ::std::option::Option::Some(MessageType::COMPUTE_RESULT),
             5 => ::std::option::Option::Some(MessageType::HOST_REQUEST),
             6 => ::std::option::Option::Some(MessageType::HOST_RESULT),
+            7 => ::std::option::Option::Some(MessageType::REGISTER_REQUEST),
+            8 => ::std::option::Option::Some(MessageType::REGISTER_RESULT),
+            9 => ::std::option::Option::Some(MessageType::NOTIFY_START),
+            10 => ::std::option::Option::Some(MessageType::NOTIFY_END),
             _ => ::std::option::Option::None
         }
     }
@@ -2413,6 +2421,10 @@ impl ::protobuf::ProtobufEnum for MessageType {
             MessageType::COMPUTE_RESULT,
             MessageType::HOST_REQUEST,
             MessageType::HOST_RESULT,
+            MessageType::REGISTER_REQUEST,
+            MessageType::REGISTER_RESULT,
+            MessageType::NOTIFY_START,
+            MessageType::NOTIFY_END,
         ];
         values
     }
@@ -2464,10 +2476,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     Result\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
     \x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescript\
     ion\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bservic\
-    eName*\x8b\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPI\
+    eName*\xd8\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPI\
     NG_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE\
     _REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_R\
-    EQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06b\x06proto3\
+    EQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_RE\
+    QUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_S\
+    TART\x10\t\x12\x0e\n\nNOTIFY_END\x10\nb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
