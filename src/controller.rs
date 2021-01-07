@@ -18,7 +18,7 @@ use crate::protos;
 use crate::common::{
     Error,
     HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
-    HT_NOTIFY_START, HT_NOTIFY_END,
+    HT_PING_REQUEST, HT_PING_RESULT, HT_NOTIFY_START, HT_NOTIFY_END,
 };
 
 type ServiceName = String;
@@ -274,7 +274,7 @@ impl Controller {
                 let res_bytes = res.write_to_bytes().unwrap();
 
                 // Return the result to sender.
-                debug!("writing packet");
+                debug!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
                 let now = Instant::now();
                 packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
@@ -341,6 +341,19 @@ impl Controller {
                 } else {
                     warn!("missing host");
                 }
+            },
+            HT_PING_REQUEST => {
+                parse_from_bytes::<protos::PingRequest>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                let res = protos::PingResult::default();
+                let res_bytes = res.write_to_bytes().unwrap();
+
+                // Return the result to sender.
+                debug!("writing packet {:?} ({} bytes)", res_bytes, res_bytes.len());
+                let now = Instant::now();
+                packet::write(&mut stream, HT_PING_RESULT, &res_bytes)?;
+                debug!("=> {} s", now.elapsed().as_secs_f32());
             },
             ty => return Err(Error::InvalidPacketType(ty)),
         };
