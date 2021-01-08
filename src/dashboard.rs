@@ -24,6 +24,7 @@ struct MainContext {
 struct AppContext {
     client_id: String,
     client_ip: String,
+    files: Vec<PathBuf>,
 }
 
 #[get("/")]
@@ -41,6 +42,7 @@ fn index(
 #[get("/app/<client_id>")]
 fn app(
     client_id: String,
+    karl_path: State<PathBuf>,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
 ) -> Option<Template> {
     let client_ip = if let Some(client) = clients.lock().unwrap().get(&client_id) {
@@ -48,7 +50,18 @@ fn app(
     } else {
         return None;
     };
-    Some(Template::render(client_id.clone(), &AppContext { client_id, client_ip }))
+    let files = {
+        let storage_path = karl_path.join("storage").join(&client_id);
+        std::fs::read_dir(&storage_path).unwrap()
+            .map(|res| res.unwrap().path())
+            .map(|path| path.strip_prefix(&storage_path).unwrap().to_path_buf())
+            .collect()
+    };
+    debug!("files for client_id={}: {:?}", &client_id, files);
+    Some(Template::render(
+        client_id.clone(),
+        &AppContext { client_id, client_ip, files },
+    ))
 }
 
 #[get("/app/<client_id>/<file..>")]
