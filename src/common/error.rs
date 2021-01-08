@@ -29,18 +29,14 @@ pub enum Error {
     NoAvailableHosts,
     /// Unexpected packet type.
     InvalidPacketType(u32),
-    /// Invalid input root. Either the input root is uninitialized, or
-    /// you initialized the root as an existing directory rather than a
-    /// custom-built one.
-    InvalidInputRoot,
-    /// Reinitialized the input root. Should only initialize it once.
-    DoubleInputInitialization,
     /// Received a ping result for a compute request or vice versa.
     InvalidResponseType,
     /// Package does not contain a valid binary in its root or imports.
     BinaryNotFound(String),
     /// Failure to install an imported package.
     InstallImportError(String),
+    /// Failure to use persistent storage for request.
+    StorageError(String),
     /// Unknown.
     UnknownError(String),
 }

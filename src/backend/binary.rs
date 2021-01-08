@@ -73,27 +73,27 @@ fn copy_mapped_dirs(mapped_dirs: Vec<String>) -> Result<(), Error> {
 /// - root_path - The initial filesystem provided by the client, and the
 ///   eventual working directory.
 /// - work_path - Needed for the overlay fs.
-/// - storage_path - Persistent storage layer, if requested.
 ///
 /// Returns:
 /// An object representing the mounted filesystem. Once the reference to the
 /// object is dropped, the directory is also unmounted.
-/// If no mount is needed i.e. no storage nor mapped dirs, returns None.
+/// If no mount is needed i.e. no mapped dirs, returns None.
 #[cfg(target_os = "linux")]
-fn mount(
+fn mount_imports(
     mapped_dirs: Vec<String>,
     root_path: &Path,
     work_path: &Path,
-    storage_path: Option<PathBuf>,
 ) -> Option<Mount> {
-    // no storage nor mapped dirs
-    if mapped_dirs.is_empty() && storage_path.is_none() {
+    // no mapped dirs
+    if mapped_dirs.is_empty() {
         return None;
     }
+
+    // mount imports as mapped dirs
     let fstype = "overlay";
     assert!(SupportedFilesystems::new().unwrap().is_supported(fstype));
     let lowerdir = {
-        let mut mapped_dirs = mapped_dirs
+        let mapped_dirs = mapped_dirs
             .iter()
             .map(|mapped_dir| {
                 let mut mapped_dir = mapped_dir.split(":");
@@ -104,22 +104,13 @@ fn mount(
                 old_dir
             })
             .collect::<Vec<_>>();
-        if storage_path.is_some() {
-            mapped_dirs.push(root_path.to_str().unwrap());
-        }
         assert!(!mapped_dirs.is_empty());
         mapped_dirs.join(":")
     };
-    let upperdir = if let Some(storage_path) = storage_path.as_ref() {
-        storage_path.to_str().unwrap()
-    } else {
-        root_path.to_str().unwrap()
-    };
-
     let options = format!(
         "lowerdir={},upperdir={},workdir={}",
         lowerdir,
-        upperdir,
+        root_path.to_str().unwrap(),
         work_path.to_str().unwrap(),
     );
     debug!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
@@ -130,6 +121,41 @@ fn mount(
         MountFlags::empty(),
         Some(&options),
     ).unwrap())
+}
+
+/// Adds a symlink `storage` to the root path and links to a directory
+/// containing the particularly client's persistent storage.
+///
+/// The persistent storage path is found at `<karl_path>/storage/<client_id>`.
+/// Creates the persistent storage path if it does not already exist.
+/// There must not already be a file at `<root_path>/storage`.
+///
+/// Parameters:
+/// - karl_path - Probably ~/.karl.
+/// - root_path - The initial filesystem provided by the client, and the
+///   eventual working directory.
+/// - client_id - The ID of a registered client / IoT device.
+#[cfg(target_os = "linux")]
+fn symlink_storage(
+    karl_path: &Path,
+    root_path: &Path,
+    client_id: &str,
+) -> Result<(), Error> {
+    let storage_path = karl_path.join("storage").join(client_id);
+    let target_path = root_path.join("storage");
+    debug!("creating symlink from {:?} to {:?}", storage_path, target_path);
+
+    if storage_path.exists() && !storage_path.is_dir() {
+        return Err(Error::StorageError(format!("storage path is not a dir")));
+    }
+    if target_path.exists() {
+        return Err(Error::StorageError(format!("target storage path already exists")));
+    }
+    fs::create_dir_all(&storage_path).map_err(|e| Error::StorageError(
+        format!("Failed to initialize storage path: {:?}", e)))?;
+    std::os::unix::fs::symlink(storage_path, target_path).map_err(|e|
+        Error::StorageError(format!("{:?}", e)))?;
+    Ok(())
 }
 
 /// Run the compute request with the native backend.
@@ -149,12 +175,13 @@ fn mount(
 ///        envs,         # Environment variables.
 ///    }
 /// - `karl_path`: Probably `~/.karl`.
-/// - `base_path`: The service base path is usually at `~/.karl/<id>`. The
-///   path to the computation root should be a directory within the service
+/// - `base_path`: The service base path is usually at `~/.karl/<request_id>`.
+///   The path to the computation root should be a directory within the service
 ///   base path, and should exist. The computation root contains the unpacked
 ///   and decompressed bytes of the compute request.
 /// - `client_id`: Client ID, used to determine persistent storage path.
-/// - `storage`: Whether to use persistent storage.
+/// - `storage`: Whether to use persistent storage. Mounts the persistent
+///   storage path at `<base_path>`
 /// - `res_stdout`: Whether to include stdout in the result.
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
@@ -168,18 +195,27 @@ pub fn run(
     res_stderr: bool,
     res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
+    // Directory layout
+    // <request_id> = 123456
+    // <client_id> = wyzecam
+    //
+    // .karl/*          # `karl_path`
+    //   storage/
+    //     wyzecam/     # `storage_path`
+    //   123456/*       # request_id `base_path`
+    //     work/        # `work_path`
+    //     root/*       # computation root = `root_path`
+    //       detect.py
+    //       img.tmp
+    //       storage/   # mounted .karl/storage/wyzecam (`storage_path`)
+    //
+    // * indicates the directory must exist ahead of time
+
     let now = Instant::now();
     let previous_dir = fs::canonicalize(".").unwrap();
     assert!(base_path.is_dir());
     let root_path = base_path.join("root");
     assert!(root_path.is_dir());
-    let storage_path = if storage {
-        let storage_path = karl_path.join("storage").join(client_id);
-        fs::create_dir_all(&storage_path).unwrap();
-        Some(storage_path)
-    } else {
-        None
-    };
 
     // Map directories using an overlay fs if possible, but otherwise
     // copy all the files into the root path. This can be very slow!
@@ -188,13 +224,12 @@ pub fn run(
         env::set_current_dir(&root_path).unwrap();
         copy_mapped_dirs(config.mapped_dirs)?;
         info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
-        unimplemented!("storage in macos");
     }
     #[cfg(target_os = "linux")]
     let mount_result = {
         let work_path = base_path.join("work");
         fs::create_dir_all(&work_path).unwrap();
-        let mount_result = mount(config.mapped_dirs, &root_path, &work_path, storage_path);
+        let mount_result = mount_imports(config.mapped_dirs, &root_path, &work_path);
         env::set_current_dir(&root_path).unwrap();
         info!("=> mounted fs: {} s", now.elapsed().as_secs_f32());
         mount_result
@@ -202,6 +237,14 @@ pub fn run(
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         unimplemented!();
+    }
+
+    // Create a symlink to persistent storage.
+    if storage {
+        #[cfg(target_os = "linux")]
+        symlink_storage(karl_path, &root_path, client_id)?;
+        #[cfg(target_os = "macos")]
+        unimplemented!("storage is unimplemented on macos");
     }
 
     let now = Instant::now();
