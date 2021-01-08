@@ -64,7 +64,7 @@ fn app(
     ))
 }
 
-#[get("/app/<client_id>/<file..>")]
+#[get("/app/<client_id>/storage/<file..>")]
 pub fn files(
     karl_path: State<PathBuf>,
     client_id: String,
