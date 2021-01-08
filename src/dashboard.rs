@@ -1,9 +1,11 @@
 //! Controller dashboard.
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 
 use rocket;
 use rocket::State;
+use rocket::response::NamedFile;
 use rocket_contrib::templates::Template;
 use tokio::runtime::Runtime;
 use serde::Serialize;
@@ -49,6 +51,19 @@ fn app(
     Some(Template::render(client_id.clone(), &AppContext { client_id, client_ip }))
 }
 
+#[get("/app/<client_id>/<file..>")]
+pub fn files(
+    karl_path: State<PathBuf>,
+    client_id: String,
+    file: PathBuf,
+) -> Option<NamedFile> {
+    let path = karl_path
+        .join("storage")
+        .join(client_id)
+        .join(file);
+    NamedFile::open(path).ok()
+}
+
 fn request_helper(
     h: &Helper,
     _: &Handlebars,
@@ -83,14 +98,16 @@ fn request_helper(
 
 pub fn start(
     rt: &mut Runtime,
+    karl_path: PathBuf,
     hosts: Arc<Mutex<HashMap<String, Host>>>,
     clients: Arc<Mutex<HashMap<String, Client>>>,
 ) {
     rt.spawn(async move {
         rocket::ignite()
+        .manage(karl_path)
         .manage(hosts)
         .manage(clients)
-        .mount("/", routes![index, app])
+        .mount("/", routes![index, app, files])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
         }))

@@ -226,6 +226,7 @@ impl Controller {
         if use_dashboard {
             dashboard::start(
                 &mut self.rt,
+                self.karl_path.clone(),
                 self.unique_hosts.clone(),
                 self.clients.clone(),
             );
