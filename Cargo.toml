@@ -4,16 +4,21 @@ version = "0.1.0"
 authors = ["Gina Yuan <gina.yuan@gmail.com>"]
 edition = "2018"
 
+[features]
+default = []
+wasm = []
+
 [dependencies.wasmer]
 path = "submodules/wasmer"
 default-features = false
 features = ["backend-cranelift", "wasi"]
+optional = true
 
 [target."cfg(target_os = \"linux\")".dependencies.sys-mount]
 version = "1.2.1"
 
 [dependencies]
-wapm-cli = { path = "submodules/wapm-cli" }
+wapm-cli = { path = "submodules/wapm-cli", optional = true }
 astro-dnssd = { path = "submodules/astro-dnssd" }
 bincode = "1.3.1"
 env_logger = "0.7"

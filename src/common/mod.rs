@@ -16,4 +16,3 @@ pub const HT_NOTIFY_END: HeaderType = 10;
 
 pub use error::Error;
 pub use builder::{import_path, ComputeRequestBuilder};
-pub use wasmer::executor::PkgConfig;

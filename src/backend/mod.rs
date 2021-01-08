@@ -2,6 +2,7 @@
 //!
 //! Specifies the format of the computation request it receives. It could
 //! be WebAssembly, a generic binary, a Docker container...
+#[cfg(feature = "wasm")]
 pub mod wasm;
 pub mod binary;
 
