@@ -18,7 +18,7 @@ use karl::protos::{
     Import, ComputeRequest, ComputeResult, PingRequest, PingResult,
 };
 use karl::common::{
-    Error, PkgConfig,
+    Error,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
 };
 
@@ -209,27 +209,30 @@ impl Listener {
         unpack_request(&req, &root_path)?;
         let import_paths = resolve_import_paths(
             &self.karl_path, &req.imports.to_vec())?;
-        let binary_path = Some(resolve_binary_path(
-            req.get_config(), &root_path, &import_paths)?);
+        let binary_path = resolve_binary_path(
+            req.get_config(), &root_path, &import_paths)?;
         let mapped_dirs = get_mapped_dirs(import_paths);
-        let config = PkgConfig {
-            binary_path,
-            mapped_dirs,
-            args: req.get_config().get_args().to_vec(),
-            envs: req.get_config().get_envs().to_vec(),
-        };
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = match self.backend {
+            #[cfg(feature = "wasm")]
             Backend::Wasm => karl::backend::wasm::run(
-                config,
+                binary_path,
+                mapped_dirs,
+                req.get_config().get_args().to_vec(),
+                req.get_config().get_envs().to_vec(),
                 &root_path,
                 req.stdout,
                 req.stderr,
                 req.files.to_vec().into_iter().collect(),
             )?,
+            #[cfg(not(feature = "wasm"))]
+            Backend::Wasm => unreachable!(),
             Backend::Binary => karl::backend::binary::run(
-                config,
+                binary_path,
+                mapped_dirs,
+                req.get_config().get_args().to_vec(),
+                req.get_config().get_envs().to_vec(),
                 &self.karl_path,
                 &self.base_path,
                 req.get_client_id(),
@@ -340,7 +343,12 @@ fn main() {
         .get_matches();
 
     let backend = match matches.value_of("backend").unwrap() {
-        "wasm" => Backend::Wasm,
+        "wasm" => {
+            #[cfg(not(feature = "wasm"))]
+            unimplemented!("wasm feature not enabled");
+            #[cfg(feature = "wasm")]
+            Backend::Wasm
+        },
         "binary" => Backend::Binary,
         backend => unimplemented!("unimplemented backend: {}", backend),
     };

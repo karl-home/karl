@@ -8,7 +8,7 @@ use std::time::Instant;
 #[cfg(target_os = "linux")]
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
 use crate::protos::ComputeResult;
-use crate::common::{Error, PkgConfig};
+use crate::common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     debug!("bin: {:?}", bin);
@@ -161,19 +161,15 @@ fn symlink_storage(
 /// Run the compute request with the native backend.
 ///
 /// Parameters:
-/// - `config`: The compute config.
-///    PkgConfig {
-///        path,         # The path to a binary, hopefully compatible with
-///                      # the platform of the current device.
-///        mapped_dirs,  # The implementation _copies_ the files inside the
-///                      # original directory into the `root_path`. If there
-///                      # is already a file in the `root_path` with the same
-///                      # relative filename, the file is not copied. Earlier
-///                      # mapped directories have priority over later ones.
-///                      # Ideally, this is mapped in the syscall layer.
-///        args,         # Arguments.
-///        envs,         # Environment variables.
-///    }
+/// - `binary_path`:  The path to a binary, hopefully compatible with the
+///   platform of the current device.
+/// - `mapped_dirs`: The implementation _copies_ the files inside the original
+///   directory into the `root_path`. If there is already a file in the
+///   `root_path` with the same relative filename, the file is not copied.
+///   Earlier mapped directories have priority over later ones. Ideally, this
+///   is mapped in the syscall layer.
+/// - `args`: Arguments.
+/// - `envs`: Environment variables.
 /// - `karl_path`: Probably `~/.karl`.
 /// - `base_path`: The service base path is usually at `~/.karl/<request_id>`.
 ///   The path to the computation root should be a directory within the service
@@ -186,7 +182,10 @@ fn symlink_storage(
 /// - `res_stderr`: Whether to include stderr in the result.
 /// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
-    config: PkgConfig,
+    binary_path: PathBuf,
+    mapped_dirs: Vec<String>,
+    args: Vec<String>,
+    envs: Vec<String>,
     karl_path: &Path,
     base_path: &Path,
     client_id: &str,
@@ -222,14 +221,14 @@ pub fn run(
     #[cfg(target_os = "macos")]
     {
         env::set_current_dir(&root_path).unwrap();
-        copy_mapped_dirs(config.mapped_dirs)?;
+        copy_mapped_dirs(mapped_dirs)?;
         info!("=> mapped_dirs: {} s", now.elapsed().as_secs_f32());
     }
     #[cfg(target_os = "linux")]
     let mount_result = {
         let work_path = base_path.join("work");
         fs::create_dir_all(&work_path).unwrap();
-        let mount_result = mount_imports(config.mapped_dirs, &root_path, &work_path);
+        let mount_result = mount_imports(mapped_dirs, &root_path, &work_path);
         env::set_current_dir(&root_path).unwrap();
         info!("=> mounted fs: {} s", now.elapsed().as_secs_f32());
         mount_result
@@ -248,8 +247,7 @@ pub fn run(
     }
 
     let now = Instant::now();
-    let binary_path = config.binary_path.expect("expected binary path");
-    let output = run_cmd(binary_path, config.envs, config.args);
+    let output = run_cmd(binary_path, envs, args);
     info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
