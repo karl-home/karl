@@ -37,6 +37,8 @@ pub enum Error {
     InstallImportError(String),
     /// Failure to use persistent storage for request.
     StorageError(String),
+    /// Error processing proxy request.
+    ProxyError(String),
     /// Unknown.
     UnknownError(String),
 }

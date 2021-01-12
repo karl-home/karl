@@ -29,6 +29,7 @@ protobuf = "2.18.0"
 bytes = "0.6"
 rocket = "0.4.6"
 handlebars = "1.0"
+reqwest = { version = "0.11", features = ["blocking"] }
 
 [dependencies.rocket_contrib]
 version = "0.4.6"
