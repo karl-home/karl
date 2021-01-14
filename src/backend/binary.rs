@@ -338,32 +338,41 @@ mod test {
             let path = fs::canonicalize(path).unwrap();
             path.into_os_string().into_string().unwrap()
         };
-        let config = PkgConfig {
-            binary_path: Some(binary_path),
-            mapped_dirs: vec![format!(".:{}", data_path)],
-            args: vec![
-                "client.py".to_string(),
-                "--model".to_string(),
-                "models.pbmm".to_string(),
-                "--scorer".to_string(),
-                "models.scorer".to_string(),
-                "--audio".to_string(),
-                "2830-3980-0043.wav".to_string(),
-            ],
-            envs: vec![
-                "PYTHONPATH=\
-                lib/python3.6/:\
-                lib/python3.6/lib-dynload:\
-                lib/python3.6/site-packages".to_string()
-            ],
-        };
+        let mapped_dirs = vec![format!(".:{}", data_path)];
+        let args = vec![
+            "client.py".to_string(),
+            "--model".to_string(),
+            "models.pbmm".to_string(),
+            "--scorer".to_string(),
+            "models.scorer".to_string(),
+            "--audio".to_string(),
+            "2830-3980-0043.wav".to_string(),
+        ];
+        let envs = vec![
+            "PYTHONPATH=\
+            lib/python3.6/:\
+            lib/python3.6/lib-dynload:\
+            lib/python3.6/site-packages".to_string()
+        ];
         let karl_path = init_karl_path();
         let client_id = "test_stt_python";
         let storage = false;
         let res_stdout = true;
         let res_stderr = true;
         let res_files = HashSet::new();
-        let res = run(config, &karl_path, &base_path, client_id, storage, res_stdout, res_stderr, res_files);
+        let res = run(
+            binary_path,
+            mapped_dirs,
+            args,
+            envs,
+            &karl_path,
+            &base_path,
+            client_id,
+            storage,
+            res_stdout,
+            res_stderr,
+            res_files,
+        );
         fs::remove_dir_all(&base_path).unwrap();
         match res {
             Ok(res) => {
@@ -405,24 +414,33 @@ mod test {
             let path = fs::canonicalize(path).unwrap();
             path.into_os_string().into_string().unwrap()
         };
-        let config = PkgConfig {
-            binary_path: Some(binary_path),
-            mapped_dirs: vec![format!(".:{}", data_path)],
-            args: vec![
-                "main.js".to_string(),
-                "weather.wav".to_string(),
-                "models.pbmm".to_string(),
-                "models.scorer".to_string(),
-            ],
-            envs: vec![],
-        };
+        let mapped_dirs = vec![format!(".:{}", data_path)];
+        let args = vec![
+            "main.js".to_string(),
+            "weather.wav".to_string(),
+            "models.pbmm".to_string(),
+            "models.scorer".to_string(),
+        ];
+        let envs = vec![];
         let karl_path = init_karl_path();
         let client_id = "test_stt_node";
         let storage = false;
         let res_stdout = true;
         let res_stderr = true;
         let res_files = HashSet::new();
-        let res = run(config, &karl_path, &base_path, client_id, storage, res_stdout, res_stderr, res_files);
+        let res = run(
+            binary_path,
+            mapped_dirs,
+            args,
+            envs,
+            &karl_path,
+            &base_path,
+            client_id,
+            storage,
+            res_stdout,
+            res_stderr,
+            res_files,
+        );
         fs::remove_dir_all(&base_path).unwrap();
         match res {
             Ok(res) => {
