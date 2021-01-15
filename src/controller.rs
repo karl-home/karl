@@ -68,7 +68,6 @@ pub struct Client {
 /// Non-macOS services need to install the appropriate shims around DNS-SD.
 pub struct Controller {
     pub rt: Runtime,
-    blocking: bool,
     karl_path: PathBuf,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
@@ -147,15 +146,9 @@ impl Controller {
     ///
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for host requests.
-    ///
-    /// Parameters:
-    /// - `blocking`: Whether the controller should block until it finds
-    ///   an available host on request. Otherwise, if no hosts are available,
-    ///   the controller will error.
-    pub fn new(blocking: bool) -> Self {
+    pub fn new() -> Self {
         let c = Controller {
             rt: Runtime::new().unwrap(),
-            blocking,
             karl_path: Path::new("/home/gina/.karl").to_path_buf(),
             hosts: Arc::new(Mutex::new(Vec::new())),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
@@ -267,7 +260,7 @@ impl Controller {
         // Deploy the request to correct handler.
         match req_header.ty {
             HT_HOST_REQUEST => {
-                let host = self.find_host().unwrap();
+                let host = self.find_host(true).unwrap();
                 info!("picked host => {:?}", host);
                 let mut res = protos::HostResult::default();
                 res.set_ip(host.ip().to_string());
@@ -362,22 +355,69 @@ impl Controller {
     }
 
     /// Find a host to connect to round-robin.
-    fn find_host(&mut self) -> Result<SocketAddr, Error> {
+    ///
+    /// Returns either the host address, or an error if no hosts have
+    /// registered, or all of the registered hosts have active requests.
+    fn find_host(&mut self, blocking: bool) -> Result<SocketAddr, Error> {
         loop {
             let hosts = self.hosts.lock().unwrap();
-            if !hosts.is_empty() {
-                let i = (self.prev_host_i + 1) % hosts.len();
-                let service_name = &hosts[i];
-                self.prev_host_i = i;
+            if hosts.is_empty() {
+                return Err(Error::NoAvailableHosts);
+            } else {
                 let unique_hosts = self.unique_hosts.lock().unwrap();
-                return Ok(unique_hosts.get(service_name).unwrap().addr);
+                let mut host_i = self.prev_host_i;
+                for i in 0..hosts.len() {
+                    host_i = (host_i + 1) % hosts.len();
+                    let service_name = &hosts[i];
+                    let host = unique_hosts.get(service_name).unwrap();
+                    if host.active_request.is_some() {
+                        continue;
+                    } else {
+                        self.prev_host_i = host_i;
+                        return Ok(host.addr);
+                    }
+                }
             }
-            if !self.blocking {
+            if !blocking {
                 return Err(Error::NoAvailableHosts);
             }
             drop(hosts);
-            trace!("No hosts found! Try again in 1 second...");
             thread::sleep(Duration::from_secs(1));
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ntest::timeout;
+
+    #[test]
+    fn test_find_host_non_blocking() {
+        // default controller has no hosts
+        // add 3 hosts
+        // find_host should return host 1 2 3 1 round robin
+        // make host 3 busy
+        // find_host should return 2 1 2 round robin
+        // make host 1 and 2 busy
+        // find_host should fail
+    }
+
+    #[test]
+    #[timeout(500)]
+    fn test_find_host_blocking_no_hosts() {
+        // default controller has no hosts
+        // unreachable statement
+    }
+
+    #[test]
+    #[timeout(500)]
+    fn test_find_host_blocking_unavailable() {
+        // default controller has no hosts
+        // add host
+        // find_host returns host
+        // make host busy
+        // find_host blocks
+        // unreachable statement
     }
 }
