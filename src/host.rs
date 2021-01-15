@@ -21,25 +21,13 @@ pub struct Host {
     /// Karl path, likely ~/.karl
     karl_path: PathBuf,
     /// Computation request base, likely ~/.karl/<id>
-    /// Config likely at ~/.karl/<id>/config
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
     backend: Backend,
     port: u16,
     rt: Runtime,
-    /// Whether the listener should register itself on DNS-SD
-    register: bool,
     /// Controller address.
     controller: String,
-}
-
-/// Read from the KARL_PATH environment variable. (TODO)
-/// If not set, defaults to ~/.karl/.
-///
-/// ACTUALLY, hardcoded to "/home/gina/.karl" since homedir can't
-/// resolve correctly when running with root, and root is needed to mount.
-fn get_karl_path() -> PathBuf {
-    Path::new("/home/gina/.karl").to_path_buf()
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.
@@ -125,22 +113,21 @@ impl Drop for Host {
 impl Host {
     /// Generate a new listener with a random ID.
     ///
-    /// The KARL_PATH defaults to ~/.karl. The constructor creates a directory
-    /// at the <KARL_PATH> if it does not already exist. The working directory
-    /// for any computation is at <KARL_PATH>/<LISTENER_ID>. When not doing
-    /// computation, the working directory must be at <KARL_PATH>.
+    /// The constructor creates a directory at the <KARL_PATH> if it does
+    /// not already exist. The working directory for any computation is at
+    /// <KARL_PATH>/<LISTENER_ID>. When not doing computation, the working
+    /// directory must be at <KARL_PATH>.
     ///
     /// Note that the wasmer runtime changes the working directory for
     /// computation, so the listener must change it back immediately after.
     pub fn new(
+        karl_path: PathBuf,
         backend: Backend,
         port: u16,
-        register: bool,
         controller: &str,
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
-        let karl_path = get_karl_path();
         let base_path = karl_path.join(id.to_string());
 
         // Create the <KARL_PATH> if it does not already exist.
@@ -155,17 +142,19 @@ impl Host {
             backend,
             port,
             rt: Runtime::new().unwrap(),
-            register,
             controller: controller.to_string(),
         }
     }
 
     /// Process an incoming connection.
-    pub fn start(&mut self) -> Result<(), Error> {
+    ///
+    /// Parameters:
+    /// - register - Whether the listener should register itself on DNS-SD.
+    pub fn start(&mut self, register: bool) -> Result<(), Error> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
-        if self.register {
+        if register {
             crate::net::register(&mut self.rt, self.id, self.port);
         } else {
             warn!("you must manually register the service on DNS-SD!")
@@ -300,4 +289,9 @@ impl Host {
         debug!("=> {} s", now.elapsed().as_secs_f32());
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod test {
+
 }
