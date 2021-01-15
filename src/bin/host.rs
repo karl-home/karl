@@ -4,9 +4,9 @@ use karl::backend::Backend;
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
-    let matches = App::new("Karl Service")
+    let matches = App::new("Karl Host")
         .arg(Arg::with_name("backend")
-            .help("Service backend. Either 'wasm' for wasm executables or \
+            .help("Host backend. Either 'wasm' for wasm executables or \
                 `binary` for binary executables. Assumes macOS executables \
                 only.")
             .short("b")
