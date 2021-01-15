@@ -216,7 +216,7 @@ mod test {
     #[test]
     fn compute_request_builder_add_dir_layered() {
         let builder = ComputeRequestBuilder::new("python")
-            .add_dir("data/add");
+            .add_dir("data/stt");
         let request = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
@@ -226,10 +226,10 @@ mod test {
         };
         let root = unpack_targz(&request.package);
         assert!(root.path().join("data").is_dir());
-        assert!(root.path().join("data/add").is_dir());
-        assert!(root.path().join("data/add/add.py").exists());
-        assert!(root.path().join("data/add/add.py").is_file());
-        assert!(root.path().join("data/add/lib").exists(), "run setup script?");
-        assert!(root.path().join("data/add/lib").is_dir());
+        assert!(root.path().join("data/stt").is_dir());
+        assert!(root.path().join("data/stt/client.py").exists());
+        assert!(root.path().join("data/stt/client.py").is_file());
+        assert!(root.path().join("data/stt/audio").exists(), "run setup script?");
+        assert!(root.path().join("data/stt/audio").is_dir());
     }
 }

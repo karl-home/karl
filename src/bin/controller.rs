@@ -23,6 +23,6 @@ fn main() {
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let _register = !matches.is_present("no-register");
     let use_dashboard = !matches.is_present("no-dashboard");
-    let mut controller = Controller::new(true);
+    let mut controller = Controller::new();
     controller.start(use_dashboard, port).unwrap();
 }
