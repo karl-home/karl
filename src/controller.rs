@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, Ipv4Addr, IpAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
@@ -138,27 +138,41 @@ fn remove_host(
 impl Controller {
     /// Create a new controller.
     ///
-    /// The controller spawns a process in the background that listens on
-    /// DNS-SD for available hosts. The controller maintains a list of
-    /// available hosts, adding and removing hosts as specified by DNS-SD
-    /// messages. On request, a host selected by the controller is not
-    /// guaranteed to be available, and the client may have to try again.
-    ///
     /// Call `start()` after constructing the controller to ensure it is
-    /// listening for host requests.
-    pub fn new() -> Self {
-        let c = Controller {
+    /// listening for hosts and client requests, and that it is registered
+    /// on DNS-SD.
+    pub fn new(karl_path: PathBuf) -> Self {
+        Controller {
             rt: Runtime::new().unwrap(),
-            karl_path: Path::new("/home/gina/.karl").to_path_buf(),
+            karl_path,
             hosts: Arc::new(Mutex::new(Vec::new())),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             prev_host_i: 0,
-        };
-        let hosts = c.hosts.clone();
-        let unique_hosts = c.unique_hosts.clone();
+        }
+    }
+
+    /// Start the TCP listener for incoming host requests and spawn a process
+    /// in the background that listens on DNS-SD for available hosts.
+    ///
+    /// In the background process, the controller maintains a list of
+    /// available hosts, adding and removing hosts as specified by DNS-SD
+    /// messages. Otherwise, the host listens for the following messages:
+    ///
+    /// - RegisterRequest: clients register themselves.
+    /// - HostRequest: clients request an available host.
+    /// - NotifyStart: hosts notify the controller they are unavailable.
+    /// - NotifyEnd: hosts notify the controller they are available again.
+    /// - PingRequest: generic ping.
+    pub fn start(
+        &mut self,
+        use_dashboard: bool,
+        port: u16,
+    ) -> Result<(), Error> {
+        let hosts = self.hosts.clone();
+        let unique_hosts = self.unique_hosts.clone();
         debug!("Listening...");
-        c.rt.spawn(async move {
+        self.rt.spawn(async move {
             let mut browser = ServiceBrowserBuilder::new("_karl._tcp")
                 .build()
                 .unwrap();
@@ -207,15 +221,7 @@ impl Controller {
                 }
             }
         });
-        c
-    }
 
-    /// Start the TCP listener for incoming host requests
-    pub fn start(
-        &mut self,
-        use_dashboard: bool,
-        port: u16,
-    ) -> Result<(), Error> {
         if use_dashboard {
             dashboard::start(
                 &mut self.rt,
