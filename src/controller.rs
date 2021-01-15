@@ -123,10 +123,16 @@ fn remove_host(
     hosts: &mut Vec<ServiceName>,
     unique_hosts: &mut HashMap<ServiceName, Host>,
 ) {
-    if let Some(host) = unique_hosts.remove(&service.name) {
+    let removed_i = if let Some(host) = unique_hosts.remove(&service.name) {
         hosts.remove(host.index);
+        host.index
     } else {
         return;
+    };
+    for (_, host) in unique_hosts.iter_mut() {
+        if host.index > removed_i {
+            host.index -= 1;
+        }
     }
     info!(
         "RMV if: {} name: {} type: {} domain: {}",
@@ -443,6 +449,129 @@ impl Controller {
 mod test {
     use super::*;
     use ntest::timeout;
+    use tempdir::TempDir;
+
+    /// Create a temporary directory.
+    fn init_karl_path() -> TempDir {
+        TempDir::new("karl").unwrap()
+    }
+
+    /// Generate a DNS-SD service with the name "host<i>".
+    fn gen_service(i: usize) -> Service {
+        Service {
+            name: format!("host{}", i),
+            regtype: "".to_string(),
+            interface_index: 0,
+            domain: "".to_string(),
+            event_type: ServiceEventType::Added,
+        }
+    }
+
+    /// Add a host named "host<i>" with socket addr "0.0.0.0:808<i>".
+    fn add_host_test(
+        i: usize,
+        hosts: &mut Vec<ServiceName>,
+        unique_hosts: &mut HashMap<ServiceName, Host>,
+    ) {
+        let service = gen_service(i);
+        let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
+        add_host(&service, addr, hosts, unique_hosts);
+    }
+
+    #[test]
+    fn test_add_host() {
+        let karl_path = init_karl_path();
+        let c = Controller::new(karl_path.path().to_path_buf());
+        let mut hosts = c.hosts.lock().unwrap();
+        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+        assert!(hosts.is_empty());
+        assert!(unique_hosts.is_empty());
+
+        // Add a host
+        let name = "host1";
+        let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        add_host(&gen_service(1), addr, &mut hosts, &mut unique_hosts);
+
+        // Check controller was modified correctly
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(unique_hosts.len(), 1);
+        assert_eq!(hosts[0], name, "wrong service name");
+        assert!(unique_hosts.get(name).is_some(), "violated host service name invariant");
+
+        // Check host was initialized correctly
+        let host = unique_hosts.get(name).unwrap();
+        assert_eq!(host.index, 0);
+        assert_eq!(host.name, name);
+        assert_eq!(host.addr, addr);
+        assert!(host.active_request.is_none());
+        assert!(host.last_request.is_none());
+    }
+
+    #[test]
+    fn test_add_multiple_hosts() {
+        let karl_path = init_karl_path();
+        let c = Controller::new(karl_path.path().to_path_buf());
+        let mut hosts = c.hosts.lock().unwrap();
+        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+
+        // Add three hosts
+        add_host_test(1, &mut hosts, &mut unique_hosts);
+        add_host_test(2, &mut hosts, &mut unique_hosts);
+        add_host_test(3, &mut hosts, &mut unique_hosts);
+
+        // Check the index in unique_hosts corresponds to the index in hosts
+        for (name, host) in unique_hosts.iter() {
+            assert_eq!(name, &host.name);
+            assert_eq!(hosts[host.index], host.name);
+        }
+    }
+
+    #[test]
+    fn test_remove_host() {
+        let karl_path = init_karl_path();
+        let c = Controller::new(karl_path.path().to_path_buf());
+        let mut hosts = c.hosts.lock().unwrap();
+        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+
+        // Add three hosts
+        add_host_test(1, &mut hosts, &mut unique_hosts);
+        add_host_test(2, &mut hosts, &mut unique_hosts);
+        add_host_test(3, &mut hosts, &mut unique_hosts);
+        add_host_test(4, &mut hosts, &mut unique_hosts);
+
+        // Remove the last host
+        let service = gen_service(4);
+        assert!(hosts.contains(&"host4".to_string()));
+        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(!hosts.contains(&"host4".to_string()));
+        assert_eq!(hosts.len(), 3);
+        assert_eq!(unique_hosts.len(), 3);
+        for host in unique_hosts.values() {
+            assert_eq!(hosts[host.index], host.name);
+        }
+
+        // Remove the middle host
+        let service = gen_service(2);
+        assert!(hosts.contains(&"host2".to_string()));
+        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(!hosts.contains(&"host2".to_string()));
+        assert_eq!(hosts.len(), 2);
+        assert_eq!(unique_hosts.len(), 2);
+        for host in unique_hosts.values() {
+            assert_eq!(hosts[host.index], host.name);
+        }
+
+        // Remove the first host
+        let service = gen_service(1);
+        assert!(hosts.contains(&"host1".to_string()));
+        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(!hosts.contains(&"host1".to_string()));
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(unique_hosts.len(), 1);
+        for host in unique_hosts.values() {
+            assert_eq!(hosts[host.index], host.name);
+        }
+    }
 
     #[test]
     fn test_find_host_non_blocking() {
