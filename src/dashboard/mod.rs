@@ -11,6 +11,7 @@ use tokio::runtime::Runtime;
 use serde::Serialize;
 
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
+use crate::common::ClientToken;
 use crate::controller::{Request, Host, Client};
 
 #[derive(Serialize)]
@@ -30,7 +31,7 @@ struct AppContext {
 #[get("/")]
 fn index(
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
-    clients: State<Arc<Mutex<HashMap<String, Client>>>>,
+    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) -> Template {
     Template::render("index", &MainContext {
         title: "Hello",
@@ -43,13 +44,24 @@ fn index(
 fn app(
     client_id: String,
     karl_path: State<PathBuf>,
-    clients: State<Arc<Mutex<HashMap<String, Client>>>>,
+    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) -> Option<Template> {
-    let client_ip = if let Some(client) = clients.lock().unwrap().get(&client_id) {
-        format!("{}", client.addr)
-    } else {
-        return None;
+    let client_ip = {
+        let mut client_ip = None;
+        let clients = clients.lock().unwrap();
+        for client in clients.values() {
+            if client.name == client_id {
+                client_ip = Some(format!("{}", client.addr));
+                break;
+            }
+        }
+        if let Some(client_ip) = client_ip {
+            client_ip
+        } else {
+            return None;
+        }
     };
+
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
         let mut files = std::fs::read_dir(&storage_path).unwrap()
@@ -102,7 +114,7 @@ pub fn start(
     rt: &mut Runtime,
     karl_path: PathBuf,
     hosts: Arc<Mutex<HashMap<String, Host>>>,
-    clients: Arc<Mutex<HashMap<String, Client>>>,
+    clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
 ) {
     rt.spawn(async move {
         rocket::ignite()

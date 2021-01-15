@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, Ipv4Addr, IpAddr};
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,7 @@ use crate::dashboard;
 use crate::packet;
 use crate::protos;
 use crate::common::{
-    Error,
+    Error, Token, ClientToken,
     HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
     HT_PING_REQUEST, HT_PING_RESULT, HT_NOTIFY_START, HT_NOTIFY_END,
 };
@@ -52,9 +52,10 @@ pub struct Host {
 /// Client status and information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Client {
-    /// ID, given by the client itself...
-    pub id: String,
-    /// IP address.
+    /// The self-given name of the client, with (1), (2), etc. appended when
+    /// duplicates are registered, like handling duplicates in the filesystem.
+    pub name: String,
+    /// IP address for proxy requests.
     pub addr: IpAddr,
     /// Whether the client supplied an app.
     pub app: bool,
@@ -71,7 +72,12 @@ pub struct Controller {
     karl_path: PathBuf,
     hosts: Arc<Mutex<Vec<ServiceName>>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
-    clients: Arc<Mutex<HashMap<String, Client>>>,
+    /// Map from client token to client.
+    ///
+    /// Unique identifier for the client, known only by the controller
+    /// and the client itself. Generated on registration. All host
+    /// requests from the client to the controller must include this token.
+    clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     prev_host_i: usize,
 }
 
@@ -261,7 +267,10 @@ impl Controller {
         // Deploy the request to correct handler.
         match req_header.ty {
             HT_HOST_REQUEST => {
-                let res = self.find_host(true);
+                let req = parse_from_bytes::<protos::HostRequest>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                let res = self.find_host(&Token(req.client_token), req.blocking);
                 let res_bytes = res.write_to_bytes().unwrap();
 
                 // Return the result to sender.
@@ -319,12 +328,26 @@ impl Controller {
 
     /// Find a host to connect to round-robin.
     ///
+    /// If the provided client token does not correspond to a registered
+    /// client, logs a warning message about an unauthorized client and
+    /// returns no hosts found, even if hosts are available.
+    ///
     /// If `blocking` is true, loops in 1-second intervals until a host is
     /// available, and otherwise immediately sets `found` to false in the
     /// HostResult. A host is available if there is at least one host is
     /// registered and none of the registered hosts have active requests.
-    fn find_host(&mut self, blocking: bool) -> protos::HostResult {
+    fn find_host(
+        &mut self,
+        token: &ClientToken,
+        blocking: bool,
+    ) -> protos::HostResult {
+        // Validate the client token.
         let mut res = protos::HostResult::default();
+        if !self.clients.lock().unwrap().contains_key(token) {
+            return res;
+        }
+
+        // Find a host.
         loop {
             let hosts = self.hosts.lock().unwrap();
             if !hosts.is_empty() {
@@ -356,26 +379,47 @@ impl Controller {
 
     /// Register a client.
     ///
-    /// Stores the client-generated ID along with socket information about
-    /// the client. Overwrites duplicate client IDs. Registers the app
+    /// Stores the client-generated name and controller-generated token
+    /// along with socket information about the client. Registers the app
     /// (a Handlebars template) at `<KARL_PATH>/www/<CLIENT_ID>.hbs`. Creates
     /// an empty storage directory at `<KARL_PATH>/storage/<CLIENT_ID>/`,
     /// if it doesn't already exist.
     ///
+    /// Trims whitespace and lowercases the client name.
+    /// Resolves duplicate client names like filesystems saving a file with
+    /// the same name: camera -> camera (1) -> camera (2).
+    ///
     /// Parameters:
-    /// - client_id - The client-generated ID.
+    /// - name - The self-given name of the client.
     /// - client_addr - The peer address of the TCP connection registering
     ///   the client.
     /// - app_bytes - The bytes of the Handlebars template, or an empty
     ///   vector if there is no registered app.
     fn register_client(
         &mut self,
-        client_id: String,
+        mut name: String,
         client_addr: IpAddr,
         app_bytes: &[u8],
     ) -> protos::RegisterResult {
+        // resolve duplicate client names
+        let names = self.clients.lock().unwrap().values()
+            .map(|client| client.name.clone()).collect::<HashSet<_>>();
+        name = name.trim().to_lowercase();
+        if names.contains(&name) {
+            let mut i = 1;
+            loop {
+                let new_name = format!("{} ({})", name, i);
+                if !names.contains(&new_name) {
+                    name = new_name;
+                    break;
+                }
+                i += 1;
+            }
+        }
+
+        // generate a client with a unique name and token
         let client = Client {
-            id: client_id,
+            name,
             addr: client_addr,
             app: !app_bytes.is_empty(),
         };
@@ -383,24 +427,27 @@ impl Controller {
         // register the client's webapp
         if client.app {
             let parent = self.karl_path.join("www");
-            let path = parent.join(format!("{}.hbs", &client.id));
+            let path = parent.join(format!("{}.hbs", &client.name));
             fs::create_dir_all(parent).unwrap();
             fs::write(&path, app_bytes).unwrap();
             info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
         }
 
         // create a storage directory
-        let storage_path = self.karl_path.join("storage").join(&client.id);
+        let storage_path = self.karl_path.join("storage").join(&client.name);
         fs::create_dir_all(storage_path).unwrap();
 
         // register the client itself
         let mut clients = self.clients.lock().unwrap();
-        if clients.insert(client.id.clone(), client.clone()).is_none() {
+        let token = ClientToken::gen();
+        if clients.insert(token.clone(), client.clone()).is_none() {
             info!("registered client {:?}", client);
         } else {
-            warn!("client {:?} already existed!", client);
+            unreachable!("impossible to generate duplicate client tokens")
         }
-        protos::RegisterResult::default()
+        let mut res = protos::RegisterResult::default();
+        res.set_client_token(token.0);
+        res
     }
 
     /// Notify the controller that a service is starting a request.
@@ -576,6 +623,10 @@ mod test {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
+        // Register a client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let token = Token(client.get_client_token().to_string());
+
         // Add three hosts
         add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
         add_host_test(2, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
@@ -589,26 +640,26 @@ mod test {
         // Set last_request of a host, say host 2.
         // find_host returns 2 3 1 round-robin.
         c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().last_request = Some(Request::default());
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8083);
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
 
         // Make host 3 busy.
         // find_host should return 2 1 2 round-robin.
         c.unique_hosts.lock().unwrap().get_mut("host3").unwrap().active_request = Some(Request::default());
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
 
@@ -616,7 +667,7 @@ mod test {
         // find_host should fail.
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
         c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().active_request = Some(Request::default());
-        let host = c.find_host(false);
+        let host = c.find_host(&token, false);
         assert!(!host.get_found());
     }
 
@@ -627,8 +678,11 @@ mod test {
     fn test_find_host_blocking_no_hosts() {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
+        // Register a client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let token = Token(client.get_client_token().to_string());
         let blocking = true;
-        c.find_host(blocking);
+        c.find_host(&token, blocking);
         unreachable!("default controller should not return without hosts");
     }
 
@@ -640,15 +694,39 @@ mod test {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
+        // Register a client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let token = Token(client.get_client_token().to_string());
+
         // Add a host.
         add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
-        assert!(c.find_host(true).get_found());
-        assert!(c.find_host(true).get_found());
+        assert!(c.find_host(&token, true).get_found());
+        assert!(c.find_host(&token, true).get_found());
 
         // Now make it busy.
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
-        c.find_host(true);
+        c.find_host(&token, true);
         unreachable!("default controller should not return with busy hosts");
+    }
+
+    #[test]
+    fn test_find_host_invalid_token() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        // Register a client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let token = Token(client.get_client_token().to_string());
+        let bad_token1 = Token("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string());
+        let bad_token2 = Token("badtoken".to_string());
+
+        // Add a host.
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        assert!(c.find_host(&token, true).get_found());
+        assert!(c.find_host(&token, true).get_found());
+        assert!(!c.find_host(&bad_token1, true).get_found());
+        assert!(!c.find_host(&bad_token2, true).get_found());
+        assert!(c.find_host(&token, true).get_found());
     }
 
     #[test]
@@ -664,15 +742,15 @@ mod test {
         assert!(!app_path.exists());
 
         // Register a client with an app.
-        let client_id = "hello";
+        let name = "hello";
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         let app = vec![10, 10, 10, 10];
-        c.register_client(client_id.to_string(), client_ip, &app);
+        c.register_client(name.to_string(), client_ip, &app);
         assert_eq!(c.clients.lock().unwrap().len(), 1, "registered client");
 
         // Check the client was registered correctly.
-        let client = c.clients.lock().unwrap().get(client_id).unwrap().clone();
-        assert_eq!(client.id, client_id);
+        let client = c.clients.lock().unwrap().values().next().unwrap().clone();
+        assert_eq!(client.name, name);
         assert_eq!(client.addr, client_ip);
         assert!(client.app);
         assert!(storage_path.is_dir(), "storage dir was not created");
@@ -688,7 +766,72 @@ mod test {
     }
 
     #[test]
-    fn test_notify_start() {
+    fn test_register_duplicate_clients() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let storage_base = karl_path.path().join("storage");
+        let app_base = karl_path.path().join("www");
+
+        // Register a client with an app.
+        let name = "hello";
+        let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let app = vec![10, 10, 10, 10];
+        c.register_client(name.to_string(), client_ip.clone(), &app);
+        c.register_client(name.to_string(), client_ip.clone(), &app);
+        c.register_client(name.to_string(), client_ip.clone(), &app);
+
+        // Check the clients have different names.
+        let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"hello".to_string()));
+        assert!(names.contains(&"hello (1)".to_string()));
+        assert!(names.contains(&"hello (2)".to_string()));
+
+        // Check the clients all have registered storage and app paths.
+        assert!(storage_base.join("hello").is_dir());
+        assert!(storage_base.join("hello (1)").is_dir());
+        assert!(storage_base.join("hello (2)").is_dir());
+        assert!(app_base.join("hello.hbs").is_file());
+        assert!(app_base.join("hello (1).hbs").is_file());
+        assert!(app_base.join("hello (2).hbs").is_file());
+    }
+
+    #[test]
+    fn test_register_format_names() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
+        c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![]);
+        c.register_client("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![]);
+        c.register_client("uPpErCaSe".to_string(), client_ip.clone(), &vec![]);
+        c.register_client("\tEVERYthing   \n\r".to_string(), client_ip.clone(), &vec![]);
+
+        // Check the names were formatted correctly (trimmed and lowercase).
+        let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names.len(), 4);
+        assert!(names.contains(&"leadingwhitespace".to_string()));
+        assert!(names.contains(&"trailingwhitespace".to_string()));
+        assert!(names.contains(&"uppercase".to_string()));
+        assert!(names.contains(&"everything".to_string()));
+    }
+
+    #[test]
+    fn test_register_client_result() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![]);
+        let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![]);
+        let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![]);
+
+        // Tokens are unique
+        assert!(res1.client_token != res2.client_token);
+        assert!(res1.client_token != res3.client_token);
+        assert!(res2.client_token != res3.client_token);
+    }
+
+    #[test]
+    fn test_notify_start_no_hosts() {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
 

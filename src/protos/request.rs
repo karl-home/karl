@@ -1392,6 +1392,7 @@ impl ::protobuf::reflect::ProtobufValue for PingResult {
 pub struct HostRequest {
     // message fields
     pub blocking: bool,
+    pub client_token: ::std::string::String,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1422,6 +1423,32 @@ impl HostRequest {
     pub fn set_blocking(&mut self, v: bool) {
         self.blocking = v;
     }
+
+    // string client_token = 2;
+
+
+    pub fn get_client_token(&self) -> &str {
+        &self.client_token
+    }
+    pub fn clear_client_token(&mut self) {
+        self.client_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_client_token(&mut self, v: ::std::string::String) {
+        self.client_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_client_token(&mut self) -> &mut ::std::string::String {
+        &mut self.client_token
+    }
+
+    // Take field
+    pub fn take_client_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.client_token, ::std::string::String::new())
+    }
 }
 
 impl ::protobuf::Message for HostRequest {
@@ -1440,6 +1467,9 @@ impl ::protobuf::Message for HostRequest {
                     let tmp = is.read_bool()?;
                     self.blocking = tmp;
                 },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_token)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1455,6 +1485,9 @@ impl ::protobuf::Message for HostRequest {
         if self.blocking != false {
             my_size += 2;
         }
+        if !self.client_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.client_token);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -1463,6 +1496,9 @@ impl ::protobuf::Message for HostRequest {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
         if self.blocking != false {
             os.write_bool(1, self.blocking)?;
+        }
+        if !self.client_token.is_empty() {
+            os.write_string(2, &self.client_token)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1507,6 +1543,11 @@ impl ::protobuf::Message for HostRequest {
                 |m: &HostRequest| { &m.blocking },
                 |m: &mut HostRequest| { &mut m.blocking },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "client_token",
+                |m: &HostRequest| { &m.client_token },
+                |m: &mut HostRequest| { &mut m.client_token },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostRequest>(
                 "HostRequest",
                 fields,
@@ -1524,6 +1565,7 @@ impl ::protobuf::Message for HostRequest {
 impl ::protobuf::Clear for HostRequest {
     fn clear(&mut self) {
         self.blocking = false;
+        self.client_token.clear();
         self.unknown_fields.clear();
     }
 }
@@ -1972,6 +2014,8 @@ impl ::protobuf::reflect::ProtobufValue for RegisterRequest {
 
 #[derive(PartialEq,Clone,Default)]
 pub struct RegisterResult {
+    // message fields
+    pub client_token: ::std::string::String,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1987,6 +2031,32 @@ impl RegisterResult {
     pub fn new() -> RegisterResult {
         ::std::default::Default::default()
     }
+
+    // string client_token = 1;
+
+
+    pub fn get_client_token(&self) -> &str {
+        &self.client_token
+    }
+    pub fn clear_client_token(&mut self) {
+        self.client_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_client_token(&mut self, v: ::std::string::String) {
+        self.client_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_client_token(&mut self) -> &mut ::std::string::String {
+        &mut self.client_token
+    }
+
+    // Take field
+    pub fn take_client_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.client_token, ::std::string::String::new())
+    }
 }
 
 impl ::protobuf::Message for RegisterResult {
@@ -1998,6 +2068,9 @@ impl ::protobuf::Message for RegisterResult {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
+                1 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_token)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -2010,12 +2083,18 @@ impl ::protobuf::Message for RegisterResult {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
+        if !self.client_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.client_token);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if !self.client_token.is_empty() {
+            os.write_string(1, &self.client_token)?;
+        }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -2053,7 +2132,12 @@ impl ::protobuf::Message for RegisterResult {
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
-            let fields = ::std::vec::Vec::new();
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "client_token",
+                |m: &RegisterResult| { &m.client_token },
+                |m: &mut RegisterResult| { &mut m.client_token },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<RegisterResult>(
                 "RegisterResult",
                 fields,
@@ -2070,6 +2154,7 @@ impl ::protobuf::Message for RegisterResult {
 
 impl ::protobuf::Clear for RegisterResult {
     fn clear(&mut self) {
+        self.client_token.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2540,21 +2625,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntry\
     R\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
     y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
-    ingRequest\"\x0c\n\nPingResult\")\n\x0bHostRequest\x12\x1a\n\x08blocking\
-    \x18\x01\x20\x01(\x08R\x08blocking\"F\n\nHostResult\x12\x0e\n\x02ip\x18\
-    \x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\
-    \x14\n\x05found\x18\x03\x20\x01(\x08R\x05found\"3\n\x0fRegisterRequest\
-    \x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\
-    \x01(\x0cR\x03app\"\x10\n\x0eRegisterResult\"R\n\x0bNotifyStart\x12!\n\
-    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescrip\
-    tion\x18\x02\x20\x01(\tR\x0bdescription\".\n\tNotifyEnd\x12!\n\x0cservic\
-    e_name\x18\x01\x20\x01(\tR\x0bserviceName*\xd8\x01\n\x0bMessageType\x12\
-    \r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPIN\
-    G_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPU\
-    TE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RE\
-    SULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER\
-    _RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\
-    \x10\nb\x06proto3\
+    ingRequest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\
+    \x18\x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\
+    \x01(\tR\x0bclientToken\"F\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01\
+    (\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05fo\
+    und\x18\x03\x20\x01(\x08R\x05found\"3\n\x0fRegisterRequest\x12\x0e\n\x02\
+    id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03a\
+    pp\"3\n\x0eRegisterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0b\
+    clientToken\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\
+    \tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescr\
+    iption\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bser\
+    viceName*\xd8\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\
+    \x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fC\
+    OMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0c\
+    HOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGIS\
+    TER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNO\
+    TIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\x10\nb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

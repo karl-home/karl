@@ -52,6 +52,7 @@ message PingResult {
 
 message HostRequest {
   bool blocking = 1;
+  string client_token = 2;
 }
 
 message HostResult {
@@ -66,6 +67,7 @@ message RegisterRequest {
 }
 
 message RegisterResult {
+  string client_token = 1;
 }
 
 message NotifyStart {
