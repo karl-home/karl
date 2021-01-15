@@ -52,10 +52,12 @@ fn app(
     };
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
-        std::fs::read_dir(&storage_path).unwrap()
+        let mut files = std::fs::read_dir(&storage_path).unwrap()
             .map(|res| res.unwrap().path())
             .map(|path| path.strip_prefix(&storage_path).unwrap().to_path_buf())
-            .collect()
+            .collect::<Vec<_>>();
+        files.sort();
+        files
     };
     debug!("files for client_id={}: {:?}", &client_id, files);
     Some(Template::render(
