@@ -653,53 +653,100 @@ mod test {
 
     #[test]
     fn test_register_client() {
-        // register a new client with an app
-        // there should be a client
-        // the client id, ip should be the same, and app should be true
-        // there should be a storage directory with the correct name
-        // there should be a .hbs file in the www directory with the correct name
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let storage_path = karl_path.path().join("storage").join("hello");
+        let app_path = karl_path.path().join("www").join("hello.hbs");
 
-        // register a new client without an app
-        // there should be two clients
-        // there should be a new storage directory
-        // there should not be a new www directory
+        // Check initial conditions.
+        assert!(c.clients.lock().unwrap().is_empty());
+        assert!(!storage_path.exists());
+        assert!(!app_path.exists());
+
+        // Register a client with an app.
+        let client_id = "hello";
+        let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let app = vec![10, 10, 10, 10];
+        c.register_client(client_id.to_string(), client_ip, &app);
+        assert_eq!(c.clients.lock().unwrap().len(), 1, "registered client");
+
+        // Check the client was registered correctly.
+        let client = c.clients.lock().unwrap().get(client_id).unwrap().clone();
+        assert_eq!(client.id, client_id);
+        assert_eq!(client.addr, client_ip);
+        assert!(client.app);
+        assert!(storage_path.is_dir(), "storage dir was not created");
+        assert!(app_path.is_file(), "app was not created and renamed");
+
+        // Register a client without an app.
+        // Storage directory should be created, but app file should not.
+        let app: Vec<u8> = vec![];
+        c.register_client("world".to_string(), client_ip, &app);
+        assert_eq!(c.clients.lock().unwrap().len(), 2);
+        assert!(karl_path.path().join("storage").join("world").is_dir());
+        assert!(!karl_path.path().join("www").join("world.hbs").exists());
     }
 
     #[test]
     fn test_notify_start() {
-        // notify start with no hosts
-        // nothing changes
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
 
-        // create a host
-        // no active request
+        // Notify start with no hosts. Nothing errors.
+        let service_name = "host1".to_string();
+        let description = "my first app :)";
+        c.notify_start(service_name.clone(), description.to_string());
 
-        // notify start
-        // correct description
-        // nonzero start
-        // zero end
+        // Create a host and notify start.
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none(),
+            "no initial active request");
+        c.notify_start(service_name.clone(), description.to_string());
+        let request = c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.clone();
+        assert!(request.is_some(), "active request started");
+        let request = request.unwrap();
+        assert_eq!(request.description, description, "same description");
+        assert!(request.start > 0, "request has a start time");
+        assert!(request.end.is_none(), "request does not have an end time");
 
-        // notify start
-        // overwrite description
-        // different start time
-        // zero end
+        // Notify start again and overwrite the old request.
+        thread::sleep(Duration::from_secs(2));
+        c.notify_start(service_name.clone(), "what??".to_string());
+        let new_request = c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.clone();
+        assert!(new_request.is_some());
+        let new_request = new_request.unwrap();
+        assert!(new_request.description != description, "description changed");
+        assert!(new_request.start > request.start, "start time increased");
+        assert!(new_request.end.is_none(), "end time still does not exist");
     }
 
     #[test]
     fn test_notify_end() {
-        // notify end
-        // nothing happens
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
 
-        // create a host
-        // notify end
-        // no last request
+        // Notify start with no hosts. Nothing errors.
+        let service_name = "host1".to_string();
+        let description = "description".to_string();
+        c.notify_end(service_name.clone());
 
-        // notify start
-        // no last request
+        // Create a host. Notify end does not do anything without an active request.
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().last_request.is_none());
+        c.notify_end(service_name.clone());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().last_request.is_none());
 
-        // notify end
-        // no active request
-        // last request exists
-        // correct description
-        // end time >= start time
+        // Notify start then notify end.
+        c.notify_start(service_name.clone(), description.clone());
+        thread::sleep(Duration::from_secs(2));
+        c.notify_end(service_name.clone());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none());
+        assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().last_request.is_some());
+        let request = c.unique_hosts.lock().unwrap().get("host1").unwrap().last_request.clone().unwrap();
+        assert!(request.description == description);
+        assert!(request.end.is_some());
+        assert!(request.end.unwrap() > request.start);
     }
 }
