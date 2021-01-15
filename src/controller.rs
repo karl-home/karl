@@ -24,7 +24,7 @@ use crate::common::{
 type ServiceName = String;
 
 /// Request information.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct Request {
     /// Description of request.
     pub description: String,
@@ -327,14 +327,12 @@ impl Controller {
         let mut res = protos::HostResult::default();
         loop {
             let hosts = self.hosts.lock().unwrap();
-            if hosts.is_empty() {
-                return res;
-            } else {
+            if !hosts.is_empty() {
                 let unique_hosts = self.unique_hosts.lock().unwrap();
                 let mut host_i = self.prev_host_i;
-                for i in 0..hosts.len() {
+                for _ in 0..hosts.len() {
                     host_i = (host_i + 1) % hosts.len();
-                    let service_name = &hosts[i];
+                    let service_name = &hosts[host_i];
                     let host = unique_hosts.get(service_name).unwrap();
                     if host.active_request.is_some() {
                         continue;
@@ -533,7 +531,7 @@ mod test {
         let mut hosts = c.hosts.lock().unwrap();
         let mut unique_hosts = c.unique_hosts.lock().unwrap();
 
-        // Add three hosts
+        // Add hosts
         add_host_test(1, &mut hosts, &mut unique_hosts);
         add_host_test(2, &mut hosts, &mut unique_hosts);
         add_host_test(3, &mut hosts, &mut unique_hosts);
@@ -575,31 +573,82 @@ mod test {
 
     #[test]
     fn test_find_host_non_blocking() {
-        // default controller has no hosts
-        // add 3 hosts
-        // find_host should return host 1 2 3 1 round robin
-        // make host 3 busy
-        // find_host should return 2 1 2 round robin
-        // make host 1 and 2 busy
-        // find_host should fail
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        // Add three hosts
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(2, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(3, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        assert_eq!(c.hosts.lock().unwrap().clone(), vec![
+            "host1".to_string(),
+            "host2".to_string(),
+            "host3".to_string(),
+        ]);
+
+        // Set last_request of a host, say host 2.
+        // find_host returns 2 3 1 round-robin.
+        c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().last_request = Some(Request::default());
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8082);
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8083);
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8081);
+
+        // Make host 3 busy.
+        // find_host should return 2 1 2 round-robin.
+        c.unique_hosts.lock().unwrap().get_mut("host3").unwrap().active_request = Some(Request::default());
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8082);
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8081);
+        let host = c.find_host(false);
+        assert!(host.get_found());
+        assert_eq!(host.get_port(), 8082);
+
+        // Make host 1 and 2 busy.
+        // find_host should fail.
+        c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
+        c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().active_request = Some(Request::default());
+        let host = c.find_host(false);
+        assert!(!host.get_found());
     }
 
+    /// If the test times out, it actually succeeds!
     #[test]
+    #[ignore]
     #[timeout(500)]
     fn test_find_host_blocking_no_hosts() {
-        // default controller has no hosts
-        // unreachable statement
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let blocking = true;
+        c.find_host(blocking);
+        unreachable!("default controller should not return without hosts");
     }
 
+    /// If the test times out, it actually succeeds!
     #[test]
+    #[ignore]
     #[timeout(500)]
     fn test_find_host_blocking_unavailable() {
-        // default controller has no hosts
-        // add host
-        // find_host returns host
-        // make host busy
-        // find_host blocks
-        // unreachable statement
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        // Add a host.
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        assert!(c.find_host(true).get_found());
+        assert!(c.find_host(true).get_found());
+
+        // Now make it busy.
+        c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
+        c.find_host(true);
+        unreachable!("default controller should not return with busy hosts");
     }
 
     #[test]
