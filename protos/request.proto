@@ -51,11 +51,13 @@ message PingResult {
 }
 
 message HostRequest {
+  bool blocking = 1;
 }
 
 message HostResult {
   string ip = 1;
   uint32 port = 2;
+  bool found = 3;
 }
 
 message RegisterRequest {

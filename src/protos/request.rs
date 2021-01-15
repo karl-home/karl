@@ -1390,6 +1390,8 @@ impl ::protobuf::reflect::ProtobufValue for PingResult {
 
 #[derive(PartialEq,Clone,Default)]
 pub struct HostRequest {
+    // message fields
+    pub blocking: bool,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1405,6 +1407,21 @@ impl HostRequest {
     pub fn new() -> HostRequest {
         ::std::default::Default::default()
     }
+
+    // bool blocking = 1;
+
+
+    pub fn get_blocking(&self) -> bool {
+        self.blocking
+    }
+    pub fn clear_blocking(&mut self) {
+        self.blocking = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_blocking(&mut self, v: bool) {
+        self.blocking = v;
+    }
 }
 
 impl ::protobuf::Message for HostRequest {
@@ -1416,6 +1433,13 @@ impl ::protobuf::Message for HostRequest {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.blocking = tmp;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1428,12 +1452,18 @@ impl ::protobuf::Message for HostRequest {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
+        if self.blocking != false {
+            my_size += 2;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.blocking != false {
+            os.write_bool(1, self.blocking)?;
+        }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1471,7 +1501,12 @@ impl ::protobuf::Message for HostRequest {
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
-            let fields = ::std::vec::Vec::new();
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "blocking",
+                |m: &HostRequest| { &m.blocking },
+                |m: &mut HostRequest| { &mut m.blocking },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostRequest>(
                 "HostRequest",
                 fields,
@@ -1488,6 +1523,7 @@ impl ::protobuf::Message for HostRequest {
 
 impl ::protobuf::Clear for HostRequest {
     fn clear(&mut self) {
+        self.blocking = false;
         self.unknown_fields.clear();
     }
 }
@@ -1509,6 +1545,7 @@ pub struct HostResult {
     // message fields
     pub ip: ::std::string::String,
     pub port: u32,
+    pub found: bool,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1565,6 +1602,21 @@ impl HostResult {
     pub fn set_port(&mut self, v: u32) {
         self.port = v;
     }
+
+    // bool found = 3;
+
+
+    pub fn get_found(&self) -> bool {
+        self.found
+    }
+    pub fn clear_found(&mut self) {
+        self.found = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_found(&mut self, v: bool) {
+        self.found = v;
+    }
 }
 
 impl ::protobuf::Message for HostResult {
@@ -1586,6 +1638,13 @@ impl ::protobuf::Message for HostResult {
                     let tmp = is.read_uint32()?;
                     self.port = tmp;
                 },
+                3 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.found = tmp;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1604,6 +1663,9 @@ impl ::protobuf::Message for HostResult {
         if self.port != 0 {
             my_size += ::protobuf::rt::value_size(2, self.port, ::protobuf::wire_format::WireTypeVarint);
         }
+        if self.found != false {
+            my_size += 2;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -1615,6 +1677,9 @@ impl ::protobuf::Message for HostResult {
         }
         if self.port != 0 {
             os.write_uint32(2, self.port)?;
+        }
+        if self.found != false {
+            os.write_bool(3, self.found)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1664,6 +1729,11 @@ impl ::protobuf::Message for HostResult {
                 |m: &HostResult| { &m.port },
                 |m: &mut HostResult| { &mut m.port },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "found",
+                |m: &HostResult| { &m.found },
+                |m: &mut HostResult| { &mut m.found },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostResult>(
                 "HostResult",
                 fields,
@@ -1682,6 +1752,7 @@ impl ::protobuf::Clear for HostResult {
     fn clear(&mut self) {
         self.ip.clear();
         self.port = 0;
+        self.found = false;
         self.unknown_fields.clear();
     }
 }
@@ -2469,19 +2540,21 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntry\
     R\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
     y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
-    ingRequest\"\x0c\n\nPingResult\"\r\n\x0bHostRequest\"0\n\nHostResult\x12\
-    \x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01\
-    (\rR\x04port\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
-    \x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"\x10\n\x0eRegister\
-    Result\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
-    \x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescript\
-    ion\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bservic\
-    eName*\xd8\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPI\
-    NG_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE\
-    _REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_R\
-    EQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_RE\
-    QUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_S\
-    TART\x10\t\x12\x0e\n\nNOTIFY_END\x10\nb\x06proto3\
+    ingRequest\"\x0c\n\nPingResult\")\n\x0bHostRequest\x12\x1a\n\x08blocking\
+    \x18\x01\x20\x01(\x08R\x08blocking\"F\n\nHostResult\x12\x0e\n\x02ip\x18\
+    \x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\
+    \x14\n\x05found\x18\x03\x20\x01(\x08R\x05found\"3\n\x0fRegisterRequest\
+    \x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\
+    \x01(\x0cR\x03app\"\x10\n\x0eRegisterResult\"R\n\x0bNotifyStart\x12!\n\
+    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescrip\
+    tion\x18\x02\x20\x01(\tR\x0bdescription\".\n\tNotifyEnd\x12!\n\x0cservic\
+    e_name\x18\x01\x20\x01(\tR\x0bserviceName*\xd8\x01\n\x0bMessageType\x12\
+    \r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPIN\
+    G_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPU\
+    TE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RE\
+    SULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER\
+    _RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\
+    \x10\nb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

@@ -50,3 +50,4 @@ protoc-rust = "2.18.0"
 [dev-dependencies]
 tempdir = "0.3"
 serial_test = "*"
+ntest = "0.7"

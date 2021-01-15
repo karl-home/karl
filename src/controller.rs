@@ -238,17 +238,6 @@ impl Controller {
         Ok(())
     }
 
-    // Register a client's web app.
-    //
-    // Write the bytes to `<KARL_PATH>/www/<CLIENT_ID>.hbs`.
-    fn register_app(&mut self, id: &str, app_bytes: &[u8]) {
-        let parent = self.karl_path.join("www");
-        let path = parent.join(format!("{}.hbs", id));
-        fs::create_dir_all(parent).unwrap();
-        fs::write(&path, app_bytes).unwrap();
-        info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
-    }
-
     /// Handle an incoming TCP stream.
     fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
         // Read the computation request from the TCP stream.
@@ -260,11 +249,7 @@ impl Controller {
         // Deploy the request to correct handler.
         match req_header.ty {
             HT_HOST_REQUEST => {
-                let host = self.find_host(true).unwrap();
-                info!("picked host => {:?}", host);
-                let mut res = protos::HostResult::default();
-                res.set_ip(host.ip().to_string());
-                res.set_port(host.port().into());
+                let res = self.find_host(true);
                 let res_bytes = res.write_to_bytes().unwrap();
 
                 // Return the result to sender.
@@ -277,25 +262,11 @@ impl Controller {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let client = Client {
-                    id: req.get_id().to_string(),
-                    addr: stream.peer_addr().unwrap().ip(),
-                    app: !req.get_app().is_empty(),
-                };
-
-                // register the client's webapp
-                if client.app {
-                    self.register_app(&client.id, req.get_app());
-                }
-                // register the client itself
-                let mut clients = self.clients.lock().unwrap();
-                if clients.insert(client.id.clone(), client.clone()).is_none() {
-                    info!("registered client {:?}", client);
-                } else {
-                    warn!("client {:?} already existed!", client);
-                }
-                drop(clients);
-                let res = protos::RegisterResult::default();
+                let res = self.register_client(
+                    req.get_id().to_string(),
+                    stream.peer_addr().unwrap().ip(),
+                    req.get_app(),
+                );
                 let res_bytes = res.write_to_bytes().unwrap();
 
                 // Return the result to sender.
@@ -308,33 +279,13 @@ impl Controller {
                 let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                info!("notify start {:?} {:?}", req.service_name, req.description);
-                let mut unique_hosts = self.unique_hosts.lock().unwrap();
-                if let Some(host) = unique_hosts.get_mut(&req.service_name) {
-                    if let Some(req) = &host.active_request {
-                        warn!("overriding active request: {:?}", req)
-                    }
-                    host.active_request = Some(Request::new(req.description));
-                } else {
-                    warn!("missing host");
-                }
+                self.notify_start(req.service_name, req.description);
             },
             HT_NOTIFY_END => {
                 let req = parse_from_bytes::<protos::NotifyEnd>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                info!("notify end {:?}", req.service_name);
-                let mut unique_hosts = self.unique_hosts.lock().unwrap();
-                if let Some(host) = unique_hosts.get_mut(&req.service_name) {
-                    if let Some(mut req) = host.active_request.take() {
-                        req.end = Some(Request::time_since_epoch_s());
-                        host.last_request = Some(req);
-                    } else {
-                        warn!("no active request, null notify end");
-                    }
-                } else {
-                    warn!("missing host");
-                }
+                self.notify_end(req.service_name);
             },
             HT_PING_REQUEST => {
                 parse_from_bytes::<protos::PingRequest>(&req_bytes)
@@ -356,13 +307,16 @@ impl Controller {
 
     /// Find a host to connect to round-robin.
     ///
-    /// Returns either the host address, or an error if no hosts have
-    /// registered, or all of the registered hosts have active requests.
-    fn find_host(&mut self, blocking: bool) -> Result<SocketAddr, Error> {
+    /// If `blocking` is true, loops in 1-second intervals until a host is
+    /// available, and otherwise immediately sets `found` to false in the
+    /// HostResult. A host is available if there is at least one host is
+    /// registered and none of the registered hosts have active requests.
+    fn find_host(&mut self, blocking: bool) -> protos::HostResult {
+        let mut res = protos::HostResult::default();
         loop {
             let hosts = self.hosts.lock().unwrap();
             if hosts.is_empty() {
-                return Err(Error::NoAvailableHosts);
+                return res;
             } else {
                 let unique_hosts = self.unique_hosts.lock().unwrap();
                 let mut host_i = self.prev_host_i;
@@ -374,15 +328,107 @@ impl Controller {
                         continue;
                     } else {
                         self.prev_host_i = host_i;
-                        return Ok(host.addr);
+                        info!("picked host => {:?}", host.addr);
+                        res.set_ip(host.addr.ip().to_string());
+                        res.set_port(host.addr.port().into());
+                        res.set_found(true);
+                        return res;
                     }
                 }
             }
             if !blocking {
-                return Err(Error::NoAvailableHosts);
+                return res;
             }
             drop(hosts);
             thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    /// Register a client.
+    ///
+    /// Stores the client-generated ID along with socket information about
+    /// the client. Overwrites duplicate client IDs. Registers the app
+    /// (a Handlebars template) at `<KARL_PATH>/www/<CLIENT_ID>.hbs`. Creates
+    /// an empty storage directory at `<KARL_PATH>/storage/<CLIENT_ID>/`,
+    /// if it doesn't already exist.
+    ///
+    /// Parameters:
+    /// - client_id - The client-generated ID.
+    /// - client_addr - The peer address of the TCP connection registering
+    ///   the client.
+    /// - app_bytes - The bytes of the Handlebars template, or an empty
+    ///   vector if there is no registered app.
+    fn register_client(
+        &mut self,
+        client_id: String,
+        client_addr: IpAddr,
+        app_bytes: &[u8],
+    ) -> protos::RegisterResult {
+        let client = Client {
+            id: client_id,
+            addr: client_addr,
+            app: !app_bytes.is_empty(),
+        };
+
+        // register the client's webapp
+        if client.app {
+            let parent = self.karl_path.join("www");
+            let path = parent.join(format!("{}.hbs", &client.id));
+            fs::create_dir_all(parent).unwrap();
+            fs::write(&path, app_bytes).unwrap();
+            info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
+        }
+
+        // create a storage directory
+        let storage_path = self.karl_path.join("storage").join(&client.id);
+        fs::create_dir_all(storage_path).unwrap();
+
+        // register the client itself
+        let mut clients = self.clients.lock().unwrap();
+        if clients.insert(client.id.clone(), client.clone()).is_none() {
+            info!("registered client {:?}", client);
+        } else {
+            warn!("client {:?} already existed!", client);
+        }
+        protos::RegisterResult::default()
+    }
+
+    /// Notify the controller that a service is starting a request.
+    ///
+    /// Finds the host with the given service name and sets the active
+    /// request to the given description. Logs an error message if the host
+    /// cannot be found, or an already active request is overwritten.
+    fn notify_start(&mut self, service_name: String, description: String) {
+        info!("notify start {:?} {:?}", service_name, description);
+        let mut unique_hosts = self.unique_hosts.lock().unwrap();
+        if let Some(host) = unique_hosts.get_mut(&service_name) {
+            if let Some(req) = &host.active_request {
+                error!("overriding active request: {:?}", req)
+            }
+            host.active_request = Some(Request::new(description));
+        } else {
+            error!("missing host");
+        }
+    }
+
+    /// Notify the controller that a service is ending a request.
+    ///
+    /// Finds the host with the given service name and sets the last request
+    /// to be the previously active request, updating the end time. Logs an
+    /// error message if the host cannot be found, or if the host does not
+    /// have an active request.
+    fn notify_end(&mut self, service_name: String) {
+        info!("notify end {:?}", service_name);
+        let mut unique_hosts = self.unique_hosts.lock().unwrap();
+        if let Some(host) = unique_hosts.get_mut(&service_name) {
+            if let Some(mut req) = host.active_request.take() {
+                req.end = Some(Request::time_since_epoch_s());
+                host.last_request = Some(req);
+            } else {
+                error!("no active request, null notify end");
+            }
+        } else {
+            error!("missing host");
         }
     }
 }
@@ -419,5 +465,57 @@ mod test {
         // make host busy
         // find_host blocks
         // unreachable statement
+    }
+
+    #[test]
+    fn test_register_client() {
+        // register a new client with an app
+        // there should be a client
+        // the client id, ip should be the same, and app should be true
+        // there should be a storage directory with the correct name
+        // there should be a .hbs file in the www directory with the correct name
+
+        // register a new client without an app
+        // there should be two clients
+        // there should be a new storage directory
+        // there should not be a new www directory
+    }
+
+    #[test]
+    fn test_notify_start() {
+        // notify start with no hosts
+        // nothing changes
+
+        // create a host
+        // no active request
+
+        // notify start
+        // correct description
+        // nonzero start
+        // zero end
+
+        // notify start
+        // overwrite description
+        // different start time
+        // zero end
+    }
+
+    #[test]
+    fn test_notify_end() {
+        // notify end
+        // nothing happens
+
+        // create a host
+        // notify end
+        // no last request
+
+        // notify start
+        // no last request
+
+        // notify end
+        // no active request
+        // last request exists
+        // correct description
+        // end time >= start time
     }
 }
