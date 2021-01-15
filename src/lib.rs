@@ -17,4 +17,6 @@ pub mod packet;
 pub mod backend;
 pub mod common;
 mod controller;
+mod host;
 pub use controller::Controller;
+pub use host::Host;
