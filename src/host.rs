@@ -1,7 +1,9 @@
 use std::fs;
+use std::thread;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
 
 use tokio::runtime::Runtime;
 use flate2::read::GzDecoder;
@@ -11,9 +13,12 @@ use protobuf;
 use protobuf::Message;
 use crate::{packet, protos, backend::Backend};
 use crate::common::{
-    Error,
+    Error, Token, RequestToken,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
 };
+
+/// Frequency at which the host must send messages to the controller, in seconds.
+pub const HEARTBEAT_INTERVAL: u64 = 10;
 
 pub struct Host {
     /// Node/service ID
@@ -28,6 +33,12 @@ pub struct Host {
     rt: Runtime,
     /// Controller address.
     controller: String,
+    /// Request token and when it was last updated.
+    ///
+    /// The host will only accept a ComputeRequest if it includes the
+    /// active RequestToken. The token is set to None while the host is
+    /// is processing a ComputeRequest.
+    token: Arc<Mutex<(Option<RequestToken>, Instant)>>,
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.
@@ -143,10 +154,12 @@ impl Host {
             port,
             rt: Runtime::new().unwrap(),
             controller: controller.to_string(),
+            token: Arc::new(Mutex::new((None, Instant::now()))),
         }
     }
 
-    /// Process an incoming connection.
+    /// Spawns a background process that sends heartbeats to the controller
+    /// at the HEARTBEAT_INTERVAL and processes incoming connections.
     ///
     /// Parameters:
     /// - register - Whether the listener should register itself on DNS-SD.
@@ -154,21 +167,62 @@ impl Host {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
+
         if register {
             crate::net::register(&mut self.rt, self.id, self.port);
         } else {
             warn!("you must manually register the service on DNS-SD!")
         }
+
+        let token_lock = self.token.clone();
+        let controller_addr = self.controller.clone();
+        let host_id = self.id.clone();
+        self.rt.spawn(async move {
+            // Send the initial heartbeat.
+            let mut token = token_lock.lock().unwrap();
+            let token_to_send = Token::gen();
+            *token = (Some(token_to_send.clone()), Instant::now());
+            debug!("heartbeat {:?}", &token_to_send);
+            crate::net::heartbeat(&controller_addr, host_id, token_to_send);
+            drop(token);
+
+            // Every HEARTBEAT_INTERVAL seconds, this process wakes up
+            // and determine if it needs to send a heartbeat message with
+            // a new request token. Note request tokens are also sent with
+            // NotifyEnd messages.
+            //
+            // If the last message the host sent is a NotifyStart, and thus
+            // the host is processing an active request, it does not need to
+            // send a heartbeat. Otherwise, if the last message is a NotifyEnd
+            // or a Heartbeat, and more than HEARTBEAT_INTERVAL seconds has
+            // elapsed, the process will send a heartbeat.
+            //
+            // Note that the host may generate a new request token in the time
+            // that the controller allocates a host token and the client sends
+            // a ComputeRequest. In that case, the client must retry the
+            // HostRequest with the controller (equivalent to client timeout).
+            // This mechanism protects the host from clients that reserve
+            // hosts with the controller and fails to make a ComputeRequest.
+            loop {
+                thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL));
+                let mut token = token_lock.lock().unwrap();
+                if token.0.is_some() && token.1.elapsed().as_secs_f32() > HEARTBEAT_INTERVAL as f32 {
+                    let token_to_send = Token::gen();
+                    *token = (Some(token_to_send.clone()), Instant::now());
+                    debug!("heartbeat {:?}", &token_to_send);
+                    crate::net::heartbeat(&controller_addr, host_id, token_to_send);
+                }
+                drop(token);
+            }
+        });
+
         for stream in listener.incoming() {
             let stream = stream?;
             debug!("incoming stream {:?}", stream.peer_addr());
-            let description = format!("{:?}", stream.peer_addr().unwrap().ip());
-            crate::net::notify_start(&self.controller, self.id, description);
             let now = Instant::now();
             if let Err(e) = self.handle_client(stream) {
                 error!("{:?}", e);
             }
-            crate::net::notify_end(&self.controller, self.id);
             warn!("total: {} s", now.elapsed().as_secs_f32());
         }
         Ok(())
@@ -180,6 +234,10 @@ impl Host {
     }
 
     /// Handle a compute request.
+    ///
+    /// Verifies that the compute request includes a valid request token.
+    /// Notifies the controller of the start and end of the request, if
+    /// the request token is valid and the host processes compute.
     fn handle_compute(
         &mut self,
         req: protos::ComputeRequest,
@@ -187,6 +245,13 @@ impl Host {
         info!("handling compute from {:?}: (len {}) stdout={} stderr={} storage={} {:?}",
             req.client_id, req.package.len(), req.stdout, req.stderr, req.storage, req.files);
         let now = Instant::now();
+
+        // Invalidate the token for future requests and notify start.
+        let mut token = self.token.lock().unwrap();
+        *token = (None, Instant::now());
+        drop(token);
+        crate::net::notify_start(&self.controller, self.id, req.client_id.clone());
+
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
         let import_paths = resolve_import_paths(
@@ -226,16 +291,21 @@ impl Host {
         };
 
         // Reset the root for the next computation.
-        let now = Instant::now();
         std::env::set_current_dir(&self.karl_path).unwrap();
         if let Err(e) = std::fs::remove_dir_all(&self.base_path) {
             error!("error resetting root: {:?}", e);
         }
+        let now = Instant::now();
         info!(
             "reset directory at {:?} => {} s",
             self.base_path,
             now.elapsed().as_secs_f32(),
         );
+
+        // Notify end and create a new token.
+        let mut token = self.token.lock().unwrap();
+        *token = (Some(Token::gen()), Instant::now());
+        crate::net::notify_end(&self.controller, self.id, token.0.clone().unwrap());
         Ok(res)
     }
 

@@ -105,13 +105,27 @@ pub fn notify_start(controller_addr: &str, service_id: u32, description: String)
 }
 
 /// Notify controller about compute request end.
-pub fn notify_end(controller_addr: &str, service_id: u32) {
+pub fn notify_end(controller_addr: &str, service_id: u32, token: RequestToken) {
     let mut stream = TcpStream::connect(&controller_addr).unwrap();
     let mut req = protos::NotifyEnd::default();
     req.set_service_name(format!("KarlService-{}", service_id));
+    req.set_request_token(token.0);
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, HT_NOTIFY_END, &req_bytes).unwrap();
+}
+
+/// Send a heartbeat to the controller.
+pub fn heartbeat(controller_addr: &str, service_id: u32, token: RequestToken) {
+    let mut stream = TcpStream::connect(&controller_addr).unwrap();
+    let mut req = protos::HostHeartbeat::default();
+    req.set_service_name(format!("KarlService-{}", service_id));
+    req.set_request_token(token.0);
+    let req_bytes = req
+        .write_to_bytes()
+        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+        .unwrap();
+    packet::write(&mut stream, HT_HOST_HEARTBEAT, &req_bytes).unwrap();
 }

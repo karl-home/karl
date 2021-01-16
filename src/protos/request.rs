@@ -2376,6 +2376,7 @@ impl ::protobuf::reflect::ProtobufValue for NotifyStart {
 pub struct NotifyEnd {
     // message fields
     pub service_name: ::std::string::String,
+    pub request_token: ::std::string::String,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -2417,6 +2418,32 @@ impl NotifyEnd {
     pub fn take_service_name(&mut self) -> ::std::string::String {
         ::std::mem::replace(&mut self.service_name, ::std::string::String::new())
     }
+
+    // string request_token = 2;
+
+
+    pub fn get_request_token(&self) -> &str {
+        &self.request_token
+    }
+    pub fn clear_request_token(&mut self) {
+        self.request_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_request_token(&mut self, v: ::std::string::String) {
+        self.request_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_request_token(&mut self) -> &mut ::std::string::String {
+        &mut self.request_token
+    }
+
+    // Take field
+    pub fn take_request_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
+    }
 }
 
 impl ::protobuf::Message for NotifyEnd {
@@ -2430,6 +2457,9 @@ impl ::protobuf::Message for NotifyEnd {
             match field_number {
                 1 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.service_name)?;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -2446,6 +2476,9 @@ impl ::protobuf::Message for NotifyEnd {
         if !self.service_name.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.service_name);
         }
+        if !self.request_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.request_token);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -2454,6 +2487,9 @@ impl ::protobuf::Message for NotifyEnd {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
         if !self.service_name.is_empty() {
             os.write_string(1, &self.service_name)?;
+        }
+        if !self.request_token.is_empty() {
+            os.write_string(2, &self.request_token)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -2498,6 +2534,11 @@ impl ::protobuf::Message for NotifyEnd {
                 |m: &NotifyEnd| { &m.service_name },
                 |m: &mut NotifyEnd| { &mut m.service_name },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "request_token",
+                |m: &NotifyEnd| { &m.request_token },
+                |m: &mut NotifyEnd| { &mut m.request_token },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<NotifyEnd>(
                 "NotifyEnd",
                 fields,
@@ -2515,6 +2556,7 @@ impl ::protobuf::Message for NotifyEnd {
 impl ::protobuf::Clear for NotifyEnd {
     fn clear(&mut self) {
         self.service_name.clear();
+        self.request_token.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2526,6 +2568,207 @@ impl ::std::fmt::Debug for NotifyEnd {
 }
 
 impl ::protobuf::reflect::ProtobufValue for NotifyEnd {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
+pub struct HostHeartbeat {
+    // message fields
+    pub service_name: ::std::string::String,
+    pub request_token: ::std::string::String,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a HostHeartbeat {
+    fn default() -> &'a HostHeartbeat {
+        <HostHeartbeat as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl HostHeartbeat {
+    pub fn new() -> HostHeartbeat {
+        ::std::default::Default::default()
+    }
+
+    // string service_name = 1;
+
+
+    pub fn get_service_name(&self) -> &str {
+        &self.service_name
+    }
+    pub fn clear_service_name(&mut self) {
+        self.service_name.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_service_name(&mut self, v: ::std::string::String) {
+        self.service_name = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_service_name(&mut self) -> &mut ::std::string::String {
+        &mut self.service_name
+    }
+
+    // Take field
+    pub fn take_service_name(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.service_name, ::std::string::String::new())
+    }
+
+    // string request_token = 2;
+
+
+    pub fn get_request_token(&self) -> &str {
+        &self.request_token
+    }
+    pub fn clear_request_token(&mut self) {
+        self.request_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_request_token(&mut self, v: ::std::string::String) {
+        self.request_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_request_token(&mut self) -> &mut ::std::string::String {
+        &mut self.request_token
+    }
+
+    // Take field
+    pub fn take_request_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
+    }
+}
+
+impl ::protobuf::Message for HostHeartbeat {
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.service_name)?;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if !self.service_name.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.service_name);
+        }
+        if !self.request_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.request_token);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if !self.service_name.is_empty() {
+            os.write_string(1, &self.service_name)?;
+        }
+        if !self.request_token.is_empty() {
+            os.write_string(2, &self.request_token)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> HostHeartbeat {
+        HostHeartbeat::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "service_name",
+                |m: &HostHeartbeat| { &m.service_name },
+                |m: &mut HostHeartbeat| { &mut m.service_name },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "request_token",
+                |m: &HostHeartbeat| { &m.request_token },
+                |m: &mut HostHeartbeat| { &mut m.request_token },
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostHeartbeat>(
+                "HostHeartbeat",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static HostHeartbeat {
+        static instance: ::protobuf::rt::LazyV2<HostHeartbeat> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(HostHeartbeat::new)
+    }
+}
+
+impl ::protobuf::Clear for HostHeartbeat {
+    fn clear(&mut self) {
+        self.service_name.clear();
+        self.request_token.clear();
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for HostHeartbeat {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for HostHeartbeat {
     fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
         ::protobuf::reflect::ReflectValueRef::Message(self)
     }
@@ -2544,6 +2787,7 @@ pub enum MessageType {
     REGISTER_RESULT = 8,
     NOTIFY_START = 9,
     NOTIFY_END = 10,
+    HOST_HEARTBEAT = 11,
 }
 
 impl ::protobuf::ProtobufEnum for MessageType {
@@ -2564,6 +2808,7 @@ impl ::protobuf::ProtobufEnum for MessageType {
             8 => ::std::option::Option::Some(MessageType::REGISTER_RESULT),
             9 => ::std::option::Option::Some(MessageType::NOTIFY_START),
             10 => ::std::option::Option::Some(MessageType::NOTIFY_END),
+            11 => ::std::option::Option::Some(MessageType::HOST_HEARTBEAT),
             _ => ::std::option::Option::None
         }
     }
@@ -2581,6 +2826,7 @@ impl ::protobuf::ProtobufEnum for MessageType {
             MessageType::REGISTER_RESULT,
             MessageType::NOTIFY_START,
             MessageType::NOTIFY_END,
+            MessageType::HOST_HEARTBEAT,
         ];
         values
     }
@@ -2634,13 +2880,17 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     pp\"3\n\x0eRegisterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0b\
     clientToken\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\
     \tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescr\
-    iption\".\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bser\
-    viceName*\xd8\x01\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\
-    \x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fC\
-    OMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0c\
-    HOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGIS\
-    TER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNO\
-    TIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\x10\nb\x06proto3\
+    iption\"S\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bser\
+    viceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\
+    \rHostHeartbeat\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceNam\
+    e\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken*\xec\x01\n\
+    \x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\
+    \x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\
+    \x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\
+    \x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\
+    \x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\
+    \t\x12\x0e\n\nNOTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0bb\x06p\
+    roto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

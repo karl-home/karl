@@ -16,9 +16,10 @@ use crate::dashboard;
 use crate::packet;
 use crate::protos;
 use crate::common::{
-    Error, Token, ClientToken,
+    Error, Token, ClientToken, RequestToken,
     HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
     HT_PING_REQUEST, HT_PING_RESULT, HT_NOTIFY_START, HT_NOTIFY_END,
+    HT_HOST_HEARTBEAT,
 };
 
 type ServiceName = String;
@@ -246,12 +247,12 @@ impl Controller {
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
         for stream in listener.incoming() {
             let stream = stream?;
-            debug!("incoming stream {:?}", stream.local_addr());
+            trace!("incoming stream {:?}", stream.local_addr());
             let now = Instant::now();
             if let Err(e) = self.handle_client(stream) {
                 error!("{:?}", e);
             }
-            warn!("total: {} s", now.elapsed().as_secs_f32());
+            info!("total: {} s", now.elapsed().as_secs_f32());
         }
         Ok(())
     }
@@ -260,9 +261,9 @@ impl Controller {
     fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
         // Read the computation request from the TCP stream.
         let now = Instant::now();
-        debug!("reading packet");
+        trace!("reading packet");
         let (req_header, req_bytes) = packet::read(&mut stream, 1)?.remove(0);
-        debug!("=> {} s", now.elapsed().as_secs_f32());
+        trace!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
         match req_header.ty {
@@ -274,10 +275,10 @@ impl Controller {
                 let res_bytes = res.write_to_bytes().unwrap();
 
                 // Return the result to sender.
-                debug!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
+                trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
                 let now = Instant::now();
                 packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
+                trace!("=> {} s", now.elapsed().as_secs_f32());
             },
             HT_REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
@@ -307,6 +308,12 @@ impl Controller {
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
                 self.notify_end(req.service_name);
+            },
+            HT_HOST_HEARTBEAT => {
+                let req = parse_from_bytes::<protos::HostHeartbeat>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                self.heartbeat(req.service_name, Token(req.request_token));
             },
             HT_PING_REQUEST => {
                 parse_from_bytes::<protos::PingRequest>(&req_bytes)
@@ -344,6 +351,7 @@ impl Controller {
         // Validate the client token.
         let mut res = protos::HostResult::default();
         if !self.clients.lock().unwrap().contains_key(token) {
+            warn!("find_host invalid client token {:?}", token);
             return res;
         }
 
@@ -361,7 +369,7 @@ impl Controller {
                         continue;
                     } else {
                         self.prev_host_i = host_i;
-                        info!("picked host => {:?}", host.addr);
+                        info!("find_host picked => {:?}", host.addr);
                         res.set_ip(host.addr.ip().to_string());
                         res.set_port(host.addr.port().into());
                         res.set_found(true);
@@ -370,6 +378,7 @@ impl Controller {
                 }
             }
             if !blocking {
+                warn!("find_host no hosts available {:?}", token);
                 return res;
             }
             drop(hosts);
@@ -456,7 +465,7 @@ impl Controller {
     /// request to the given description. Logs an error message if the host
     /// cannot be found, or an already active request is overwritten.
     fn notify_start(&mut self, service_name: String, description: String) {
-        info!("notify start {:?} {:?}", service_name, description);
+        info!("notify start name={:?} description={:?}", service_name, description);
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
         if let Some(host) = unique_hosts.get_mut(&service_name) {
             if let Some(req) = &host.active_request {
@@ -474,8 +483,10 @@ impl Controller {
     /// to be the previously active request, updating the end time. Logs an
     /// error message if the host cannot be found, or if the host does not
     /// have an active request.
+    ///
+    /// Also updates the request token.
     fn notify_end(&mut self, service_name: String) {
-        info!("notify end {:?}", service_name);
+        info!("notify end name={:?}", service_name);
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
         if let Some(host) = unique_hosts.get_mut(&service_name) {
             if let Some(mut req) = host.active_request.take() {
@@ -487,6 +498,12 @@ impl Controller {
         } else {
             error!("missing host");
         }
+    }
+
+    /// Handle a host heartbeat, updating the request token for the
+    /// host with the given service name.
+    fn heartbeat(&mut self, service_name: String, token: RequestToken) {
+        debug!("heartbeat {} {:?}", service_name, token);
     }
 }
 

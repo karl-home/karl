@@ -16,6 +16,7 @@ pub const HT_REGISTER_REQUEST: HeaderType = 7;
 pub const HT_REGISTER_RESULT: HeaderType = 8;
 pub const HT_NOTIFY_START: HeaderType = 9;
 pub const HT_NOTIFY_END: HeaderType = 10;
+pub const HT_HOST_HEARTBEAT: HeaderType = 11;
 
 pub use error::Error;
 pub use builder::{import_path, ComputeRequestBuilder};
@@ -29,6 +30,8 @@ const TOKEN_CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 pub struct Token(pub String);
 /// Client token, alias for Token.
 pub type ClientToken = Token;
+/// Request token, alias for Token.
+pub type RequestToken = Token;
 
 impl Token {
     /// Randomly generate a new token.
