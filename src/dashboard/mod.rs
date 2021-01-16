@@ -40,6 +40,24 @@ fn index(
     })
 }
 
+#[post("/confirm/<service_name>")]
+fn confirm(
+    service_name: String,
+    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
+) {
+    let mut hosts = hosts.lock().unwrap();
+    if let Some(host) = hosts.get_mut(&service_name) {
+        if host.confirmed {
+            warn!("attempted to confirm already confirmed host: {:?}", service_name);
+        } else {
+            info!("confirmed host {:?}", service_name);
+            host.confirmed = true;
+        }
+    } else {
+        warn!("attempted to confirm nonexistent host: {:?}", service_name);
+    }
+}
+
 #[get("/app/<client_id>")]
 fn app(
     client_id: String,
@@ -121,7 +139,7 @@ pub fn start(
         .manage(karl_path)
         .manage(hosts)
         .manage(clients)
-        .mount("/", routes![index, app])
+        .mount("/", routes![index, app, confirm])
         .mount("/api/", routes![api::storage, api::proxy_get])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));

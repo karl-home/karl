@@ -38,6 +38,8 @@ pub struct Request {
 /// Host status and information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Host {
+    /// Whether the user has confirmed this host.
+    pub confirmed: bool,
     /// Index, used internally.
     pub index: usize,
     /// Service name, as identified by DNS-SD.
@@ -100,11 +102,21 @@ impl Request {
     }
 }
 
+/// Add a host. If a host with the same name already exists, don't do anything.
+///
+/// Parameters:
+/// - service - DNS-SD service information, particularly the name.
+/// - addr - The address of the host.
+/// - hosts - List of host service names.
+/// - unique_hosts - Hash map of host service names to host information
+///   to prevent duplication.
+/// - confirmed - Whether the host should be confirmed by default.
 fn add_host(
     service: &Service,
     addr: SocketAddr,
     hosts: &mut Vec<ServiceName>,
     unique_hosts: &mut HashMap<ServiceName, Host>,
+    confirmed: bool,
 ) {
     if unique_hosts.contains_key(&service.name) {
         return;
@@ -119,6 +131,7 @@ fn add_host(
     unique_hosts.insert(
         service.name.clone(),
         Host {
+            confirmed,
             name: service.name.clone(),
             index: hosts.len(),
             addr,
@@ -223,7 +236,7 @@ impl Controller {
                         match service.event_type {
                             ServiceEventType::Added => {
                                 let addr = addrs[0];
-                                add_host(&service, addr, &mut hosts, &mut unique_hosts);
+                                add_host(&service, addr, &mut hosts, &mut unique_hosts, false);
                             },
                             ServiceEventType::Removed => {
                                 remove_host(&service, &mut hosts, &mut unique_hosts);
@@ -370,7 +383,7 @@ impl Controller {
                     host_i = (host_i + 1) % hosts.len();
                     let service_name = &hosts[host_i];
                     let host = unique_hosts.get_mut(service_name).unwrap();
-                    if host.active_request.is_some() {
+                    if host.active_request.is_some() || !host.confirmed {
                         continue;
                     }
                     if let Some(token) = host.token.take() {
@@ -556,7 +569,7 @@ mod test {
     ) {
         let service = gen_service(i);
         let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
-        add_host(&service, addr, hosts, unique_hosts);
+        add_host(&service, addr, hosts, unique_hosts, true);
     }
 
     #[test]
@@ -571,7 +584,7 @@ mod test {
         // Add a host
         let name = "host1";
         let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
-        add_host(&gen_service(1), addr, &mut hosts, &mut unique_hosts);
+        add_host(&gen_service(1), addr, &mut hosts, &mut unique_hosts, false);
 
         // Check controller was modified correctly
         assert_eq!(hosts.len(), 1);
@@ -586,6 +599,8 @@ mod test {
         assert_eq!(host.addr, addr);
         assert!(host.active_request.is_none());
         assert!(host.last_request.is_none());
+        assert!(host.token.is_none());
+        assert!(!host.confirmed);
     }
 
     #[test]
@@ -652,6 +667,33 @@ mod test {
         for host in unique_hosts.values() {
             assert_eq!(hosts[host.index], host.name);
         }
+    }
+
+    #[test]
+    fn test_find_unconfirmed_host() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        // Register a client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client_token = Token(client.get_client_token().to_string());
+        let request_token = Token("requesttoken".to_string());
+
+        // Add an unconfirmed host
+        add_host(
+            &gen_service(1),
+            "0.0.0.0:8081".parse().unwrap(),
+            &mut c.hosts.lock().unwrap(),
+            &mut c.unique_hosts.lock().unwrap(),
+            false,
+        );
+        assert!(!c.unique_hosts.lock().unwrap().get("host1").unwrap().confirmed);
+        c.heartbeat("host1".to_string(), request_token.clone());
+        assert!(!c.find_host(&client_token, false).get_found());
+
+        // Confirm the host, and we should be able to discover it
+        c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().confirmed = true;
+        assert!(c.find_host(&client_token, false).get_found());
     }
 
     #[test]
