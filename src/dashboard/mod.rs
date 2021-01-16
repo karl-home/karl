@@ -28,6 +28,7 @@ struct AppContext {
     files: Vec<PathBuf>,
 }
 
+// TODO: authenticate this request. Only the homeowner can access the page.
 #[get("/")]
 fn index(
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
@@ -40,6 +41,7 @@ fn index(
     })
 }
 
+// TODO: authenticate this request. Only the homeowner can call this.
 #[post("/confirm/<service_name>")]
 fn confirm(
     service_name: String,
