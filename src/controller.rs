@@ -59,6 +59,8 @@ pub struct Host {
 /// Client status and information.
 #[derive(Serialize, Debug, Clone)]
 pub struct Client {
+    /// Whether the user has confirmed this client.
+    pub confirmed: bool,
     /// The self-given name of the client, with (1), (2), etc. appended when
     /// duplicates are registered, like handling duplicates in the filesystem.
     pub name: String,
@@ -306,6 +308,7 @@ impl Controller {
                     req.get_id().to_string(),
                     stream.peer_addr().unwrap().ip(),
                     req.get_app(),
+                    false,
                 );
                 let res_bytes = res.write_to_bytes().unwrap();
 
@@ -368,7 +371,12 @@ impl Controller {
     ) -> protos::HostResult {
         // Validate the client token.
         let mut res = protos::HostResult::default();
-        if !self.clients.lock().unwrap().contains_key(token) {
+        if let Some(client) = self.clients.lock().unwrap().get(token) {
+            if !client.confirmed {
+                warn!("find_host unconfirmed client token {:?}", token);
+                return res;
+            }
+        } else {
             warn!("find_host invalid client token {:?}", token);
             return res;
         }
@@ -424,11 +432,13 @@ impl Controller {
     ///   the client.
     /// - app_bytes - The bytes of the Handlebars template, or an empty
     ///   vector if there is no registered app.
+    /// - confirmed - Whether the client should be confirmed by default.
     fn register_client(
         &mut self,
         mut name: String,
         client_addr: IpAddr,
         app_bytes: &[u8],
+        confirmed: bool,
     ) -> protos::RegisterResult {
         // resolve duplicate client names
         let names = self.clients.lock().unwrap().values()
@@ -448,6 +458,7 @@ impl Controller {
 
         // generate a client with a unique name and token
         let client = Client {
+            confirmed,
             name,
             addr: client_addr,
             app: !app_bytes.is_empty(),
@@ -675,7 +686,7 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
         let request_token = Token("requesttoken".to_string());
 
@@ -702,7 +713,7 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
         let request_token = Token("requesttoken".to_string());
 
@@ -767,7 +778,7 @@ mod test {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
         let blocking = true;
         c.find_host(&token, blocking);
@@ -783,7 +794,7 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
         let request_token = Token("requesttoken".to_string());
 
@@ -807,7 +818,7 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
         let bad_token1 = Token("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string());
         let bad_token2 = Token("badtoken".to_string());
@@ -826,12 +837,36 @@ mod test {
     }
 
     #[test]
+    fn test_find_host_unconfirmed_client_token() {
+        let karl_path = init_karl_path();
+        let mut c = Controller::new(karl_path.path().to_path_buf());
+
+        // Add a host.
+        let request_token = Token("requesttoken".to_string());
+        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        c.heartbeat("host1".to_string(), request_token.clone());
+
+        // Register an unconfirmed client
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
+        let token = Token(client.get_client_token().to_string());
+        assert_eq!(c.clients.lock().unwrap().len(), 1);
+        assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
+        assert!(!c.find_host(&token, false).get_found(),
+            "found host with unconfirmed token");
+
+        // Confirm the client and find a host.
+        c.clients.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
+        assert!(c.find_host(&token, false).get_found(),
+            "failed to find host with confirmed token");
+    }
+
+    #[test]
     fn test_find_host_request_tokens() {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
         let request_token = Token("requesttoken".to_string());
 
@@ -865,10 +900,10 @@ mod test {
         let name = "hello";
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         let app = vec![10, 10, 10, 10];
-        c.register_client(name.to_string(), client_ip, &app);
+        c.register_client(name.to_string(), client_ip, &app, true);
         assert_eq!(c.clients.lock().unwrap().len(), 1, "registered client");
 
-        // Check the client was registered correctly.
+        // Check the client was registered correcftly.
         let client = c.clients.lock().unwrap().values().next().unwrap().clone();
         assert_eq!(client.name, name);
         assert_eq!(client.addr, client_ip);
@@ -879,7 +914,7 @@ mod test {
         // Register a client without an app.
         // Storage directory should be created, but app file should not.
         let app: Vec<u8> = vec![];
-        c.register_client("world".to_string(), client_ip, &app);
+        c.register_client("world".to_string(), client_ip, &app, true);
         assert_eq!(c.clients.lock().unwrap().len(), 2);
         assert!(karl_path.path().join("storage").join("world").is_dir());
         assert!(!karl_path.path().join("www").join("world.hbs").exists());
@@ -896,9 +931,9 @@ mod test {
         let name = "hello";
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         let app = vec![10, 10, 10, 10];
-        c.register_client(name.to_string(), client_ip.clone(), &app);
-        c.register_client(name.to_string(), client_ip.clone(), &app);
-        c.register_client(name.to_string(), client_ip.clone(), &app);
+        c.register_client(name.to_string(), client_ip.clone(), &app, true);
+        c.register_client(name.to_string(), client_ip.clone(), &app, true);
+        c.register_client(name.to_string(), client_ip.clone(), &app, true);
 
         // Check the clients have different names.
         let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
@@ -922,10 +957,10 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
-        c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![]);
-        c.register_client("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![]);
-        c.register_client("uPpErCaSe".to_string(), client_ip.clone(), &vec![]);
-        c.register_client("\tEVERYthing   \n\r".to_string(), client_ip.clone(), &vec![]);
+        c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
+        c.register_client("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![], true);
+        c.register_client("uPpErCaSe".to_string(), client_ip.clone(), &vec![], true);
+        c.register_client("\tEVERYthing   \n\r".to_string(), client_ip.clone(), &vec![], true);
 
         // Check the names were formatted correctly (trimmed and lowercase).
         let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
@@ -940,9 +975,9 @@ mod test {
     fn test_register_client_result() {
         let karl_path = init_karl_path();
         let mut c = Controller::new(karl_path.path().to_path_buf());
-        let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![]);
-        let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![]);
-        let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![]);
+        let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![], true);
+        let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![], true);
+        let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![], true);
 
         // Tokens are unique
         assert!(res1.client_token != res2.client_token);
@@ -1046,7 +1081,7 @@ mod test {
         let mut c = Controller::new(karl_path.path().to_path_buf());
 
         let host1 = "host1".to_string();
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![]);
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
         let request_token1 = Token("requesttoken1".to_string());
         let request_token2 = Token("requesttoken2".to_string());

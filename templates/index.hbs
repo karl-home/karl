@@ -12,9 +12,16 @@
       }
     </style>
     <script>
-      function confirm(service_name) {
+      function confirm_host(service_name) {
         var xmlHttp = new XMLHttpRequest();
-        xmlHttp.open("POST", "/confirm/" + service_name, false);
+        xmlHttp.open("POST", "/confirm/host/" + service_name, false);
+        xmlHttp.send(null);
+        location.reload();
+      }
+
+      function confirm_client(client_name) {
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.open("POST", "/confirm/client/" + client_name, false);
         xmlHttp.send(null);
         location.reload();
       }
@@ -40,7 +47,7 @@
               {{#if this.confirmed}}
               Yes
               {{else}}
-              <button class="confirm-button" onclick="confirm('{{this.name}}')">
+              <button class="confirm-button" onclick="confirm_host('{{this.name}}')">
                 Confirm
               </button>
               {{/if}}
@@ -60,6 +67,7 @@
       <table>
       <thead>
         <tr>
+          <th>Confirm?</th>
           <th>ID</th>
           <th>IPAddr</th>
           <th>App</th>
@@ -68,6 +76,15 @@
       <tbody>
         {{#each clients}}
           <tr>
+            <td>
+              {{#if this.confirmed}}
+              Yes
+              {{else}}
+              <button class="confirm-button" onclick="confirm_client('{{this.name}}')">
+                Confirm
+              </button>
+              {{/if}}
+            </td>
             <td>{{this.name}}</td>
             <td>{{this.addr}}</td>
             <td><a href="/app/{{this.name}}">Link</a></td>
