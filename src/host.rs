@@ -122,15 +122,7 @@ impl Drop for Host {
 }
 
 impl Host {
-    /// Generate a new listener with a random ID.
-    ///
-    /// The constructor creates a directory at the <KARL_PATH> if it does
-    /// not already exist. The working directory for any computation is at
-    /// <KARL_PATH>/<LISTENER_ID>. When not doing computation, the working
-    /// directory must be at <KARL_PATH>.
-    ///
-    /// Note that the wasmer runtime changes the working directory for
-    /// computation, so the listener must change it back immediately after.
+    /// Generate a new host with a random ID.
     pub fn new(
         karl_path: PathBuf,
         backend: Backend,
@@ -140,12 +132,6 @@ impl Host {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let base_path = karl_path.join(id.to_string());
-
-        // Create the <KARL_PATH> if it does not already exist.
-        fs::create_dir_all(&karl_path).unwrap();
-        // Set the current working directory to the <KARL_PATH>.
-        std::env::set_current_dir(&karl_path).unwrap();
-        debug!("create karl_path {:?}", &karl_path);
         Self {
             id,
             karl_path,
@@ -161,9 +147,20 @@ impl Host {
     /// Spawns a background process that sends heartbeats to the controller
     /// at the HEARTBEAT_INTERVAL and processes incoming connections.
     ///
+    /// The constructor creates a directory at the <KARL_PATH> if it does
+    /// not already exist. The working directory for any computation is at
+    /// <KARL_PATH>/<LISTENER_ID>. When not doing computation, the working
+    /// directory must be at <KARL_PATH>.
+    ///
     /// Parameters:
     /// - register - Whether the listener should register itself on DNS-SD.
     pub fn start(&mut self, register: bool) -> Result<(), Error> {
+        // Create the <KARL_PATH> if it does not already exist.
+        fs::create_dir_all(&self.karl_path).unwrap();
+        // Set the current working directory to the <KARL_PATH>.
+        std::env::set_current_dir(&self.karl_path).unwrap();
+        debug!("create karl_path {:?}", &self.karl_path);
+
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
@@ -233,6 +230,31 @@ impl Host {
         protos::PingResult::default()
     }
 
+    /// Validate and use the request token.
+    ///
+    /// If the token is valid, "uses" the token by invalidating it for
+    /// future requests, indicating that the host has an active request.
+    /// If not, returns Error::InvalidRequestToken.
+    fn use_request_token(&mut self, token: &RequestToken) -> Result<(), Error> {
+        let mut real_token = self.token.lock().unwrap();
+        if let Some(real_token) = &real_token.0 {
+            if token != real_token {
+                warn!("active token {:?} != client's token {:?}", token, real_token);
+                return Err(Error::InvalidRequestToken("tokens do not match".to_string()));
+            }
+        } else {
+            warn!("no active request token, either the host has not sent its \
+                initial token to the controller and a malicious client has \
+                found the host anyway, or there is a bug regenerating the \
+                token after processing a request.");
+            return Err(Error::InvalidRequestToken("no active token".to_string()));
+        }
+
+        // Invalidate the token for future requests and notify start.
+        *real_token = (None, Instant::now());
+        Ok(())
+    }
+
     /// Handle a compute request.
     ///
     /// Verifies that the compute request includes a valid request token.
@@ -246,10 +268,7 @@ impl Host {
             req.client_id, req.package.len(), req.stdout, req.stderr, req.storage, req.files);
         let now = Instant::now();
 
-        // Invalidate the token for future requests and notify start.
-        let mut token = self.token.lock().unwrap();
-        *token = (None, Instant::now());
-        drop(token);
+        self.use_request_token(&Token(req.request_token.clone()))?;
         crate::net::notify_start(&self.controller, self.id, req.client_id.clone());
 
         let root_path = self.base_path.join("root");
@@ -363,5 +382,57 @@ impl Host {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use tempdir::TempDir;
 
+    fn init_host() -> (TempDir, Host) {
+        let karl_path = TempDir::new("karl").unwrap();
+        let host = Host::new(
+            karl_path.path().to_path_buf(),
+            Backend::Binary,
+            8080,
+            "1.2.3.4:8000",
+        );
+        (karl_path, host)
+    }
+
+    /// Helper function to get token from host.
+    fn get_token(host: &Host) -> Option<RequestToken> {
+        host.token.lock().unwrap().0.clone()
+    }
+
+    /// Helper function to set token in host.
+    fn set_token(host: &mut Host, token: &Token) {
+        host.token.lock().unwrap().0 = Some(token.clone());
+    }
+
+    #[test]
+    fn no_active_token_fails() {
+        let (_karl_path, mut h) = init_host();
+        let token = Token("abc".to_string());
+        assert!(get_token(&h).is_none());
+        assert!(h.use_request_token(&token).is_err());
+    }
+
+    #[test]
+    fn non_matching_token_fails() {
+        let (_karl_path, mut h) = init_host();
+        let token1 = Token("abc".to_string());
+        let token2 = Token("def".to_string());
+        set_token(&mut h, &token1);
+        assert!(get_token(&h).is_some());
+        assert!(h.use_request_token(&token2).is_err(), "non matching token fails");
+        assert!(h.use_request_token(&token1).is_ok(), "matching token succeeds");
+    }
+
+    #[test]
+    fn matching_token_invalidates_old_token() {
+        let (_karl_path, mut h) = init_host();
+        let token = Token("abc".to_string());
+        set_token(&mut h, &token);
+        assert!(get_token(&h).is_some());
+        assert!(h.use_request_token(&token).is_ok(), "token succeeds the first time");
+        assert!(get_token(&h).is_none());
+        assert!(h.use_request_token(&token).is_err(), "token fails the second time");
+    }
 }

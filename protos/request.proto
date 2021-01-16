@@ -37,6 +37,7 @@ message ComputeRequest {
   repeated Import imports = 6;
   string client_id = 7;
   bool storage = 8;
+  string request_token = 9;
 }
 
 message ComputeResult {

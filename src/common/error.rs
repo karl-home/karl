@@ -39,6 +39,8 @@ pub enum Error {
     StorageError(String),
     /// Error processing proxy request.
     ProxyError(String),
+    /// InvalidRequestToken.
+    InvalidRequestToken(String),
     /// Unknown.
     UnknownError(String),
 }

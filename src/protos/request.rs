@@ -476,6 +476,7 @@ pub struct ComputeRequest {
     pub imports: ::protobuf::RepeatedField<Import>,
     pub client_id: ::std::string::String,
     pub storage: bool,
+    pub request_token: ::std::string::String,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -671,6 +672,32 @@ impl ComputeRequest {
     pub fn set_storage(&mut self, v: bool) {
         self.storage = v;
     }
+
+    // string request_token = 9;
+
+
+    pub fn get_request_token(&self) -> &str {
+        &self.request_token
+    }
+    pub fn clear_request_token(&mut self) {
+        self.request_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_request_token(&mut self, v: ::std::string::String) {
+        self.request_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_request_token(&mut self) -> &mut ::std::string::String {
+        &mut self.request_token
+    }
+
+    // Take field
+    pub fn take_request_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
+    }
 }
 
 impl ::protobuf::Message for ComputeRequest {
@@ -728,6 +755,9 @@ impl ::protobuf::Message for ComputeRequest {
                     let tmp = is.read_bool()?;
                     self.storage = tmp;
                 },
+                9 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -766,6 +796,9 @@ impl ::protobuf::Message for ComputeRequest {
         if self.storage != false {
             my_size += 2;
         }
+        if !self.request_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(9, &self.request_token);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -799,6 +832,9 @@ impl ::protobuf::Message for ComputeRequest {
         }
         if self.storage != false {
             os.write_bool(8, self.storage)?;
+        }
+        if !self.request_token.is_empty() {
+            os.write_string(9, &self.request_token)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -878,6 +914,11 @@ impl ::protobuf::Message for ComputeRequest {
                 |m: &ComputeRequest| { &m.storage },
                 |m: &mut ComputeRequest| { &mut m.storage },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "request_token",
+                |m: &ComputeRequest| { &m.request_token },
+                |m: &mut ComputeRequest| { &mut m.request_token },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<ComputeRequest>(
                 "ComputeRequest",
                 fields,
@@ -902,6 +943,7 @@ impl ::protobuf::Clear for ComputeRequest {
         self.imports.clear();
         self.client_id.clear();
         self.storage = false;
+        self.request_token.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2901,38 +2943,39 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x20\x01(\tR\x04name\x12\x12\n\x04hash\x18\x02\x20\x01(\tR\x04hash\"\
     T\n\tPkgConfig\x12\x1f\n\x0bbinary_path\x18\x01\x20\x01(\tR\nbinaryPath\
     \x12\x12\n\x04args\x18\x02\x20\x03(\tR\x04args\x12\x12\n\x04envs\x18\x03\
-    \x20\x03(\tR\x04envs\"\xfe\x01\n\x0eComputeRequest\x12\x18\n\x07package\
+    \x20\x03(\tR\x04envs\"\xa3\x02\n\x0eComputeRequest\x12\x18\n\x07package\
     \x18\x01\x20\x01(\x0cR\x07package\x12*\n\x06config\x18\x02\x20\x01(\x0b2\
     \x12.request.PkgConfigR\x06config\x12\x16\n\x06stdout\x18\x03\x20\x01(\
     \x08R\x06stdout\x12\x16\n\x06stderr\x18\x04\x20\x01(\x08R\x06stderr\x12\
     \x14\n\x05files\x18\x05\x20\x03(\tR\x05files\x12)\n\x07imports\x18\x06\
     \x20\x03(\x0b2\x0f.request.ImportR\x07imports\x12\x1b\n\tclient_id\x18\
     \x07\x20\x01(\tR\x08clientId\x12\x18\n\x07storage\x18\x08\x20\x01(\x08R\
-    \x07storage\"\xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\x18\x01\x20\
-    \x01(\x0cR\x06stdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\x0cR\x06stderr\
-    \x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntry\
-    R\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
-    y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
-    ingRequest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\
-    \x18\x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\
-    \x01(\tR\x0bclientToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01\
-    (\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05fo\
-    und\x18\x03\x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01\
-    (\tR\x0crequestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\
-    \x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eReg\
-    isterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\
-    \n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceN\
-    ame\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNo\
-    tifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\
-    \rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\
+    \x07storage\x12#\n\rrequest_token\x18\t\x20\x01(\tR\x0crequestToken\"\
+    \xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\x18\x01\x20\x01(\x0cR\x06s\
+    tdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\x0cR\x06stderr\x127\n\x05file\
+    s\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntryR\x05files\x1a8\
+    \n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05\
+    value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bPingRequest\"\
+    \x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\x18\x01\x20\
+    \x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\x01(\tR\x0bcli\
+    entToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\
+    \x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05found\x18\x03\
+    \x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01(\tR\x0creq\
+    uestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
+    \x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eRegisterRes\
+    ult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\n\x0bNo\
+    tifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\
+    \x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNotifyEnd\
     \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rreque\
-    st_token\x18\x02\x20\x01(\tR\x0crequestToken*\xec\x01\n\x0bMessageType\
-    \x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\
-    \x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\
-    \x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\
-    \x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\
-    \x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nN\
-    OTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0bb\x06proto3\
+    st_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\x12!\n\
+    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rrequest_toke\
+    n\x18\x02\x20\x01(\tR\x0crequestToken*\xec\x01\n\x0bMessageType\x12\r\n\
+    \tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RE\
+    SULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_R\
+    ESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\
+    \x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER_RES\
+    ULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\x10\n\
+    \x12\x12\n\x0eHOST_HEARTBEAT\x10\x0bb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
