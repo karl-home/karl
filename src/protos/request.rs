@@ -1588,6 +1588,7 @@ pub struct HostResult {
     pub ip: ::std::string::String,
     pub port: u32,
     pub found: bool,
+    pub request_token: ::std::string::String,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1659,6 +1660,32 @@ impl HostResult {
     pub fn set_found(&mut self, v: bool) {
         self.found = v;
     }
+
+    // string request_token = 4;
+
+
+    pub fn get_request_token(&self) -> &str {
+        &self.request_token
+    }
+    pub fn clear_request_token(&mut self) {
+        self.request_token.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_request_token(&mut self, v: ::std::string::String) {
+        self.request_token = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_request_token(&mut self) -> &mut ::std::string::String {
+        &mut self.request_token
+    }
+
+    // Take field
+    pub fn take_request_token(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
+    }
 }
 
 impl ::protobuf::Message for HostResult {
@@ -1687,6 +1714,9 @@ impl ::protobuf::Message for HostResult {
                     let tmp = is.read_bool()?;
                     self.found = tmp;
                 },
+                4 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1708,6 +1738,9 @@ impl ::protobuf::Message for HostResult {
         if self.found != false {
             my_size += 2;
         }
+        if !self.request_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(4, &self.request_token);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -1722,6 +1755,9 @@ impl ::protobuf::Message for HostResult {
         }
         if self.found != false {
             os.write_bool(3, self.found)?;
+        }
+        if !self.request_token.is_empty() {
+            os.write_string(4, &self.request_token)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1776,6 +1812,11 @@ impl ::protobuf::Message for HostResult {
                 |m: &HostResult| { &m.found },
                 |m: &mut HostResult| { &mut m.found },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "request_token",
+                |m: &HostResult| { &m.request_token },
+                |m: &mut HostResult| { &mut m.request_token },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostResult>(
                 "HostResult",
                 fields,
@@ -1795,6 +1836,7 @@ impl ::protobuf::Clear for HostResult {
         self.ip.clear();
         self.port = 0;
         self.found = false;
+        self.request_token.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2873,24 +2915,24 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     y\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bP\
     ingRequest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\
     \x18\x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\
-    \x01(\tR\x0bclientToken\"F\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01\
+    \x01(\tR\x0bclientToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01\
     (\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05fo\
-    und\x18\x03\x20\x01(\x08R\x05found\"3\n\x0fRegisterRequest\x12\x0e\n\x02\
-    id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03a\
-    pp\"3\n\x0eRegisterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0b\
-    clientToken\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\
-    \tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescr\
-    iption\"S\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bser\
-    viceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\
-    \rHostHeartbeat\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceNam\
-    e\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken*\xec\x01\n\
-    \x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\
-    \x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\
-    \x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\
-    \x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\
-    \x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\
-    \t\x12\x0e\n\nNOTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0bb\x06p\
-    roto3\
+    und\x18\x03\x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01\
+    (\tR\x0crequestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\
+    \x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eReg\
+    isterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\
+    \n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceN\
+    ame\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNo\
+    tifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\
+    \rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\
+    \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rreque\
+    st_token\x18\x02\x20\x01(\tR\x0crequestToken*\xec\x01\n\x0bMessageType\
+    \x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\
+    \x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\
+    \x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\
+    \x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\
+    \x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nN\
+    OTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0bb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

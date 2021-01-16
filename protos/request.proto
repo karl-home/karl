@@ -60,6 +60,7 @@ message HostResult {
   string ip = 1;
   uint32 port = 2;
   bool found = 3;
+  string request_token = 4;
 }
 
 message RegisterRequest {
