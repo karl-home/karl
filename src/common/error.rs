@@ -41,6 +41,9 @@ pub enum Error {
     ProxyError(String),
     /// InvalidRequestToken.
     InvalidRequestToken(String),
+    /// Unable to verify that a NotifyStart, NotifyEnd, or HostHeartbeat
+    /// message came from a real host.
+    InvalidHostMessage(String),
     /// Unknown.
     UnknownError(String),
 }
