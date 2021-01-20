@@ -42,8 +42,8 @@ fn index(
 }
 
 // TODO: authenticate this request. Only the homeowner can call this.
-#[post("/confirm/<service_name>")]
-fn confirm(
+#[post("/confirm/host/<service_name>")]
+fn confirm_host(
     service_name: String,
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
 ) {
@@ -58,6 +58,29 @@ fn confirm(
     } else {
         warn!("attempted to confirm nonexistent host: {:?}", service_name);
     }
+}
+
+// TODO: authenticate this request. Only the homeowner can call this.
+#[post("/confirm/client/<client_name>")]
+fn confirm_client(
+    client_name: String,
+    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
+) {
+    let mut clients = clients.lock().unwrap();
+    for (_, client) in clients.iter_mut() {
+        if client.name != client_name {
+            continue;
+        }
+        if client.confirmed {
+            warn!("attempted to confirm already confirmed client: {:?}", client_name);
+            return;
+        } else {
+            info!("confirmed client {:?}", client_name);
+            client.confirmed = true;
+            return;
+        }
+    }
+    warn!("attempted to confirm nonexistent client: {:?}", client_name);
 }
 
 #[get("/app/<client_id>")]
@@ -141,7 +164,7 @@ pub fn start(
         .manage(karl_path)
         .manage(hosts)
         .manage(clients)
-        .mount("/", routes![index, app, confirm])
+        .mount("/", routes![index, app, confirm_host, confirm_client])
         .mount("/api/", routes![api::storage, api::proxy_get])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
