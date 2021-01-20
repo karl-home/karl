@@ -1,5 +1,6 @@
 //! Controller dashboard.
-mod api;
+mod client;
+mod helper;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,13 +11,14 @@ use rocket_contrib::templates::Template;
 use tokio::runtime::Runtime;
 use serde::Serialize;
 
-use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
 use crate::common::ClientToken;
-use crate::controller::{Request, Host, Client};
+use crate::controller::{Host, Client};
+use helper::*;
 
 #[derive(Serialize)]
 struct MainContext {
     title: &'static str,
+    base_domain: String,
     hosts: Vec<Host>,
     clients: Vec<Client>,
 }
@@ -31,64 +33,26 @@ struct AppContext {
 // TODO: authenticate this request. Only the homeowner can access the page.
 #[get("/")]
 fn index(
-    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
-    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
-) -> Template {
-    Template::render("index", &MainContext {
-        title: "Hello",
-        hosts: hosts.lock().unwrap().values().map(|host| host.clone()).collect(),
-        clients: clients.lock().unwrap().values().map(|client| client.clone()).collect(),
-    })
-}
-
-// TODO: authenticate this request. Only the homeowner can call this.
-#[post("/confirm/host/<service_name>")]
-fn confirm_host(
-    service_name: String,
-    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
-) {
-    let mut hosts = hosts.lock().unwrap();
-    if let Some(host) = hosts.get_mut(&service_name) {
-        if host.confirmed {
-            warn!("attempted to confirm already confirmed host: {:?}", service_name);
-        } else {
-            info!("confirmed host {:?}", service_name);
-            host.confirmed = true;
-        }
-    } else {
-        warn!("attempted to confirm nonexistent host: {:?}", service_name);
-    }
-}
-
-// TODO: authenticate this request. Only the homeowner can call this.
-#[post("/confirm/client/<client_name>")]
-fn confirm_client(
-    client_name: String,
-    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
-) {
-    let mut clients = clients.lock().unwrap();
-    for (_, client) in clients.iter_mut() {
-        if client.name != client_name {
-            continue;
-        }
-        if client.confirmed {
-            warn!("attempted to confirm already confirmed client: {:?}", client_name);
-            return;
-        } else {
-            info!("confirmed client {:?}", client_name);
-            client.confirmed = true;
-            return;
-        }
-    }
-    warn!("attempted to confirm nonexistent client: {:?}", client_name);
-}
-
-#[get("/app/<client_id>")]
-fn app(
-    client_id: String,
+    host_header: HostHeader,
+    base_domain: State<String>,
     karl_path: State<PathBuf>,
+    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) -> Option<Template> {
+    let client_id = match to_client_id(host_header, base_domain.to_string()) {
+        Some(client_id) => client_id,
+        None => {
+            return Some(Template::render("index", &MainContext {
+                title: "Hello",
+                base_domain: base_domain.to_string(),
+                hosts: hosts.lock().unwrap().values().map(
+                    |host| host.clone()).collect(),
+                clients: clients.lock().unwrap().values().map(
+                    |client| client.clone()).collect(),
+            }));
+        },
+    };
+
     let client_ip = {
         let mut client_ip = None;
         let clients = clients.lock().unwrap();
@@ -121,36 +85,58 @@ fn app(
     ))
 }
 
-fn request_helper(
-    h: &Helper,
-    _: &Handlebars,
-    _: &Context,
-    _: &mut RenderContext,
-    out: &mut dyn Output
-) -> HelperResult {
-    if let Some(param) = h.param(0) {
-        if let Some(description) = param.value().get("description") {
-            if let Some(description) = description.as_str() {
-                out.write(description)?;
-            }
+// TODO: authenticate this request. Only the homeowner can call this.
+#[post("/confirm/host/<service_name>")]
+fn confirm_host(
+    host_header: HostHeader,
+    base_domain: State<String>,
+    service_name: String,
+    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
+) {
+    if to_client_id(host_header, base_domain.to_string()).is_some() {
+        // Confirm must be to the base domain only.
+        return;
+    }
+    let mut hosts = hosts.lock().unwrap();
+    if let Some(host) = hosts.get_mut(&service_name) {
+        if host.confirmed {
+            warn!("attempted to confirm already confirmed host: {:?}", service_name);
+        } else {
+            info!("confirmed host {:?}", service_name);
+            host.confirmed = true;
         }
-        if let Some(start) = param.value().get("start") {
-            if let Some(start) = start.as_u64() {
-                let mut end = Request::time_since_epoch_s();
-                if let Some(end_param) = param.value().get("end") {
-                    if let Some(end_param) = end_param.as_u64() {
-                        end = end_param;
-                    }
-                };
-                let elapsed = end - start;
-                out.write(" (")?;
-                out.write(&elapsed.to_string())?;
-                out.write("s)")?;
-            }
+    } else {
+        warn!("attempted to confirm nonexistent host: {:?}", service_name);
+    }
+}
+
+// TODO: authenticate this request. Only the homeowner can call this.
+#[post("/confirm/client/<client_name>")]
+fn confirm_client(
+    host_header: HostHeader,
+    base_domain: State<String>,
+    client_name: String,
+    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
+) {
+    if to_client_id(host_header, base_domain.to_string()).is_some() {
+        // Confirm must be to the base domain only.
+        return;
+    }
+    let mut clients = clients.lock().unwrap();
+    for (_, client) in clients.iter_mut() {
+        if client.name != client_name {
+            continue;
+        }
+        if client.confirmed {
+            warn!("attempted to confirm already confirmed client: {:?}", client_name);
+            return;
+        } else {
+            info!("confirmed client {:?}", client_name);
+            client.confirmed = true;
+            return;
         }
     }
-
-    Ok(())
+    warn!("attempted to confirm nonexistent client: {:?}", client_name);
 }
 
 pub fn start(
@@ -159,13 +145,15 @@ pub fn start(
     hosts: Arc<Mutex<HashMap<String, Host>>>,
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
 ) {
+    let base_domain = "karl.zapto.org".to_string();
     rt.spawn(async move {
         rocket::ignite()
         .manage(karl_path)
+        .manage(base_domain)
         .manage(hosts)
         .manage(clients)
-        .mount("/", routes![index, app, confirm_host, confirm_client])
-        .mount("/api/", routes![api::storage, api::proxy_get])
+        .mount("/", routes![index, confirm_host, confirm_client])
+        .mount("/api/", routes![client::storage, client::proxy_get])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
         }))

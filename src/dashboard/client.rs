@@ -1,4 +1,4 @@
-//! Proxy and storage API.
+//! Client specific web API (proxy and storage).
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
@@ -6,29 +6,12 @@ use std::path::PathBuf;
 use rocket::{
     self, State,
     response::NamedFile,
-    request::{FromRequest, Outcome},
 };
 use reqwest::{self, header};
-use serde::Serialize;
 
+use super::RequestHeaders;
 use crate::controller::Client;
 use crate::common::Error;
-
-#[derive(Serialize, Debug)]
-pub struct RequestHeaders(Vec<(String, String)>);
-
-impl<'a, 'r> FromRequest<'a, 'r> for RequestHeaders {
-    type Error = Error;
-
-    fn from_request(request: &'a rocket::Request<'r>) -> Outcome<Self, Self::Error> {
-        let headers = request
-            .headers()
-            .iter()
-            .map(|header| (header.name().to_string(), header.value().to_string()))
-            .collect();
-        Outcome::Success(RequestHeaders(headers))
-    }
-}
 
 /// GET proxy for the url https://<CLIENT_IP>/<PATH>.
 #[get("/proxy/<client_id>/<path..>")]
