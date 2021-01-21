@@ -4,15 +4,23 @@ use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use std::marker::PhantomData;
 
+use serde::Serialize;
 use rocket::{
     self, State, Request,
     response::{Debug, NamedFile, Responder},
 };
+use rocket_contrib::templates::Template;
 use reqwest::{self, header};
 
 use super::{RequestHeaders, HostHeader, to_client_id};
 use crate::controller::Client;
 use crate::common::Error;
+
+#[derive(Serialize)]
+struct AppContext {
+    client_id: String,
+    files: Vec<PathBuf>,
+}
 
 /// A response with an additional Access-Control-Allow-Origin header
 /// corresponding to the client host domain e.g. cam.karl.zapto.org.
@@ -119,4 +127,27 @@ pub fn storage<'a>(
         host: host_header,
         phantom: PhantomData
     }
+}
+
+pub fn index(client_id: String, karl_path: State<PathBuf>) -> Option<Template> {
+    let files = {
+        let storage_path = karl_path.join("storage").join(&client_id);
+        let files = std::fs::read_dir(&storage_path).ok();
+        let mut files = if let Some(files) = files {
+            files
+            .map(|res| res.unwrap().path())
+            .map(|path| path.strip_prefix(&storage_path).unwrap().to_path_buf())
+            .collect::<Vec<_>>()
+        } else {
+            // client does not exist
+            return None;
+        };
+        files.sort();
+        files
+    };
+    debug!("files for client_id={}: {:?}", &client_id, files);
+    Some(Template::render(
+        client_id.clone(),
+        &AppContext { client_id, files },
+    ))
 }

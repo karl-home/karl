@@ -25,13 +25,15 @@ struct MainContext {
     clients: Vec<Client>,
 }
 
-#[derive(Serialize)]
-struct AppContext {
-    client_id: String,
-    files: Vec<PathBuf>,
-}
-
-// TODO: authenticate this request. Only the homeowner can access the page.
+/// Returns the client app if the page is a subdomain of the base domain,
+/// otherwise returns the main controller dashboard.
+///
+/// The main dashboard visualizes the hosts and clients, and provides an
+/// interface for the user to manually verify hosts and clients. Provides
+/// links to client apps. Basic HTTP authentication with NGINX. Client
+/// subdomains are granted a cookie with an expiration date to access
+/// proxy/ and storage/ resources behind that subdomain. Those resources
+/// require both the cookie and are behind a strict CORS policy.
 #[get("/")]
 fn index(
     host_header: HostHeader,
@@ -40,35 +42,17 @@ fn index(
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) -> Option<Template> {
-    let client_id = match to_client_id(&host_header, base_domain.to_string()) {
-        Some(client_id) => client_id,
-        None => {
-            return Some(Template::render("index", &MainContext {
-                title: "Hello",
-                base_domain: base_domain.to_string(),
-                hosts: hosts.lock().unwrap().values().map(
-                    |host| host.clone()).collect(),
-                clients: clients.lock().unwrap().values().map(
-                    |client| client.clone()).collect(),
-            }));
-        },
-    };
-
-    let files = {
-        let storage_path = karl_path.join("storage").join(&client_id);
-        let mut files = std::fs::read_dir(&storage_path)
-            .expect("storage path was created on client registration")
-            .map(|res| res.unwrap().path())
-            .map(|path| path.strip_prefix(&storage_path).unwrap().to_path_buf())
-            .collect::<Vec<_>>();
-        files.sort();
-        files
-    };
-    debug!("files for client_id={}: {:?}", &client_id, files);
-    Some(Template::render(
-        client_id.clone(),
-        &AppContext { client_id, files },
-    ))
+    match to_client_id(&host_header, base_domain.to_string()) {
+        Some(client_id) => client::index(client_id, karl_path),
+        None => Some(Template::render("index", &MainContext {
+            title: "Hello",
+            base_domain: base_domain.to_string(),
+            hosts: hosts.lock().unwrap().values().map(
+                |host| host.clone()).collect(),
+            clients: clients.lock().unwrap().values().map(
+                |client| client.clone()).collect(),
+        })),
+    }
 }
 
 // TODO: authenticate this request. Only the homeowner can call this.
