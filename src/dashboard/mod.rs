@@ -26,7 +26,6 @@ struct MainContext {
 #[derive(Serialize)]
 struct AppContext {
     client_id: String,
-    client_ip: String,
     files: Vec<PathBuf>,
 }
 
@@ -53,22 +52,6 @@ fn index(
         },
     };
 
-    let client_ip = {
-        let mut client_ip = None;
-        let clients = clients.lock().unwrap();
-        for client in clients.values() {
-            if client.name == client_id {
-                client_ip = Some(format!("{}", client.addr));
-                break;
-            }
-        }
-        if let Some(client_ip) = client_ip {
-            client_ip
-        } else {
-            return None;
-        }
-    };
-
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
         let mut files = std::fs::read_dir(&storage_path).unwrap()
@@ -81,7 +64,7 @@ fn index(
     debug!("files for client_id={}: {:?}", &client_id, files);
     Some(Template::render(
         client_id.clone(),
-        &AppContext { client_id, client_ip, files },
+        &AppContext { client_id, files },
     ))
 }
 
