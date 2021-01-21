@@ -153,7 +153,7 @@ pub fn start(
         .manage(hosts)
         .manage(clients)
         .mount("/", routes![index, confirm_host, confirm_client])
-        .mount("/api/", routes![client::storage, client::proxy_get])
+        .mount("/", routes![client::storage, client::proxy_get])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
         }))

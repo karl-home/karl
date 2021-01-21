@@ -5,22 +5,29 @@ use std::path::PathBuf;
 
 use rocket::{
     self, State,
-    response::NamedFile,
+    response::{Debug, NamedFile},
 };
 use reqwest::{self, header};
 
-use super::RequestHeaders;
+use super::{RequestHeaders, HostHeader, to_client_id};
 use crate::controller::Client;
 use crate::common::Error;
 
 /// GET proxy for the url https://<CLIENT_IP>/<PATH>.
-#[get("/proxy/<client_id>/<path..>")]
+#[get("/proxy/<path..>")]
 pub fn proxy_get(
-    client_id: String,
+    host_header: HostHeader,
+    base_domain: State<String>,
     path: PathBuf,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
     headers: RequestHeaders,
-) -> Result<Vec<u8>, rocket::response::Debug<Error>> {
+) -> Result<Vec<u8>, Debug<Error>> {
+    let client_id = if let Some(client_id) =
+        to_client_id(host_header, base_domain.to_string()) {
+            client_id
+        } else {
+            return Err(Debug(Error::ProxyError("missing client id".to_string())));
+        };
     let ip = clients.lock().unwrap().get(&client_id).ok_or(
         Error::ProxyError(format!("unknown client {:?}", client_id)))?.addr;
     // TODO: HTTPS
@@ -41,12 +48,19 @@ pub fn proxy_get(
     Ok(response.bytes().map_err(|e| Error::ProxyError(format!("{:?}", e)))?.to_vec())
 }
 
-#[get("/storage/<client_id>/<file..>")]
+#[get("/storage/<file..>")]
 pub fn storage(
+    host_header: HostHeader,
+    base_domain: State<String>,
     karl_path: State<PathBuf>,
-    client_id: String,
     file: PathBuf,
 ) -> Option<NamedFile> {
+    let client_id = if let Some(client_id) =
+        to_client_id(host_header, base_domain.to_string()) {
+            client_id
+        } else {
+            return None;
+        };
     let path = karl_path
         .join("storage")
         .join(client_id)
