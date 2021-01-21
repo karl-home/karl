@@ -9,7 +9,7 @@ fn main() {
             .help("Absolute path to the base Karl directory.")
             .long("karl-path")
             .takes_value(true)
-            .default_value("/home/gina/.karl"))
+            .default_value("/home/gina/.karl_controller"))
         .arg(Arg::with_name("port")
             .help("Port. Defaults to a random open port.")
             .short("p")

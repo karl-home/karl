@@ -203,6 +203,9 @@ impl Controller {
         use_dashboard: bool,
         port: u16,
     ) -> Result<(), Error> {
+        // Make the karl path if it doesn't already exist.
+        fs::create_dir_all(&self.karl_path).unwrap();
+
         let hosts = self.hosts.clone();
         let unique_hosts = self.unique_hosts.clone();
         debug!("Listening...");
