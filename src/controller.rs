@@ -61,8 +61,9 @@ pub struct Host {
 pub struct Client {
     /// Whether the user has confirmed this client.
     pub confirmed: bool,
-    /// The self-given name of the client, with (1), (2), etc. appended when
-    /// duplicates are registered, like handling duplicates in the filesystem.
+    /// The self-given lowercase alphanumeric and underscore name of the client,
+    /// with _1, _2, etc. appended when duplicates are registered, like handling
+    /// duplicates in the filesystem.
     pub name: String,
     /// IP address for proxy requests.
     pub addr: IpAddr,
@@ -476,9 +477,11 @@ impl Controller {
     /// an empty storage directory at `<KARL_PATH>/storage/<CLIENT_ID>/`,
     /// if it doesn't already exist.
     ///
-    /// Trims whitespace and lowercases the client name.
-    /// Resolves duplicate client names like filesystems saving a file with
-    /// the same name: camera -> camera (1) -> camera (2).
+    /// All characters in the client name must be lowercase alphabet a-z,
+    /// digits 0-9, or underscores. Lowercases the client name, and removes
+    /// other noncomplying characters. For example, "a @#Ld_e" becomes "alde".
+    /// Resolves duplicate client names by appending an underscore and a number.
+    /// e.g. camera -> camera_1 -> camera_2.
     ///
     /// Parameters:
     /// - name - The self-given name of the client.
@@ -498,10 +501,14 @@ impl Controller {
         let names = self.clients.lock().unwrap().values()
             .map(|client| client.name.clone()).collect::<HashSet<_>>();
         name = name.trim().to_lowercase();
+        name = name
+            .chars()
+            .filter(|ch| ch.is_alphanumeric() || ch == &'_')
+            .collect();
         if names.contains(&name) {
             let mut i = 1;
             loop {
-                let new_name = format!("{} ({})", name, i);
+                let new_name = format!("{}_{}", name, i);
                 if !names.contains(&new_name) {
                     name = new_name;
                     break;
@@ -991,16 +998,16 @@ mod test {
         let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
         assert_eq!(names.len(), 3);
         assert!(names.contains(&"hello".to_string()));
-        assert!(names.contains(&"hello (1)".to_string()));
-        assert!(names.contains(&"hello (2)".to_string()));
+        assert!(names.contains(&"hello_1".to_string()));
+        assert!(names.contains(&"hello_2".to_string()));
 
         // Check the clients all have registered storage and app paths.
         assert!(storage_base.join("hello").is_dir());
-        assert!(storage_base.join("hello (1)").is_dir());
-        assert!(storage_base.join("hello (2)").is_dir());
+        assert!(storage_base.join("hello_1").is_dir());
+        assert!(storage_base.join("hello_2").is_dir());
         assert!(app_base.join("hello.hbs").is_file());
-        assert!(app_base.join("hello (1).hbs").is_file());
-        assert!(app_base.join("hello (2).hbs").is_file());
+        assert!(app_base.join("hello_1.hbs").is_file());
+        assert!(app_base.join("hello_2.hbs").is_file());
     }
 
     #[test]
@@ -1012,15 +1019,17 @@ mod test {
         c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
         c.register_client("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![], true);
         c.register_client("uPpErCaSe".to_string(), client_ip.clone(), &vec![], true);
-        c.register_client("\tEVERYthing   \n\r".to_string(), client_ip.clone(), &vec![], true);
+        c.register_client("iNv@l1d_ch@r$".to_string(), client_ip.clone(), &vec![], true);
+        c.register_client("\tEVERYth!ng   \n\r".to_string(), client_ip.clone(), &vec![], true);
 
         // Check the names were formatted correctly (trimmed and lowercase).
         let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names.len(), 4);
+        assert_eq!(names.len(), 5);
         assert!(names.contains(&"leadingwhitespace".to_string()));
         assert!(names.contains(&"trailingwhitespace".to_string()));
         assert!(names.contains(&"uppercase".to_string()));
-        assert!(names.contains(&"everything".to_string()));
+        assert!(names.contains(&"invl1d_chr".to_string()));
+        assert!(names.contains(&"everythng".to_string()));
     }
 
     #[test]
