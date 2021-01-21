@@ -66,8 +66,6 @@ pub struct Client {
     pub name: String,
     /// IP address for proxy requests.
     pub addr: IpAddr,
-    /// Whether the client supplied an app.
-    pub app: bool,
 }
 
 /// Controller used for discovering available Karl services via DNS-SD.
@@ -517,11 +515,10 @@ impl Controller {
             confirmed,
             name,
             addr: client_addr,
-            app: !app_bytes.is_empty(),
         };
 
         // register the client's webapp
-        if client.app {
+        if !app_bytes.is_empty() {
             let parent = self.karl_path.join("www");
             let path = parent.join(format!("{}.hbs", &client.name));
             fs::create_dir_all(parent).unwrap();
@@ -963,7 +960,6 @@ mod test {
         let client = c.clients.lock().unwrap().values().next().unwrap().clone();
         assert_eq!(client.name, name);
         assert_eq!(client.addr, client_ip);
-        assert!(client.app);
         assert!(storage_path.is_dir(), "storage dir was not created");
         assert!(app_path.is_file(), "app was not created and renamed");
 
