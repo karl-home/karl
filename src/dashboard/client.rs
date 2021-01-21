@@ -63,24 +63,27 @@ pub fn proxy_get<'a>(
         host: host_header,
         phantom: PhantomData,
     };
+    let client_id = if let Some(client_id) =
+        to_client_id(&response.host, base_domain.to_string()) {
+            client_id
+        } else {
+            error!("failed to parse client id: {:?}", &response.host);
+            return response;
+        };
 
     // On an authenticated request to a client subdomain, renews the
     // `client_session` cookie associated with the current session. The
     // requester must have an existing cookie that can be obtained by loading
     // resources through the client dashboard.
     if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
-        if !sessions.lock().unwrap().use_cookie(cookie.value()) {
+        if !sessions.lock().unwrap().use_cookie(cookie.value(), &client_id) {
             return response;
         }
     } else {
         return response;
     }
 
-    if let Some(client_id) = to_client_id(&response.host, base_domain.to_string()) {
-        response.response = proxy_get_inner(client_id, path, clients, headers);
-    } else {
-        error!("invalid client id but valid session token: {:?}", &response.host);
-    };
+    response.response = proxy_get_inner(client_id, path, clients, headers);
     response
 }
 
@@ -137,24 +140,26 @@ pub fn storage<'a>(
         phantom: PhantomData,
     };
 
+    let client_id = if let Some(client_id) =
+        to_client_id(&response.host, base_domain.to_string()) {
+            client_id
+        } else {
+            error!("failed to parse client id: {:?}", &response.host);
+            return response;
+        };
+
     // On an authenticated request to a client subdomain, renews the
     // `client_session` cookie associated with the current session. The
     // requester must have an existing cookie that can be obtained by loading
     // resources through the client dashboard.
     if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
-        if !sessions.lock().unwrap().use_cookie(cookie.value()) {
+        if !sessions.lock().unwrap().use_cookie(cookie.value(), &client_id) {
             return response;
         }
     } else {
         return response;
     }
 
-    let client_id = if let Some(client_id) =
-        to_client_id(&response.host, base_domain.to_string()) {
-            client_id
-        } else {
-            return response;
-        };
     let path = karl_path
         .join("storage")
         .join(client_id)
@@ -176,14 +181,18 @@ pub fn index(
     {
         let mut sessions = sessions.lock().unwrap();
         if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
-            if !sessions.use_cookie(cookie.value()) {
+            if !sessions.use_cookie(cookie.value(), &client_id) {
                 // cookie expired
-                let cookie = Cookie::new(SESSION_COOKIE, sessions.gen_cookie());
-                cookies.add_private(cookie);
+                cookies.add_private(Cookie::new(
+                    SESSION_COOKIE,
+                    sessions.gen_cookie(&client_id),
+                ));
             }
         } else {
-            let cookie = Cookie::new(SESSION_COOKIE, sessions.gen_cookie());
-            cookies.add_private(cookie);
+            cookies.add_private(Cookie::new(
+                SESSION_COOKIE,
+                sessions.gen_cookie(&client_id),
+            ));
         }
     }
 
