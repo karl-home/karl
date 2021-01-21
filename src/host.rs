@@ -257,9 +257,7 @@ impl Host {
 
     /// Handle a compute request.
     ///
-    /// Verifies that the compute request includes a valid request token.
-    /// Notifies the controller of the start and end of the request, if
-    /// the request token is valid and the host processes compute.
+    /// The client must be verified by the caller.
     fn handle_compute(
         &mut self,
         req: protos::ComputeRequest,
@@ -267,9 +265,6 @@ impl Host {
         info!("handling compute from {:?}: (len {}) stdout={} stderr={} storage={} {:?}",
             req.client_id, req.package.len(), req.stdout, req.stderr, req.storage, req.files);
         let now = Instant::now();
-
-        self.use_request_token(&Token(req.request_token.clone()))?;
-        crate::net::notify_start(&self.controller, self.id, req.client_id.clone());
 
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
@@ -320,11 +315,6 @@ impl Host {
             self.base_path,
             now.elapsed().as_secs_f32(),
         );
-
-        // Notify end and create a new token.
-        let mut token = self.token.lock().unwrap();
-        *token = (Some(Token::gen()), Instant::now());
-        crate::net::notify_end(&self.controller, self.id, token.0.clone().unwrap());
         Ok(res)
     }
 
@@ -359,11 +349,24 @@ impl Host {
                 let req = protobuf::parse_from_bytes::<protos::ComputeRequest>(&buf[..])
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
-                let res = self.handle_compute(req)?;
+
+                // Verify that the compute request includes a valid request token.
+                // Notify the controller of the start and end of the request, if
+                // the request token is valid and the host processes compute.
+                self.use_request_token(&Token(req.request_token.clone()))?;
+                crate::net::notify_start(&self.controller, self.id, req.client_id.clone());
+                let res = self.handle_compute(req);
+
+                // Notify end and create a new token.
+                let mut token = self.token.lock().unwrap();
+                *token = (Some(Token::gen()), Instant::now());
+                crate::net::notify_end(&self.controller, self.id, token.0.clone().unwrap());
+                drop(token);
+
                 debug!("=> {:?}", res);
                 debug!("serialize packet");
                 let now = Instant::now();
-                let res_bytes = res.write_to_bytes()
+                let res_bytes = res?.write_to_bytes()
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
                 (res_bytes, HT_COMPUTE_RESULT)
