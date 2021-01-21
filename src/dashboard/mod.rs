@@ -47,7 +47,7 @@ fn index(
     sessions: State<Arc<Mutex<SessionState>>>,
 ) -> Option<Template> {
     match to_client_id(&host_header, base_domain.to_string()) {
-        Some(client_id) => client::index(client_id, karl_path, cookies),
+        Some(client_id) => client::index(client_id, karl_path, cookies, sessions),
         None => Some(Template::render("index", &MainContext {
             title: "Hello",
             base_domain: base_domain.to_string(),

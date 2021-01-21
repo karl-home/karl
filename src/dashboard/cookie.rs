@@ -3,8 +3,6 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use rand::Rng;
 
-/// 64-character alphanumeric string used for session cookies.
-pub type Cookie = String;
 /// Length of cookie.
 const LEN: usize = 32;
 /// Cookie character set.
@@ -29,9 +27,9 @@ impl SessionState {
     /// Generates a new cookie with the default expiration time.
     ///
     /// Returns the cookie.
-    pub fn gen_cookie(&mut self) -> Cookie {
+    pub fn gen_cookie(&mut self) -> String {
         let mut rng = rand::thread_rng();
-        let cookie: Cookie = (0..LEN)
+        let cookie: String = (0..LEN)
             .map(|_| {
                 let idx = rng.gen_range(0..CHARSET.len());
                 CHARSET[idx] as char
@@ -43,7 +41,8 @@ impl SessionState {
     }
 
     /// Removes a cookie, if it exists.
-    pub fn remove_cookie(&mut self, cookie: &Cookie) {
+    #[allow(dead_code)]
+    pub fn remove_cookie(&mut self, cookie: &str) {
         self.cookies.remove(cookie);
     }
 
@@ -52,7 +51,7 @@ impl SessionState {
     /// If the cookie exists and is valid, refreshes the cookie expiry time
     /// and returns true. If the cookie is invalid (aka expired), removes the
     /// cookie and returns false. If the cookie does not exist, returns false.
-    pub fn use_cookie(&mut self, cookie: &Cookie) -> bool {
+    pub fn use_cookie(&mut self, cookie: &str) -> bool {
         if let Some(expiry) = self.cookies.get_mut(cookie) {
             let now = Instant::now();
             if now < *expiry {
@@ -104,7 +103,7 @@ mod test {
     fn test_use_invalid_cookie() {
         let mut c = SessionState::new();
         let mut rng = rand::thread_rng();
-        let cookie: Cookie = (0..LEN)
+        let cookie: String = (0..LEN)
             .map(|_| {
                 let idx = rng.gen_range(0..CHARSET.len());
                 CHARSET[idx] as char

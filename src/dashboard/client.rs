@@ -6,15 +6,16 @@ use std::marker::PhantomData;
 
 use serde::Serialize;
 use rocket::{
-    self, State, Request, http::Cookies,
-    response::{Debug, NamedFile, Responder},
+    self, State, Request, http::{Status, Cookie, Cookies},
+    response::{NamedFile, Responder},
 };
 use rocket_contrib::templates::Template;
 use reqwest::{self, header};
 
 use super::{RequestHeaders, HostHeader, SessionState, to_client_id};
 use crate::controller::Client;
-use crate::common::Error;
+
+const SESSION_COOKIE: &str = "client_session";
 
 #[derive(Serialize)]
 struct AppContext {
@@ -38,7 +39,7 @@ impl<'r> Responder<'r> for ClientResponse<'_, Option<NamedFile>> {
     }
 }
 
-impl<'r> Responder<'r> for ClientResponse<'_, Result<Vec<u8>, Debug<Error>>> {
+impl<'r> Responder<'r> for ClientResponse<'_, Result<Vec<u8>, Status>> {
     fn respond_to(self, req: &Request) -> rocket::response::Result<'r> {
         rocket::response::Response::build_from(self.response.respond_to(req)?)
             .raw_header("Access-Control-Allow-Origin", self.host.0)
@@ -51,29 +52,36 @@ impl<'r> Responder<'r> for ClientResponse<'_, Result<Vec<u8>, Debug<Error>>> {
 pub fn proxy_get<'a>(
     host_header: HostHeader,
     base_domain: State<String>,
-    cookies: Cookies,
+    mut cookies: Cookies,
     sessions: State<Arc<Mutex<SessionState>>>,
     path: PathBuf,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
     headers: RequestHeaders,
-) -> ClientResponse<'a, Result<Vec<u8>, Debug<Error>>> {
-    // TODO: On an authenticated request to a client subdomain, renews the
-    // cookie associated with the current session. The requester must have an
-    // existing cookie that can be obtained by loading resources through the
-    // client dashboard.
-
-    let response = if let Some(client_id) =
-        to_client_id(&host_header, base_domain.to_string()) {
-            proxy_get_inner(client_id, path, clients, headers)
-        } else {
-            Err(Debug(Error::ProxyError(
-                format!("invalid client id: {:?}", &host_header))))
-        };
-    ClientResponse {
-        response,
+) -> ClientResponse<'a, Result<Vec<u8>, Status>> {
+    let mut response = ClientResponse {
+        response: Err(Status::InternalServerError),
         host: host_header,
         phantom: PhantomData,
+    };
+
+    // On an authenticated request to a client subdomain, renews the
+    // `client_session` cookie associated with the current session. The
+    // requester must have an existing cookie that can be obtained by loading
+    // resources through the client dashboard.
+    if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
+        if !sessions.lock().unwrap().use_cookie(cookie.value()) {
+            return response;
+        }
+    } else {
+        return response;
     }
+
+    if let Some(client_id) = to_client_id(&response.host, base_domain.to_string()) {
+        response.response = proxy_get_inner(client_id, path, clients, headers);
+    } else {
+        error!("invalid client id but valid session token: {:?}", &response.host);
+    };
+    response
 }
 
 fn proxy_get_inner(
@@ -81,9 +89,11 @@ fn proxy_get_inner(
     path: PathBuf,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
     headers: RequestHeaders,
-) -> Result<Vec<u8>, Debug<Error>> {
-    let ip = clients.lock().unwrap().get(&client_id).ok_or(
-        Error::ProxyError(format!("unknown client {:?}", client_id)))?.addr;
+) -> Result<Vec<u8>, Status> {
+    let ip = clients.lock().unwrap().get(&client_id).ok_or({
+        error!("invalid client id but valid session token: {:?}", &client_id);
+        Status::InternalServerError
+    })?.addr;
     // TODO: HTTPS
     let url = format!("http://{}/{}", ip, path.into_os_string().into_string().unwrap());
     warn!("proxy is NOT using HTTPS!");
@@ -91,60 +101,91 @@ fn proxy_get_inner(
     debug!("{:?}", headers);
     let mut request = reqwest::blocking::Client::new().get(&url);
     for (key, value) in headers.0 {
-        let key = header::HeaderName::from_bytes(key.as_bytes())
-            .map_err(|e| Error::ProxyError(format!("{:?}", e)))?;
-        let value = header::HeaderValue::from_str(&value)
-            .map_err(|e| Error::ProxyError(format!("{:?}", e)))?;
+        let key = header::HeaderName::from_bytes(key.as_bytes()).map_err(|e| {
+            error!("failed to parse headers: {}", e);
+            Status::BadRequest
+        })?;
+        let value = header::HeaderValue::from_str(&value).map_err(|e| {
+            error!("failed to parse headers: {}", e);
+            Status::BadRequest
+        })?;
         request = request.header(key, value);
     }
-    let response = request.send().map_err(|e| Error::ProxyError(format!("{:?}", e)))?;
+    let response = request.send().map_err(|e| {
+        error!("failed to forward request: {}", e);
+        Status::BadRequest
+    })?;
     debug!("response = {:?}", response);
-    Ok(response.bytes().map_err(|e| Error::ProxyError(format!("{:?}", e)))?.to_vec())
+    Ok(response.bytes().map_err(|e| {
+        error!("failed to parse response: {}", e);
+        Status::BadRequest
+    })?.to_vec())
 }
 
 #[get("/storage/<file..>")]
 pub fn storage<'a>(
     host_header: HostHeader,
     base_domain: State<String>,
-    cookies: Cookies,
+    mut cookies: Cookies,
     sessions: State<Arc<Mutex<SessionState>>>,
     karl_path: State<PathBuf>,
     file: PathBuf,
 ) -> ClientResponse<'a, Option<NamedFile>> {
-    // TODO: On an authenticated request to a client subdomain, renews the
-    // cookie associated with the current session. The requester must have an
-    // existing cookie that can be obtained by loading resources through the
-    // client dashboard.
+    let mut response = ClientResponse {
+        response: None,
+        host: host_header,
+        phantom: PhantomData,
+    };
+
+    // On an authenticated request to a client subdomain, renews the
+    // `client_session` cookie associated with the current session. The
+    // requester must have an existing cookie that can be obtained by loading
+    // resources through the client dashboard.
+    if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
+        if !sessions.lock().unwrap().use_cookie(cookie.value()) {
+            return response;
+        }
+    } else {
+        return response;
+    }
 
     let client_id = if let Some(client_id) =
-        to_client_id(&host_header, base_domain.to_string()) {
+        to_client_id(&response.host, base_domain.to_string()) {
             client_id
         } else {
-            return ClientResponse {
-                response: None,
-                host: host_header,
-                phantom: PhantomData,
-            };
+            return response;
         };
     let path = karl_path
         .join("storage")
         .join(client_id)
         .join(file);
-    ClientResponse {
-        response: NamedFile::open(path).ok(),
-        host: host_header,
-        phantom: PhantomData
-    }
+    response.response = NamedFile::open(path).ok();
+    response
 }
 
 pub fn index(
     client_id: String,
     karl_path: State<PathBuf>,
-    cookies: Cookies,
+    mut cookies: Cookies,
+    sessions: State<Arc<Mutex<SessionState>>>,
 ) -> Option<Template> {
-    // TODO: On an authenticated request to a client subdomain, creates a new
-    // cookie for the session or renews the cookie associated with the session.
-    // An existing cookie is not required to retrieve the client dashboard.
+    // On an authenticated request to a client subdomain, creates a
+    // new cookie `client_session` for the session or renews the cookie
+    // associated  the session. An existing cookie is not required to
+    // retrieve the client dashboard.
+    {
+        let mut sessions = sessions.lock().unwrap();
+        if let Some(cookie) = cookies.get_private(SESSION_COOKIE) {
+            if !sessions.use_cookie(cookie.value()) {
+                // cookie expired
+                let cookie = Cookie::new(SESSION_COOKIE, sessions.gen_cookie());
+                cookies.add_private(cookie);
+            }
+        } else {
+            let cookie = Cookie::new(SESSION_COOKIE, sessions.gen_cookie());
+            cookies.add_private(cookie);
+        }
+    }
 
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
