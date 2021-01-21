@@ -2,6 +2,8 @@
 mod client;
 mod helper;
 
+use std::fs;
+use std::io::Write;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
@@ -95,9 +97,14 @@ fn confirm_host(
 }
 
 // TODO: authenticate this request. Only the homeowner can call this.
+/// User confirms the client with this name, indicating it is trusted.
+///
+/// The endpoint additionally writes the client to `<KARL_PATH>/clients.txt`
+/// so the client will automatically re-register if the controller restarts.
 #[post("/confirm/client/<client_name>")]
 fn confirm_client(
     host_header: HostHeader,
+    karl_path: State<PathBuf>,
     base_domain: State<String>,
     client_name: String,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
@@ -107,7 +114,7 @@ fn confirm_client(
         return;
     }
     let mut clients = clients.lock().unwrap();
-    for (_, client) in clients.iter_mut() {
+    for (token, client) in clients.iter_mut() {
         if client.name != client_name {
             continue;
         }
@@ -115,6 +122,17 @@ fn confirm_client(
             warn!("attempted to confirm already confirmed client: {:?}", client_name);
             return;
         } else {
+            // Create the client file if it does not already exist.
+            let path = karl_path.join("clients.txt");
+            let mut file = fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&path)
+                .expect(&format!("unable to open clients file: {:?}", &path));
+            let res = writeln!(file, "{}:{}={}", client.name, client.addr, token.0);
+            if let Err(e) = res {
+                error!("error serializing client {:?}: {:?}", client, e);
+            }
             info!("confirmed client {:?}", client_name);
             client.confirmed = true;
             return;

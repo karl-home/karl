@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
 use std::fs;
+use std::io::Read;
 
 use serde::Serialize;
 use astro_dnssd::browser::{Service, ServiceBrowserBuilder, ServiceEventType};
@@ -186,6 +187,7 @@ impl Controller {
 
     /// Start the TCP listener for incoming host requests and spawn a process
     /// in the background that listens on DNS-SD for available hosts.
+    /// Initializes clients based on the `<KARL_PATH>/clients.txt` file.
     ///
     /// In the background process, the controller maintains a list of
     /// available hosts, adding and removing hosts as specified by DNS-SD
@@ -254,6 +256,40 @@ impl Controller {
             }
         });
 
+        // Initialize clients in the clients file at `<KARL_PATH>/clients.txt`.
+        // Expect client serialization format based on `dashboard/mod.rs`:
+        // `<CLIENT_NAME>:<CLIENT_ADDR>=<CLIENT_TOKEN>`
+        {
+            let mut clients = self.clients.lock().unwrap();
+            let path = self.karl_path.join("clients.txt");
+            debug!("initializing clients at {:?}", &path);
+            let mut buffer = String::new();
+            let mut file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&path)
+                .expect("unable to open clients file");
+            file.read_to_string(&mut buffer).expect("failed to read file");
+            for line in buffer.split('\n') {
+                if line.is_empty() {
+                    continue;
+                }
+                let i = line.find(":").expect("malformed clients.txt");
+                let j = line.find("=").expect("malformed clients.txt");
+                assert!(i < j, "malformed clients.txt");
+                clients.insert(
+                    Token(line[(j+1)..].to_string()),
+                    Client {
+                        confirmed: true,
+                        name: line[..i].to_string(),
+                        addr: line[(i+1)..j].parse().unwrap(),
+                    }
+                );
+            }
+        }
+
+        // Start the dashboard.
         if use_dashboard {
             dashboard::start(
                 &mut self.rt,
