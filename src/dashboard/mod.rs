@@ -54,7 +54,8 @@ fn index(
 
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
-        let mut files = std::fs::read_dir(&storage_path).unwrap()
+        let mut files = std::fs::read_dir(&storage_path)
+            .expect("storage path was created on client registration")
             .map(|res| res.unwrap().path())
             .map(|path| path.strip_prefix(&storage_path).unwrap().to_path_buf())
             .collect::<Vec<_>>();
