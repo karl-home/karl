@@ -40,7 +40,7 @@ fn index(
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) -> Option<Template> {
-    let client_id = match to_client_id(host_header, base_domain.to_string()) {
+    let client_id = match to_client_id(&host_header, base_domain.to_string()) {
         Some(client_id) => client_id,
         None => {
             return Some(Template::render("index", &MainContext {
@@ -79,7 +79,7 @@ fn confirm_host(
     service_name: String,
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
 ) {
-    if to_client_id(host_header, base_domain.to_string()).is_some() {
+    if to_client_id(&host_header, base_domain.to_string()).is_some() {
         // Confirm must be to the base domain only.
         return;
     }
@@ -109,7 +109,7 @@ fn confirm_client(
     client_name: String,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
 ) {
-    if to_client_id(host_header, base_domain.to_string()).is_some() {
+    if to_client_id(&host_header, base_domain.to_string()).is_some() {
         // Confirm must be to the base domain only.
         return;
     }

@@ -21,13 +21,14 @@ impl<'a, 'r> FromRequest<'a, 'r> for RequestHeaders {
 }
 
 /// Host who sent the request.
-pub struct HostHeader<'a>(pub &'a str);
-impl<'a, 'r> FromRequest<'a, 'r> for HostHeader<'a> {
+#[derive(Serialize, Debug, Clone)]
+pub struct HostHeader(pub String);
+impl<'a, 'r> FromRequest<'a, 'r> for HostHeader {
     type Error = ();
 
-    fn from_request(request: &'a rocket::Request) -> Outcome<Self, Self::Error> {
+    fn from_request(request: &'a rocket::Request<'r>) -> Outcome<Self, Self::Error> {
         match request.headers().get_one("Host") {
-            Some(h) => Outcome::Success(HostHeader(h)),
+            Some(h) => Outcome::Success(HostHeader(h.to_string())),
             None => Outcome::Forward(()),
         }
     }
@@ -36,7 +37,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for HostHeader<'a> {
 /// Convert a host header to a client ID based on the base domain
 /// provided when the controller started.
 pub fn to_client_id(
-    header: HostHeader,
+    header: &HostHeader,
     base_domain: String,
 ) -> Option<String> {
     if let Some(subdomain) = header.0.strip_suffix(&base_domain) {
