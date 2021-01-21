@@ -1,6 +1,7 @@
 //! Controller dashboard.
 mod client;
 mod helper;
+mod cookie;
 
 use std::fs;
 use std::io::Write;
@@ -8,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 
-use rocket::{self, State};
+use rocket::{self, http::Cookies, State};
 use rocket_contrib::templates::Template;
 use tokio::runtime::Runtime;
 use serde::Serialize;
@@ -16,6 +17,7 @@ use serde::Serialize;
 use crate::common::ClientToken;
 use crate::controller::{Host, Client};
 use helper::*;
+use cookie::SessionState;
 
 #[derive(Serialize)]
 struct MainContext {
@@ -39,11 +41,13 @@ fn index(
     host_header: HostHeader,
     base_domain: State<String>,
     karl_path: State<PathBuf>,
+    cookies: Cookies,
     hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
+    sessions: State<Arc<Mutex<SessionState>>>,
 ) -> Option<Template> {
     match to_client_id(&host_header, base_domain.to_string()) {
-        Some(client_id) => client::index(client_id, karl_path),
+        Some(client_id) => client::index(client_id, karl_path, cookies),
         None => Some(Template::render("index", &MainContext {
             title: "Hello",
             base_domain: base_domain.to_string(),
@@ -132,12 +136,14 @@ pub fn start(
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
 ) {
     let base_domain = "karl.zapto.org".to_string();
+    let sessions = Arc::new(Mutex::new(SessionState::new()));
     rt.spawn(async move {
         rocket::ignite()
         .manage(karl_path)
         .manage(base_domain)
         .manage(hosts)
         .manage(clients)
+        .manage(sessions)
         .mount("/", routes![index, confirm_host, confirm_client])
         .mount("/", routes![client::storage, client::proxy_get])
         .attach(Template::custom(|engines| {

@@ -2,6 +2,7 @@
 address = "0.0.0.0"
 port = 8000
 template_dir = "/home/gina/.karl/www/"
+secret_key = "EsgPmIG36fdz/vAutaTQpSKooiZmNJqrL1Q8pvGvSdk="
 
 [production]
 address = "0.0.0.0"

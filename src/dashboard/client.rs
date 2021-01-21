@@ -6,13 +6,13 @@ use std::marker::PhantomData;
 
 use serde::Serialize;
 use rocket::{
-    self, State, Request,
+    self, State, Request, http::Cookies,
     response::{Debug, NamedFile, Responder},
 };
 use rocket_contrib::templates::Template;
 use reqwest::{self, header};
 
-use super::{RequestHeaders, HostHeader, to_client_id};
+use super::{RequestHeaders, HostHeader, SessionState, to_client_id};
 use crate::controller::Client;
 use crate::common::Error;
 
@@ -51,36 +51,37 @@ impl<'r> Responder<'r> for ClientResponse<'_, Result<Vec<u8>, Debug<Error>>> {
 pub fn proxy_get<'a>(
     host_header: HostHeader,
     base_domain: State<String>,
+    cookies: Cookies,
+    sessions: State<Arc<Mutex<SessionState>>>,
     path: PathBuf,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
     headers: RequestHeaders,
 ) -> ClientResponse<'a, Result<Vec<u8>, Debug<Error>>> {
+    // TODO: On an authenticated request to a client subdomain, renews the
+    // cookie associated with the current session. The requester must have an
+    // existing cookie that can be obtained by loading resources through the
+    // client dashboard.
+
+    let response = if let Some(client_id) =
+        to_client_id(&host_header, base_domain.to_string()) {
+            proxy_get_inner(client_id, path, clients, headers)
+        } else {
+            Err(Debug(Error::ProxyError(
+                format!("invalid client id: {:?}", &host_header))))
+        };
     ClientResponse {
-        response: proxy_get_inner(
-            host_header.clone(),
-            base_domain,
-            path,
-            clients,
-            headers,
-        ),
+        response,
         host: host_header,
         phantom: PhantomData,
     }
 }
 
 fn proxy_get_inner(
-    host_header: HostHeader,
-    base_domain: State<String>,
+    client_id: String,
     path: PathBuf,
     clients: State<Arc<Mutex<HashMap<String, Client>>>>,
     headers: RequestHeaders,
 ) -> Result<Vec<u8>, Debug<Error>> {
-    let client_id = if let Some(client_id) =
-        to_client_id(&host_header, base_domain.to_string()) {
-            client_id
-        } else {
-            return Err(Debug(Error::ProxyError("missing client id".to_string())));
-        };
     let ip = clients.lock().unwrap().get(&client_id).ok_or(
         Error::ProxyError(format!("unknown client {:?}", client_id)))?.addr;
     // TODO: HTTPS
@@ -105,9 +106,16 @@ fn proxy_get_inner(
 pub fn storage<'a>(
     host_header: HostHeader,
     base_domain: State<String>,
+    cookies: Cookies,
+    sessions: State<Arc<Mutex<SessionState>>>,
     karl_path: State<PathBuf>,
     file: PathBuf,
 ) -> ClientResponse<'a, Option<NamedFile>> {
+    // TODO: On an authenticated request to a client subdomain, renews the
+    // cookie associated with the current session. The requester must have an
+    // existing cookie that can be obtained by loading resources through the
+    // client dashboard.
+
     let client_id = if let Some(client_id) =
         to_client_id(&host_header, base_domain.to_string()) {
             client_id
@@ -129,7 +137,15 @@ pub fn storage<'a>(
     }
 }
 
-pub fn index(client_id: String, karl_path: State<PathBuf>) -> Option<Template> {
+pub fn index(
+    client_id: String,
+    karl_path: State<PathBuf>,
+    cookies: Cookies,
+) -> Option<Template> {
+    // TODO: On an authenticated request to a client subdomain, creates a new
+    // cookie for the session or renews the cookie associated with the session.
+    // An existing cookie is not required to retrieve the client dashboard.
+
     let files = {
         let storage_path = karl_path.join("storage").join(&client_id);
         let files = std::fs::read_dir(&storage_path).ok();
