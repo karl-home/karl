@@ -8,7 +8,7 @@ use std::fs;
 use std::io::Read;
 
 use serde::Serialize;
-use astro_dnssd::browser::{Service, ServiceBrowserBuilder, ServiceEventType};
+use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use protobuf::Message;
@@ -107,34 +107,32 @@ impl Request {
 /// Add a host. If a host with the same name already exists, don't do anything.
 ///
 /// Parameters:
-/// - service - DNS-SD service information, particularly the name.
+/// - name - The name of the service.
 /// - addr - The address of the host.
 /// - hosts - List of host service names.
 /// - unique_hosts - Hash map of host service names to host information
 ///   to prevent duplication.
 /// - confirmed - Whether the host should be confirmed by default.
+///
+/// Returns:
+/// Whether the host was added. Not added if it is a duplicate by name.
 fn add_host(
-    service: &Service,
+    name: &str,
     addr: SocketAddr,
     hosts: &mut Vec<ServiceName>,
     unique_hosts: &mut HashMap<ServiceName, Host>,
     confirmed: bool,
-) {
-    if unique_hosts.contains_key(&service.name) {
-        return;
+) -> bool {
+    if unique_hosts.contains_key(name) {
+        return false;
     }
-    info!(
-        "ADD if: {} name: {} type: {} domain: {}, addr: {:?}",
-        service.interface_index, service.name,
-        service.regtype, service.domain, addr,
-    );
     // TODO: arbitrarily take the last address
     // and hope that it is a private IP
     unique_hosts.insert(
-        service.name.clone(),
+        name.to_string(),
         Host {
             confirmed,
-            name: service.name.clone(),
+            name: name.to_string(),
             index: hosts.len(),
             addr,
             active_request: None,
@@ -142,30 +140,29 @@ fn add_host(
             token: None,
         },
     );
-    hosts.push(service.name.clone());
+    hosts.push(name.to_string());
+    true
 }
 
+/// Returns:
+/// Whether the host was removed.
 fn remove_host(
-    service: &Service,
+    name: &str,
     hosts: &mut Vec<ServiceName>,
     unique_hosts: &mut HashMap<ServiceName, Host>,
-) {
-    let removed_i = if let Some(host) = unique_hosts.remove(&service.name) {
+) -> bool {
+    let removed_i = if let Some(host) = unique_hosts.remove(name) {
         hosts.remove(host.index);
         host.index
     } else {
-        return;
+        return false;
     };
     for (_, host) in unique_hosts.iter_mut() {
         if host.index > removed_i {
             host.index -= 1;
         }
     }
-    info!(
-        "RMV if: {} name: {} type: {} domain: {}",
-        service.interface_index, service.name,
-        service.regtype, service.domain,
-    );
+    true
 }
 
 impl Controller {
@@ -242,10 +239,22 @@ impl Controller {
                         match service.event_type {
                             ServiceEventType::Added => {
                                 let addr = addrs[0];
-                                add_host(&service, addr, &mut hosts, &mut unique_hosts, false);
+                                if add_host(&service.name, addr, &mut hosts, &mut unique_hosts, false) {
+                                    info!(
+                                        "ADD if: {} name: {} type: {} domain: {}, addr: {:?}",
+                                        service.interface_index, service.name,
+                                        service.regtype, service.domain, addr,
+                                    );
+                                }
                             },
                             ServiceEventType::Removed => {
-                                remove_host(&service, &mut hosts, &mut unique_hosts);
+                                if remove_host(&service.name, &mut hosts, &mut unique_hosts) {
+                                    info!(
+                                        "RMV if: {} name: {} type: {} domain: {}",
+                                        service.interface_index, service.name,
+                                        service.regtype, service.domain,
+                                    );
+                                }
                             },
                         }
                     }
@@ -660,26 +669,15 @@ mod test {
         TempDir::new("karl").unwrap()
     }
 
-    /// Generate a DNS-SD service with the name "host<i>".
-    fn gen_service(i: usize) -> Service {
-        Service {
-            name: format!("host{}", i),
-            regtype: "".to_string(),
-            interface_index: 0,
-            domain: "".to_string(),
-            event_type: ServiceEventType::Added,
-        }
-    }
-
     /// Add a host named "host<i>" with socket addr "0.0.0.0:808<i>".
     fn add_host_test(
         i: usize,
         hosts: &mut Vec<ServiceName>,
         unique_hosts: &mut HashMap<ServiceName, Host>,
     ) {
-        let service = gen_service(i);
+        let name = format!("host{}", i);
         let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
-        add_host(&service, addr, hosts, unique_hosts, true);
+        assert!(add_host(&name, addr, hosts, unique_hosts, true));
     }
 
     #[test]
@@ -694,7 +692,7 @@ mod test {
         // Add a host
         let name = "host1";
         let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
-        add_host(&gen_service(1), addr, &mut hosts, &mut unique_hosts, false);
+        assert!(add_host(name, addr, &mut hosts, &mut unique_hosts, false));
 
         // Check controller was modified correctly
         assert_eq!(hosts.len(), 1);
@@ -746,9 +744,8 @@ mod test {
         add_host_test(4, &mut hosts, &mut unique_hosts);
 
         // Remove the last host
-        let service = gen_service(4);
         assert!(hosts.contains(&"host4".to_string()));
-        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(remove_host("host4", &mut hosts, &mut unique_hosts));
         assert!(!hosts.contains(&"host4".to_string()));
         assert_eq!(hosts.len(), 3);
         assert_eq!(unique_hosts.len(), 3);
@@ -757,9 +754,8 @@ mod test {
         }
 
         // Remove the middle host
-        let service = gen_service(2);
         assert!(hosts.contains(&"host2".to_string()));
-        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(remove_host("host2", &mut hosts, &mut unique_hosts));
         assert!(!hosts.contains(&"host2".to_string()));
         assert_eq!(hosts.len(), 2);
         assert_eq!(unique_hosts.len(), 2);
@@ -768,15 +764,28 @@ mod test {
         }
 
         // Remove the first host
-        let service = gen_service(1);
         assert!(hosts.contains(&"host1".to_string()));
-        remove_host(&service, &mut hosts, &mut unique_hosts);
+        assert!(remove_host("host1", &mut hosts, &mut unique_hosts));
         assert!(!hosts.contains(&"host1".to_string()));
         assert_eq!(hosts.len(), 1);
         assert_eq!(unique_hosts.len(), 1);
         for host in unique_hosts.values() {
             assert_eq!(hosts[host.index], host.name);
         }
+    }
+
+    #[test]
+    fn test_add_remove_host_return_value() {
+        let karl_path = init_karl_path();
+        let c = Controller::new(karl_path.path().to_path_buf());
+        let mut hosts = c.hosts.lock().unwrap();
+        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+
+        let addr: SocketAddr = "0.0.0.0:8081".parse().unwrap();
+        assert!(add_host("host1", addr.clone(), &mut hosts, &mut unique_hosts, false));
+        assert!(!add_host("host1", addr.clone(), &mut hosts, &mut unique_hosts, false));
+        assert!(remove_host("host1", &mut hosts, &mut unique_hosts));
+        assert!(!remove_host("host1", &mut hosts, &mut unique_hosts));
     }
 
     #[test]
@@ -790,13 +799,13 @@ mod test {
         let request_token = Token("requesttoken".to_string());
 
         // Add an unconfirmed host
-        add_host(
-            &gen_service(1),
+        assert!(add_host(
+            "host1",
             "0.0.0.0:8081".parse().unwrap(),
             &mut c.hosts.lock().unwrap(),
             &mut c.unique_hosts.lock().unwrap(),
             false,
-        );
+        ));
         assert!(!c.unique_hosts.lock().unwrap().get("host1").unwrap().confirmed);
         c.heartbeat("host1".to_string(), request_token.clone());
         assert!(!c.find_host(&client_token, false).get_found());
@@ -1219,13 +1228,13 @@ mod test {
         let c = Controller::new(karl_path.path().to_path_buf());
         let addr: SocketAddr = "1.2.3.4:8080".parse().unwrap();
         let ip: IpAddr = addr.ip();
-        add_host(
-            &gen_service(1),
+        assert!(add_host(
+            "host1",
             addr,
             &mut c.hosts.lock().unwrap(),
             &mut c.unique_hosts.lock().unwrap(),
             true,
-        );
+        ));
 
         assert!(c.verify_host_name("host2", &ip).is_err(), "invalid host name");
         assert!(c.verify_host_name("host1", &ip).is_ok(), "valid name and ip");
