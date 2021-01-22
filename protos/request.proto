@@ -15,6 +15,7 @@ enum MessageType {
   NOTIFY_START = 9;
   NOTIFY_END = 10;
   HOST_HEARTBEAT = 11;
+  HOST_REGISTER_REQUEST = 12;
 }
 
 message Import {
@@ -86,4 +87,10 @@ message NotifyEnd {
 message HostHeartbeat {
   string service_name = 1;
   string request_token = 2;
+}
+
+message HostRegisterRequest {
+  string service_name = 1;
+  string ip = 2;
+  uint32 port = 3;
 }

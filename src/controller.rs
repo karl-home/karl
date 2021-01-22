@@ -23,7 +23,7 @@ use crate::common::{
     Error, Token, ClientToken, RequestToken,
     HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
     HT_PING_REQUEST, HT_PING_RESULT, HT_NOTIFY_START, HT_NOTIFY_END,
-    HT_HOST_HEARTBEAT,
+    HT_HOST_HEARTBEAT, HT_HOST_REGISTER_REQUEST,
 };
 
 type ServiceName = String;
@@ -131,6 +131,7 @@ fn add_host(
     }
     // TODO: arbitrarily take the last address
     // and hope that it is a private IP
+    info!("ADDED host {:?} {:?}", name, addr);
     unique_hosts.insert(
         name.to_string(),
         Host {
@@ -160,6 +161,7 @@ fn remove_host(
     } else {
         return false;
     };
+    info!("REMOVED host {:?}", name);
     for (_, host) in unique_hosts.iter_mut() {
         if host.index > removed_i {
             host.index -= 1;
@@ -394,6 +396,20 @@ impl Controller {
                 let ip = stream.peer_addr().unwrap().ip();
                 self.verify_host_name(&req.service_name, &ip)?;
                 self.heartbeat(req.service_name, Token(req.request_token));
+            },
+            HT_HOST_REGISTER_REQUEST => {
+                let req = parse_from_bytes::<protos::HostRegisterRequest>(&req_bytes)
+                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+                    .unwrap();
+                add_host(
+                    &req.service_name,
+                    format!("{}:{}", req.ip, req.port).parse().unwrap(),
+                    &mut self.hosts.lock().unwrap(),
+                    &mut self.unique_hosts.lock().unwrap(),
+                    false,
+                );
+                let ip = stream.peer_addr().unwrap().ip();
+                self.verify_host_name(&req.service_name, &ip)?;
             },
             HT_PING_REQUEST => {
                 parse_from_bytes::<protos::PingRequest>(&req_bytes)

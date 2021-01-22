@@ -35,10 +35,6 @@ fn main() {
             .long("controller-port")
             .takes_value(true)
             .default_value("59582"))
-        .arg(Arg::with_name("no-register")
-            .help("If the flag is included, does not automatically register \
-                the service with DNS-SD. The default is to register.")
-            .long("no-register"))
         .get_matches();
 
     let backend = match matches.value_of("backend").unwrap() {
@@ -53,12 +49,11 @@ fn main() {
     };
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
-    let register = !matches.is_present("no-register");
     let controller = format!(
         "{}:{}",
         matches.value_of("controller-ip").unwrap(),
         matches.value_of("controller-port").unwrap(),
     );
     let mut listener = Host::new(karl_path, backend, port, &controller);
-    listener.start(register).unwrap();
+    listener.start().unwrap();
 }

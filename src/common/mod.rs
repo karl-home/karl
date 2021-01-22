@@ -17,6 +17,7 @@ pub const HT_REGISTER_RESULT: HeaderType = 8;
 pub const HT_NOTIFY_START: HeaderType = 9;
 pub const HT_NOTIFY_END: HeaderType = 10;
 pub const HT_HOST_HEARTBEAT: HeaderType = 11;
+pub const HT_HOST_REGISTER_REQUEST: HeaderType = 12;
 
 pub use error::Error;
 pub use builder::{import_path, ComputeRequestBuilder};
