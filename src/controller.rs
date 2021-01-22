@@ -1,6 +1,8 @@
 use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs, TcpListener, Ipv4Addr, IpAddr};
+use std::net::{SocketAddr, TcpStream, TcpListener, IpAddr};
+#[cfg(feature = "dnssd")]
+use std::net::{ToSocketAddrs, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
@@ -8,6 +10,7 @@ use std::fs;
 use std::io::Read;
 
 use serde::Serialize;
+#[cfg(feature = "dnssd")]
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
@@ -203,6 +206,8 @@ impl Controller {
         // Make the karl path if it doesn't already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
 
+        #[cfg(feature = "dnssd")]
+        {
         let hosts = self.hosts.clone();
         let unique_hosts = self.unique_hosts.clone();
         debug!("Listening...");
@@ -267,6 +272,7 @@ impl Controller {
                 }
             }
         });
+        }
 
         // Initialize clients in the clients file at `<KARL_PATH>/clients.txt`.
         // Expect client serialization format based on `dashboard/mod.rs`:

@@ -166,6 +166,7 @@ impl Host {
         info!("ID {} listening on port {}", self.id, self.port);
 
         if register {
+            #[cfg(feature = "dnssd")]
             crate::net::register(&mut self.rt, self.id, self.port);
         } else {
             warn!("you must manually register the service on DNS-SD!")
