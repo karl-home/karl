@@ -4,12 +4,12 @@ use std::net::{SocketAddr, TcpStream, TcpListener, IpAddr};
 #[cfg(feature = "dnssd")]
 use std::net::{ToSocketAddrs, Ipv4Addr};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, Duration};
 use std::thread;
 use std::fs;
 use std::io::Read;
 
-use serde::Serialize;
+use serde::{Serialize, ser::{Serializer, SerializeStruct}};
 #[cfg(feature = "dnssd")]
 use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
@@ -29,14 +29,14 @@ use crate::common::{
 type ServiceName = String;
 
 /// Request information.
-#[derive(Serialize, Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Request {
     /// Description of request.
     pub description: String,
-    /// Request start, time since UNIX epoch.
-    pub start: u64,
-    /// Request end, time since UNIX epoch, or None if ongoing.
-    pub end: Option<u64>,
+    /// Request start time.
+    pub start: Instant,
+    /// Request end time.
+    pub end: Option<Instant>,
 }
 
 /// Host status and information.
@@ -95,15 +95,34 @@ pub struct Controller {
     password: String,
 }
 
-impl Request {
-    pub fn time_since_epoch_s() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+impl Serialize for Request {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let time = if let Some(end) = self.end {
+            (end - self.start).as_secs_f32()
+        } else {
+            self.start.elapsed().as_secs_f32()
+        };
+        let mut state = serializer.serialize_struct("Request", 2)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("time", &time)?;
+        state.end()
     }
+}
 
+impl Default for Request {
+    fn default() -> Self {
+        Request::new("".to_string())
+    }
+}
+
+impl Request {
     pub fn new(description: String) -> Self {
         Request {
             description,
-            start: Request::time_since_epoch_s(),
+            start: Instant::now(),
             end: None,
         }
     }
@@ -733,7 +752,7 @@ impl Controller {
             }
             host.token = Some(token);
             if let Some(mut req) = host.active_request.take() {
-                req.end = Some(Request::time_since_epoch_s());
+                req.end = Some(Instant::now());
                 host.last_request = Some(req);
             } else {
                 error!("no active request, null notify end");
@@ -1223,7 +1242,6 @@ mod test {
         assert!(request.is_some(), "active request started");
         let request = request.unwrap();
         assert_eq!(request.description, description, "same description");
-        assert!(request.start > 0, "request has a start time");
         assert!(request.end.is_none(), "request does not have an end time");
 
         // Notify start again and overwrite the old request.

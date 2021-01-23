@@ -3,7 +3,6 @@ use serde::Serialize;
 use rocket::request::{FromRequest, Outcome};
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
 use crate::common::Error;
-use crate::controller::Request;
 
 #[derive(Serialize, Debug)]
 pub struct RequestHeaders(pub Vec<(String, String)>);
@@ -66,17 +65,10 @@ pub fn request_helper(
                 out.write(description)?;
             }
         }
-        if let Some(start) = param.value().get("start") {
-            if let Some(start) = start.as_u64() {
-                let mut end = Request::time_since_epoch_s();
-                if let Some(end_param) = param.value().get("end") {
-                    if let Some(end_param) = end_param.as_u64() {
-                        end = end_param;
-                    }
-                };
-                let elapsed = end - start;
+        if let Some(time) = param.value().get("time") {
+            if let Some(time) = time.as_f64() {
                 out.write(" (")?;
-                out.write(&elapsed.to_string())?;
+                out.write(&format!("{:.3}", time))?;
                 out.write("s)")?;
             }
         }
