@@ -639,6 +639,10 @@ impl Controller {
                     if host.active_request.is_some() || !host.confirmed {
                         continue;
                     }
+                    let elapsed = host.last_msg.elapsed().as_secs();
+                    if elapsed > 2 * crate::host::HEARTBEAT_INTERVAL {
+                        continue;
+                    }
                     if let Some(token) = host.token.take() {
                         hosts.1 = host_i;
                         println!("find_host picked => {:?}", host.addr);
