@@ -82,7 +82,8 @@ pub struct Client {
 pub struct Controller {
     pub rt: Runtime,
     karl_path: PathBuf,
-    hosts: Arc<Mutex<Vec<ServiceName>>>,
+    /// The second argument is prev_host_i used to index the next host.
+    hosts: Arc<Mutex<(Vec<ServiceName>, usize)>>,
     unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
     /// Map from client token to client.
     ///
@@ -90,7 +91,6 @@ pub struct Controller {
     /// and the client itself. Generated on registration. All host
     /// requests from the client to the controller must include this token.
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
-    prev_host_i: usize,
     /// Password required for a host to register with the controller.
     password: String,
 }
@@ -181,10 +181,9 @@ impl Controller {
         Controller {
             rt: Runtime::new().unwrap(),
             karl_path,
-            hosts: Arc::new(Mutex::new(Vec::new())),
+            hosts: Arc::new(Mutex::new((Vec::new(), 0))),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
-            prev_host_i: 0,
             password: password.to_string(),
         }
     }
@@ -248,7 +247,7 @@ impl Controller {
                         match service.event_type {
                             ServiceEventType::Added => {
                                 let addr = addrs[0];
-                                if add_host(&service.name, addr, &mut hosts, &mut unique_hosts, false) {
+                                if add_host(&service.name, addr, &mut hosts.0, &mut unique_hosts, false) {
                                     info!(
                                         "ADD if: {} name: {} type: {} domain: {}, addr: {:?}",
                                         service.interface_index, service.name,
@@ -257,7 +256,7 @@ impl Controller {
                                 }
                             },
                             ServiceEventType::Removed => {
-                                if remove_host(&service.name, &mut hosts, &mut unique_hosts) {
+                                if remove_host(&service.name, &mut hosts.0, &mut unique_hosts) {
                                     info!(
                                         "RMV if: {} name: {} type: {} domain: {}",
                                         service.interface_index, service.name,
@@ -348,14 +347,42 @@ impl Controller {
                 let req = parse_from_bytes::<protos::HostRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let res = self.find_host(&Token(req.client_token), req.blocking);
-                let res_bytes = res.write_to_bytes().unwrap();
+                let hosts = self.hosts.clone();
+                let unique_hosts = self.unique_hosts.clone();
+                let clients = self.clients.clone();
+                if req.blocking {
+                    self.rt.spawn(async move {
+                        let res = Self::find_host(
+                            hosts,
+                            unique_hosts,
+                            clients,
+                            &Token(req.client_token),
+                            req.blocking,
+                        );
+                        let res_bytes = res.write_to_bytes().unwrap();
 
-                // Return the result to sender.
-                trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
-                let now = Instant::now();
-                packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
-                trace!("=> {} s", now.elapsed().as_secs_f32());
+                        // Return the result to sender.
+                        trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
+                        let now = Instant::now();
+                        packet::write(&mut stream, HT_HOST_RESULT, &res_bytes).unwrap();
+                        trace!("=> {} s", now.elapsed().as_secs_f32());
+                    });
+                } else {
+                    let res = Self::find_host(
+                        hosts,
+                        unique_hosts,
+                        clients,
+                        &Token(req.client_token),
+                        req.blocking,
+                    );
+                    let res_bytes = res.write_to_bytes().unwrap();
+
+                    // Return the result to sender.
+                    trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
+                    let now = Instant::now();
+                    packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+                    trace!("=> {} s", now.elapsed().as_secs_f32());
+                }
             },
             HT_REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
@@ -456,7 +483,7 @@ impl Controller {
             warn!("incorrect password from {} ({:?})", &name, addr);
             false
         } else {
-            add_host(name, addr, &mut hosts, &mut unique_hosts, confirmed)
+            add_host(name, addr, &mut hosts.0, &mut unique_hosts, confirmed)
         }
     }
 
@@ -473,7 +500,7 @@ impl Controller {
     ) -> bool {
         let mut hosts = self.hosts.lock().unwrap();
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
-        remove_host(name, &mut hosts, &mut unique_hosts)
+        remove_host(name, &mut hosts.0, &mut unique_hosts)
     }
 
     /// Verify messages from a host actually came from the host.
@@ -537,13 +564,15 @@ impl Controller {
     /// HostResult. A host is available if there is at least one host is
     /// registered and none of the registered hosts have active requests.
     fn find_host(
-        &mut self,
+        hosts: Arc<Mutex<(Vec<ServiceName>, usize)>>,
+        unique_hosts: Arc<Mutex<HashMap<ServiceName, Host>>>,
+        clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
         token: &ClientToken,
         blocking: bool,
     ) -> protos::HostResult {
         // Validate the client token.
         let mut res = protos::HostResult::default();
-        if let Some(client) = self.clients.lock().unwrap().get(token) {
+        if let Some(client) = clients.lock().unwrap().get(token) {
             if !client.confirmed {
                 println!("find_host unconfirmed client token {:?}", token);
                 return res;
@@ -555,19 +584,19 @@ impl Controller {
 
         // Find a host.
         loop {
-            let hosts = self.hosts.lock().unwrap();
-            if !hosts.is_empty() {
-                let mut unique_hosts = self.unique_hosts.lock().unwrap();
-                let mut host_i = self.prev_host_i;
-                for _ in 0..hosts.len() {
-                    host_i = (host_i + 1) % hosts.len();
-                    let service_name = &hosts[host_i];
+            let mut hosts = hosts.lock().unwrap();
+            if !hosts.0.is_empty() {
+                let mut unique_hosts = unique_hosts.lock().unwrap();
+                let mut host_i = hosts.1;
+                for _ in 0..hosts.0.len() {
+                    host_i = (host_i + 1) % hosts.0.len();
+                    let service_name = &hosts.0[host_i];
                     let host = unique_hosts.get_mut(service_name).unwrap();
                     if host.active_request.is_some() || !host.confirmed {
                         continue;
                     }
                     if let Some(token) = host.token.take() {
-                        self.prev_host_i = host_i;
+                        hosts.1 = host_i;
                         println!("find_host picked => {:?}", host.addr);
                         res.set_ip(host.addr.ip().to_string());
                         res.set_port(host.addr.port().into());
@@ -756,10 +785,25 @@ mod test {
         assert!(c.add_host(&name, addr, true, PASSWORD));
     }
 
+    /// Wrapper around find_host for testing without having to clone locks.
+    fn find_host_test(
+        c: &mut Controller,
+        token: &ClientToken,
+        blocking: bool,
+    ) -> protos::HostResult {
+        Controller::find_host(
+            c.hosts.clone(),
+            c.unique_hosts.clone(),
+            c.clients.clone(),
+            token,
+            blocking,
+        )
+    }
+
     #[test]
     fn test_add_host() {
         let (_karl_path, mut c) = init_test();
-        assert!(c.hosts.lock().unwrap().is_empty());
+        assert!(c.hosts.lock().unwrap().0.is_empty());
         assert!(c.unique_hosts.lock().unwrap().is_empty());
 
         // Add a host
@@ -770,9 +814,9 @@ mod test {
         // Check controller was modified correctly
         let hosts = c.hosts.lock().unwrap();
         let unique_hosts = c.unique_hosts.lock().unwrap();
-        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts.0.len(), 1);
         assert_eq!(unique_hosts.len(), 1);
-        assert_eq!(hosts[0], name, "wrong service name");
+        assert_eq!(hosts.0[0], name, "wrong service name");
         assert!(unique_hosts.get(name).is_some(), "violated host service name invariant");
 
         // Check host was initialized correctly
@@ -808,7 +852,7 @@ mod test {
         let unique_hosts = c.unique_hosts.lock().unwrap();
         for (name, host) in unique_hosts.iter() {
             assert_eq!(name, &host.name);
-            assert_eq!(hosts[host.index], host.name);
+            assert_eq!(hosts.0[host.index], host.name);
         }
     }
 
@@ -825,33 +869,33 @@ mod test {
         // Remove the last host
         let mut hosts = c.hosts.lock().unwrap();
         let mut unique_hosts = c.unique_hosts.lock().unwrap();
-        assert!(hosts.contains(&"host4".to_string()));
-        assert!(remove_host("host4", &mut hosts, &mut unique_hosts));
-        assert!(!hosts.contains(&"host4".to_string()));
-        assert_eq!(hosts.len(), 3);
+        assert!(hosts.0.contains(&"host4".to_string()));
+        assert!(remove_host("host4", &mut hosts.0, &mut unique_hosts));
+        assert!(!hosts.0.contains(&"host4".to_string()));
+        assert_eq!(hosts.0.len(), 3);
         assert_eq!(unique_hosts.len(), 3);
         for host in unique_hosts.values() {
-            assert_eq!(hosts[host.index], host.name);
+            assert_eq!(hosts.0[host.index], host.name);
         }
 
         // Remove the middle host
-        assert!(hosts.contains(&"host2".to_string()));
-        assert!(remove_host("host2", &mut hosts, &mut unique_hosts));
-        assert!(!hosts.contains(&"host2".to_string()));
-        assert_eq!(hosts.len(), 2);
+        assert!(hosts.0.contains(&"host2".to_string()));
+        assert!(remove_host("host2", &mut hosts.0, &mut unique_hosts));
+        assert!(!hosts.0.contains(&"host2".to_string()));
+        assert_eq!(hosts.0.len(), 2);
         assert_eq!(unique_hosts.len(), 2);
         for host in unique_hosts.values() {
-            assert_eq!(hosts[host.index], host.name);
+            assert_eq!(hosts.0[host.index], host.name);
         }
 
         // Remove the first host
-        assert!(hosts.contains(&"host1".to_string()));
-        assert!(remove_host("host1", &mut hosts, &mut unique_hosts));
-        assert!(!hosts.contains(&"host1".to_string()));
-        assert_eq!(hosts.len(), 1);
+        assert!(hosts.0.contains(&"host1".to_string()));
+        assert!(remove_host("host1", &mut hosts.0, &mut unique_hosts));
+        assert!(!hosts.0.contains(&"host1".to_string()));
+        assert_eq!(hosts.0.len(), 1);
         assert_eq!(unique_hosts.len(), 1);
         for host in unique_hosts.values() {
-            assert_eq!(hosts[host.index], host.name);
+            assert_eq!(hosts.0[host.index], host.name);
         }
     }
 
@@ -879,17 +923,17 @@ mod test {
         assert!(add_host(
             "host1",
             "0.0.0.0:8081".parse().unwrap(),
-            &mut c.hosts.lock().unwrap(),
+            &mut c.hosts.lock().unwrap().0,
             &mut c.unique_hosts.lock().unwrap(),
             false,
         ));
         assert!(!c.unique_hosts.lock().unwrap().get("host1").unwrap().confirmed);
         c.heartbeat("host1".to_string(), request_token);
-        assert!(!c.find_host(&client_token, false).get_found());
+        assert!(!find_host_test(&mut c, &client_token, false).get_found());
 
         // Confirm the host, and we should be able to discover it
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().confirmed = true;
-        assert!(c.find_host(&client_token, false).get_found());
+        assert!(find_host_test(&mut c, &client_token, false).get_found());
     }
 
     #[test]
@@ -905,7 +949,7 @@ mod test {
         add_host_test(&mut c, 1);
         add_host_test(&mut c, 2);
         add_host_test(&mut c, 3);
-        assert_eq!(c.hosts.lock().unwrap().clone(), vec![
+        assert_eq!(c.hosts.lock().unwrap().0.clone(), vec![
             "host1".to_string(),
             "host2".to_string(),
             "host3".to_string(),
@@ -917,13 +961,13 @@ mod test {
         // Set last_request of a host, say host 2.
         // find_host returns 2 3 1 round-robin.
         c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().last_request = Some(Request::default());
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8083);
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
         c.heartbeat("host1".to_string(), request_token);
@@ -933,15 +977,15 @@ mod test {
         // Make host 3 busy. (Reset request tokens)
         // find_host should return 2 1 2 round-robin.
         c.unique_hosts.lock().unwrap().get_mut("host3").unwrap().active_request = Some(Request::default());
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
         c.heartbeat("host2".to_string(), request_token);
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
         c.heartbeat("host1".to_string(), request_token);
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
         c.heartbeat("host2".to_string(), request_token);
@@ -950,7 +994,7 @@ mod test {
         // find_host should fail.
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
         c.unique_hosts.lock().unwrap().get_mut("host2").unwrap().active_request = Some(Request::default());
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(!host.get_found());
     }
 
@@ -964,7 +1008,7 @@ mod test {
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
         let blocking = true;
-        c.find_host(&token, blocking);
+        find_host_test(&mut c, &token, blocking);
         unreachable!("default controller should not return without hosts");
     }
 
@@ -983,14 +1027,14 @@ mod test {
         // Add a host.
         add_host_test(&mut c, 1);
         c.heartbeat("host1".to_string(), request_token);
-        assert!(c.find_host(&client_token, true).get_found());
+        assert!(find_host_test(&mut c, &client_token, true).get_found());
         c.heartbeat("host1".to_string(), request_token);
-        assert!(c.find_host(&client_token, true).get_found());
+        assert!(find_host_test(&mut c, &client_token, true).get_found());
         c.heartbeat("host1".to_string(), request_token);
 
         // Now make it busy.
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
-        c.find_host(&client_token, true);
+        find_host_test(&mut c, &client_token, true);
         unreachable!("default controller should not return with busy hosts");
     }
 
@@ -1008,13 +1052,13 @@ mod test {
         // Add a host.
         add_host_test(&mut c, 1);
         c.heartbeat("host1".to_string(), request_token);
-        assert!(c.find_host(&token, false).get_found());
+        assert!(find_host_test(&mut c, &token, false).get_found());
         c.heartbeat("host1".to_string(), request_token);
-        assert!(c.find_host(&token, false).get_found());
+        assert!(find_host_test(&mut c, &token, false).get_found());
         c.heartbeat("host1".to_string(), request_token);
-        assert!(!c.find_host(&bad_token1, false).get_found());
-        assert!(!c.find_host(&bad_token2, false).get_found());
-        assert!(c.find_host(&token, false).get_found());
+        assert!(!find_host_test(&mut c, &bad_token1, false).get_found());
+        assert!(!find_host_test(&mut c, &bad_token2, false).get_found());
+        assert!(find_host_test(&mut c, &token, false).get_found());
     }
 
     #[test]
@@ -1031,12 +1075,12 @@ mod test {
         let token = Token(client.get_client_token().to_string());
         assert_eq!(c.clients.lock().unwrap().len(), 1);
         assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
-        assert!(!c.find_host(&token, false).get_found(),
+        assert!(!find_host_test(&mut c, &token, false).get_found(),
             "found host with unconfirmed token");
 
         // Confirm the client and find a host.
         c.clients.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
-        assert!(c.find_host(&token, false).get_found(),
+        assert!(find_host_test(&mut c, &token, false).get_found(),
             "failed to find host with confirmed token");
     }
 
@@ -1052,15 +1096,15 @@ mod test {
         // Add a host.
         add_host_test(&mut c, 1);
         add_host_test(&mut c, 2);
-        assert!(!c.find_host(&token, false).get_found(), "no request tokens");
+        assert!(!find_host_test(&mut c, &token, false).get_found(), "no request tokens");
         c.heartbeat("host1".to_string(), request_token);
-        assert!(c.find_host(&token, false).get_found(), "set token in heartbeat");
-        assert!(!c.find_host(&token, false).get_found(), "reset token");
+        assert!(find_host_test(&mut c, &token, false).get_found(), "set token in heartbeat");
+        assert!(!find_host_test(&mut c, &token, false).get_found(), "reset token");
         c.heartbeat("host1".to_string(), request_token);
         c.heartbeat("host2".to_string(), request_token);
-        assert!(c.find_host(&token, false).get_found());
-        assert!(c.find_host(&token, false).get_found());
-        assert!(!c.find_host(&token, false).get_found());
+        assert!(find_host_test(&mut c, &token, false).get_found());
+        assert!(find_host_test(&mut c, &token, false).get_found());
+        assert!(!find_host_test(&mut c, &token, false).get_found());
     }
 
     #[test]
@@ -1265,7 +1309,7 @@ mod test {
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_some());
 
         // HostRequest
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_none());
         assert!(host.get_found());
         assert_eq!(host.get_request_token(), request_token1.0);
@@ -1279,7 +1323,7 @@ mod test {
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_some());
 
         // HostRequest
-        let host = c.find_host(&client_token, false);
+        let host = find_host_test(&mut c, &client_token, false);
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_none());
         assert!(host.get_found());
         assert_eq!(host.get_request_token(), request_token2.0);
