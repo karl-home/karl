@@ -73,6 +73,28 @@ pub fn request_helper(
             }
         }
     }
+    Ok(())
+}
 
+/// Handlebars helper function for rending the heartbeat time as red if it
+/// has been more than 20 seconds.
+pub fn heartbeat_helper(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output
+) -> HelperResult {
+    if let Some(last_msg) = h.param(0) {
+        if let Some(last_msg) = last_msg.value().as_f64() {
+            if last_msg > 20.0 {
+                out.write("<span class=\"red\">")?;
+                out.write(&format!("{:.3}", last_msg))?;
+                out.write("</span>")?;
+            } else {
+                out.write(&format!("{:.3}", last_msg))?;
+            }
+        }
+    }
     Ok(())
 }

@@ -148,6 +148,7 @@ pub fn start(
         .mount("/", routes![client::storage, client::proxy_get])
         .attach(Template::custom(|engines| {
             engines.handlebars.register_helper("request", Box::new(request_helper));
+            engines.handlebars.register_helper("heartbeat", Box::new(heartbeat_helper));
         }))
         .launch();
     });

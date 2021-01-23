@@ -104,7 +104,6 @@ impl Serialize for Host {
     where
         S: Serializer,
     {
-        let time = format!("{:.3}", self.last_msg.elapsed().as_secs_f32());
         let mut state = serializer.serialize_struct("Host", 9)?;
         state.serialize_field("confirmed", &self.confirmed)?;
         state.serialize_field("index", &self.index)?;
@@ -113,7 +112,7 @@ impl Serialize for Host {
         state.serialize_field("active_request", &self.active_request)?;
         state.serialize_field("last_request", &self.last_request)?;
         state.serialize_field("token", &self.token)?;
-        state.serialize_field("last_msg", &time)?;
+        state.serialize_field("last_msg", &self.last_msg.elapsed().as_secs_f32())?;
         state.serialize_field("total", &self.total)?;
         state.end()
     }

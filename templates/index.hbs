@@ -10,6 +10,9 @@
         padding: 5px;
         text-align: left;
       }
+      .red {
+        color: red;
+      }
     </style>
     <script>
       function confirm_host(service_name) {
@@ -59,7 +62,7 @@
             <td>{{request this.active_request}}</td>
             <td>{{request this.last_request}}</td>
             <td>{{this.total}}</td>
-            <td>{{this.last_msg}}</td>
+            <td>{{heartbeat this.last_msg}}</td>
           </tr>
         {{/each}}
       </tbody>
