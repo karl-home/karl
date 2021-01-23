@@ -397,7 +397,7 @@ impl Controller {
                     .unwrap();
                 let ip = stream.peer_addr().unwrap().ip();
                 self.verify_host_name(&req.service_name, &ip)?;
-                self.heartbeat(req.service_name, Token(req.request_token));
+                self.heartbeat(req.service_name, &req.request_token);
             },
             HT_HOST_REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::HostRegisterRequest>(&req_bytes)
@@ -716,11 +716,17 @@ impl Controller {
 
     /// Handle a host heartbeat, updating the request token for the
     /// host with the given service name.
-    fn heartbeat(&mut self, service_name: String, token: RequestToken) {
+    ///
+    /// Parameters:
+    /// - service_name - Service name.
+    /// - token - New request token, or empty string if not renewed.
+    fn heartbeat(&mut self, service_name: String, token: &str) {
         debug!("heartbeat {} {:?}", service_name, token);
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
         if let Some(host) = unique_hosts.get_mut(&service_name) {
-            host.token = Some(token);
+            if !token.is_empty() {
+                host.token = Some(Token(token.to_string()));
+            }
         } else {
             error!("missing host");
         }
@@ -867,7 +873,7 @@ mod test {
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
 
         // Add an unconfirmed host
         assert!(add_host(
@@ -878,7 +884,7 @@ mod test {
             false,
         ));
         assert!(!c.unique_hosts.lock().unwrap().get("host1").unwrap().confirmed);
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(!c.find_host(&client_token, false).get_found());
 
         // Confirm the host, and we should be able to discover it
@@ -893,7 +899,7 @@ mod test {
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
 
         // Add three hosts
         add_host_test(&mut c, 1);
@@ -904,9 +910,9 @@ mod test {
             "host2".to_string(),
             "host3".to_string(),
         ]);
-        c.heartbeat("host1".to_string(), request_token.clone());
-        c.heartbeat("host2".to_string(), request_token.clone());
-        c.heartbeat("host3".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
+        c.heartbeat("host2".to_string(), request_token);
+        c.heartbeat("host3".to_string(), request_token);
 
         // Set last_request of a host, say host 2.
         // find_host returns 2 3 1 round-robin.
@@ -920,9 +926,9 @@ mod test {
         let host = c.find_host(&client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
-        c.heartbeat("host1".to_string(), request_token.clone());
-        c.heartbeat("host2".to_string(), request_token.clone());
-        c.heartbeat("host3".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
+        c.heartbeat("host2".to_string(), request_token);
+        c.heartbeat("host3".to_string(), request_token);
 
         // Make host 3 busy. (Reset request tokens)
         // find_host should return 2 1 2 round-robin.
@@ -930,15 +936,15 @@ mod test {
         let host = c.find_host(&client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
-        c.heartbeat("host2".to_string(), request_token.clone());
+        c.heartbeat("host2".to_string(), request_token);
         let host = c.find_host(&client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8081);
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         let host = c.find_host(&client_token, false);
         assert!(host.get_found());
         assert_eq!(host.get_port(), 8082);
-        c.heartbeat("host2".to_string(), request_token.clone());
+        c.heartbeat("host2".to_string(), request_token);
 
         // Make host 1 and 2 busy.
         // find_host should fail.
@@ -972,15 +978,15 @@ mod test {
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
 
         // Add a host.
         add_host_test(&mut c, 1);
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(c.find_host(&client_token, true).get_found());
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(c.find_host(&client_token, true).get_found());
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
 
         // Now make it busy.
         c.unique_hosts.lock().unwrap().get_mut("host1").unwrap().active_request = Some(Request::default());
@@ -997,15 +1003,15 @@ mod test {
         let token = Token(client.get_client_token().to_string());
         let bad_token1 = Token("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string());
         let bad_token2 = Token("badtoken".to_string());
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
 
         // Add a host.
         add_host_test(&mut c, 1);
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(c.find_host(&token, false).get_found());
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(c.find_host(&token, false).get_found());
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(!c.find_host(&bad_token1, false).get_found());
         assert!(!c.find_host(&bad_token2, false).get_found());
         assert!(c.find_host(&token, false).get_found());
@@ -1016,9 +1022,9 @@ mod test {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
         add_host_test(&mut c, 1);
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
 
         // Register an unconfirmed client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
@@ -1041,17 +1047,17 @@ mod test {
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
-        let request_token = Token("requesttoken".to_string());
+        let request_token = "requesttoken";
 
         // Add a host.
         add_host_test(&mut c, 1);
         add_host_test(&mut c, 2);
         assert!(!c.find_host(&token, false).get_found(), "no request tokens");
-        c.heartbeat("host1".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
         assert!(c.find_host(&token, false).get_found(), "set token in heartbeat");
         assert!(!c.find_host(&token, false).get_found(), "reset token");
-        c.heartbeat("host1".to_string(), request_token.clone());
-        c.heartbeat("host2".to_string(), request_token.clone());
+        c.heartbeat("host1".to_string(), request_token);
+        c.heartbeat("host2".to_string(), request_token);
         assert!(c.find_host(&token, false).get_found());
         assert!(c.find_host(&token, false).get_found());
         assert!(!c.find_host(&token, false).get_found());
@@ -1228,13 +1234,13 @@ mod test {
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token.is_none(),
             "no token initially",
         );
-        c.heartbeat(name.clone(), token1.clone());
+        c.heartbeat(name.clone(), &token1.0);
         assert_eq!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token,
             Some(token1),
             "heartbeat sets the initial token",
         );
-        c.heartbeat(name.clone(), token2.clone());
+        c.heartbeat(name.clone(), &token2.0);
         assert_eq!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token,
             Some(token2),
@@ -1255,7 +1261,7 @@ mod test {
 
         // Heartbeat
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_none());
-        c.heartbeat(host1.clone(), request_token1.clone());
+        c.heartbeat(host1.clone(), &request_token1.0);
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_some());
 
         // HostRequest

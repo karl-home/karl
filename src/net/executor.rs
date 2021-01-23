@@ -101,6 +101,7 @@ pub fn notify_start(controller_addr: &str, service_id: u32, description: String)
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
+    debug!("notify start");
     packet::write(&mut stream, HT_NOTIFY_START, &req_bytes).unwrap();
 }
 
@@ -114,15 +115,18 @@ pub fn notify_end(controller_addr: &str, service_id: u32, token: RequestToken) {
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
+    debug!("notify_end");
     packet::write(&mut stream, HT_NOTIFY_END, &req_bytes).unwrap();
 }
 
 /// Send a heartbeat to the controller.
-pub fn heartbeat(controller_addr: &str, service_id: u32, token: RequestToken) {
+pub fn heartbeat(controller_addr: &str, service_id: u32, token: Option<RequestToken>) {
     let mut stream = TcpStream::connect(&controller_addr).unwrap();
     let mut req = protos::HostHeartbeat::default();
     req.set_service_name(format!("KarlService-{}", service_id));
-    req.set_request_token(token.0);
+    if let Some(token) = token {
+        req.set_request_token(token.0);
+    }
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))

@@ -33,11 +33,10 @@ pub struct Host {
     rt: Runtime,
     /// Controller address.
     controller: String,
-    /// Request token and when it was last updated.
+    /// Request token, or none if the host is processing a ComputeRequest.
+    /// The host will only accept a ComputeRequest if it includes the token.
     ///
-    /// The host will only accept a ComputeRequest if it includes the
-    /// active RequestToken. The token is set to None while the host is
-    /// is processing a ComputeRequest.
+    /// The time is when the request token was last renewed.
     token: Arc<Mutex<(Option<RequestToken>, Instant)>>,
 }
 
@@ -140,7 +139,7 @@ impl Host {
             port,
             rt: Runtime::new().unwrap(),
             controller: controller.to_string(),
-            token: Arc::new(Mutex::new((None, Instant::now()))),
+            token: Arc::new(Mutex::new((Some(Token::gen()), Instant::now()))),
         }
     }
 
@@ -174,24 +173,18 @@ impl Host {
         let controller_addr = self.controller.clone();
         let host_id = self.id.clone();
         self.rt.spawn(async move {
-            // Send the initial heartbeat.
-            let mut token = token_lock.lock().unwrap();
-            let token_to_send = Token::gen();
-            *token = (Some(token_to_send.clone()), Instant::now());
-            debug!("heartbeat {:?}", &token_to_send);
-            crate::net::heartbeat(&controller_addr, host_id, token_to_send);
-            drop(token);
-
             // Every HEARTBEAT_INTERVAL seconds, this process wakes up
-            // and determine if it needs to send a heartbeat message with
-            // a new request token. Note request tokens are also sent with
-            // NotifyEnd messages.
+            // sends a heartbeat message to the controller.
             //
-            // If the last message the host sent is a NotifyStart, and thus
-            // the host is processing an active request, it does not need to
-            // send a heartbeat. Otherwise, if the last message is a NotifyEnd
-            // or a Heartbeat, and more than HEARTBEAT_INTERVAL seconds has
-            // elapsed, the process will send a heartbeat.
+            // The host renews the request token with every heartbeat except
+            // in the following two cirucmstance:
+            // 1) The last message sent was a NotifyStart, and thus the host
+            //    is actively processing a request.
+            // 2) It has been less than HEARTBEAT_INTERVAL-1 seconds since
+            //    renewing the token, which should only occur if the last
+            //    message sent was a NotifyEnd.
+            //
+            // Note request tokens are also sent with NotifyEnd messages.
             //
             // Note that the host may generate a new request token in the time
             // that the controller allocates a host token and the client sends
@@ -200,15 +193,23 @@ impl Host {
             // This mechanism protects the host from clients that reserve
             // hosts with the controller and fails to make a ComputeRequest.
             loop {
-                thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL));
                 let mut token = token_lock.lock().unwrap();
-                if token.0.is_some() && token.1.elapsed().as_secs_f32() > HEARTBEAT_INTERVAL as f32 {
+                let active_request = token.0.is_none();
+                let recent_renewal = token.1.elapsed().as_secs_f32() < (HEARTBEAT_INTERVAL-1) as f32;
+                let token_to_send = if !active_request && !recent_renewal {
+                    // Renew the token if not processing a request or if it
+                    // has been less than HEARTBEAT_INTERVAL-1 seconds since
+                    // renewing the token.
                     let token_to_send = Token::gen();
-                    *token = (Some(token_to_send.clone()), Instant::now());
                     debug!("heartbeat {:?}", &token_to_send);
-                    crate::net::heartbeat(&controller_addr, host_id, token_to_send);
-                }
+                    *token = (Some(token_to_send.clone()), Instant::now());
+                    Some(token_to_send)
+                } else {
+                    None
+                };
+                crate::net::heartbeat(&controller_addr, host_id, token_to_send);
                 drop(token);
+                thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL));
             }
         });
 
@@ -412,6 +413,8 @@ mod test {
     fn no_active_token_fails() {
         let (_karl_path, mut h) = init_host();
         let token = Token("abc".to_string());
+        assert!(get_token(&h).is_some());
+        h.token.lock().unwrap().0 = None;
         assert!(get_token(&h).is_none());
         assert!(h.use_request_token(&token).is_err());
     }
