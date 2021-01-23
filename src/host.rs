@@ -153,8 +153,8 @@ impl Host {
     /// directory must be at <KARL_PATH>.
     ///
     /// Parameters:
-    /// - register - Whether the listener should register itself on DNS-SD.
-    pub fn start(&mut self) -> Result<(), Error> {
+    /// - password - The password to register with the controller.
+    pub fn start(&mut self, password: &str) -> Result<(), Error> {
         // Create the <KARL_PATH> if it does not already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
         // Set the current working directory to the <KARL_PATH>.
@@ -168,7 +168,7 @@ impl Host {
         #[cfg(feature = "dnssd")]
         crate::net::register(&mut self.rt, self.id, self.port);
         #[cfg(not(feature = "dnssd"))]
-        crate::net::register_host(&self.controller, self.id, self.port);
+        crate::net::register_host(&self.controller, self.id, self.port, password);
 
         let token_lock = self.token.clone();
         let controller_addr = self.controller.clone();

@@ -16,6 +16,11 @@ fn main() {
             .long("port")
             .takes_value(true)
             .default_value("59582"))
+        .arg(Arg::with_name("password")
+            .help("Password required for a host to register with the controller.")
+            .long("password")
+            .takes_value(true)
+            .default_value("password"))
         .arg(Arg::with_name("no-register")
             .help("If the flag is included, does not automatically register \
                 the service with DNS-SD. The default is to register.")
@@ -30,6 +35,7 @@ fn main() {
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let _register = !matches.is_present("no-register");
     let use_dashboard = !matches.is_present("no-dashboard");
-    let mut controller = Controller::new(karl_path);
+    let password = matches.value_of("password").unwrap();
+    let mut controller = Controller::new(karl_path, password);
     controller.start(use_dashboard, port).unwrap();
 }

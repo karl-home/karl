@@ -91,6 +91,8 @@ pub struct Controller {
     /// requests from the client to the controller must include this token.
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     prev_host_i: usize,
+    /// Password required for a host to register with the controller.
+    password: String,
 }
 
 impl Request {
@@ -174,9 +176,8 @@ impl Controller {
     /// Create a new controller.
     ///
     /// Call `start()` after constructing the controller to ensure it is
-    /// listening for hosts and client requests, and that it is registered
-    /// on DNS-SD.
-    pub fn new(karl_path: PathBuf) -> Self {
+    /// listening for hosts and client requests.
+    pub fn new(karl_path: PathBuf, password: &str) -> Self {
         Controller {
             rt: Runtime::new().unwrap(),
             karl_path,
@@ -184,6 +185,7 @@ impl Controller {
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             prev_host_i: 0,
+            password: password.to_string(),
         }
     }
 
@@ -401,14 +403,15 @@ impl Controller {
                 let req = parse_from_bytes::<protos::HostRegisterRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                add_host(
+                let ip = stream.peer_addr().unwrap().ip();
+                if !self.add_host(
                     &req.service_name,
                     format!("{}:{}", req.ip, req.port).parse().unwrap(),
-                    &mut self.hosts.lock().unwrap(),
-                    &mut self.unique_hosts.lock().unwrap(),
                     false,
-                );
-                let ip = stream.peer_addr().unwrap().ip();
+                    req.get_password(),
+                ) {
+                    warn!("failed to register {} ({:?})", &req.service_name, ip);
+                }
                 self.verify_host_name(&req.service_name, &ip)?;
             },
             HT_PING_REQUEST => {
@@ -427,6 +430,50 @@ impl Controller {
             ty => return Err(Error::InvalidPacketType(ty)),
         };
         Ok(())
+    }
+
+    /// Add a host. If a host with the same name already exists, don't do anything.
+    ///
+    /// Parameters:
+    /// - name - The name of the service.
+    /// - addr - The address of the host.
+    /// - confirmed - Whether the host should be confirmed by default.
+    /// - password - Controller password known by the host.
+    ///
+    /// Returns:
+    /// Whether the host was added. Not added if it is a duplicate by name,
+    /// or if the password was incorrect.
+    fn add_host(
+        &mut self,
+        name: &str,
+        addr: SocketAddr,
+        confirmed: bool,
+        password: &str,
+    ) -> bool {
+        let mut hosts = self.hosts.lock().unwrap();
+        let mut unique_hosts = self.unique_hosts.lock().unwrap();
+        if password != self.password {
+            warn!("incorrect password from {} ({:?})", &name, addr);
+            false
+        } else {
+            add_host(name, addr, &mut hosts, &mut unique_hosts, confirmed)
+        }
+    }
+
+    /// Removes the host.
+    ///
+    /// Parameters:
+    /// - name - The name of the service.
+    ///
+    /// Returns:
+    /// Whether the host was removed.
+    fn remove_host(
+        &mut self,
+        name: &str,
+    ) -> bool {
+        let mut hosts = self.hosts.lock().unwrap();
+        let mut unique_hosts = self.unique_hosts.lock().unwrap();
+        remove_host(name, &mut hosts, &mut unique_hosts)
     }
 
     /// Verify messages from a host actually came from the host.
@@ -498,11 +545,11 @@ impl Controller {
         let mut res = protos::HostResult::default();
         if let Some(client) = self.clients.lock().unwrap().get(token) {
             if !client.confirmed {
-                warn!("find_host unconfirmed client token {:?}", token);
+                println!("find_host unconfirmed client token {:?}", token);
                 return res;
             }
         } else {
-            warn!("find_host invalid client token {:?}", token);
+            println!("find_host invalid client token {:?}", token);
             return res;
         }
 
@@ -521,7 +568,7 @@ impl Controller {
                     }
                     if let Some(token) = host.token.take() {
                         self.prev_host_i = host_i;
-                        info!("find_host picked => {:?}", host.addr);
+                        println!("find_host picked => {:?}", host.addr);
                         res.set_ip(host.addr.ip().to_string());
                         res.set_port(host.addr.port().into());
                         res.set_request_token(token.0);
@@ -531,7 +578,7 @@ impl Controller {
                 }
             }
             if !blocking {
-                warn!("find_host no hosts available {:?}", token);
+                println!("find_host no hosts available {:?}", token);
                 return res;
             }
             drop(hosts);
@@ -686,37 +733,37 @@ mod test {
     use ntest::timeout;
     use tempdir::TempDir;
 
-    /// Create a temporary directory.
-    fn init_karl_path() -> TempDir {
-        TempDir::new("karl").unwrap()
+    const PASSWORD: &str = "password";
+
+    /// Create a temporary directory for the karl path and initialize the
+    /// controller with default password "password".
+    fn init_test() -> (TempDir, Controller) {
+        let dir = TempDir::new("karl").unwrap();
+        let controller = Controller::new(dir.path().to_path_buf(), PASSWORD);
+        (dir, controller)
     }
 
     /// Add a host named "host<i>" with socket addr "0.0.0.0:808<i>".
-    fn add_host_test(
-        i: usize,
-        hosts: &mut Vec<ServiceName>,
-        unique_hosts: &mut HashMap<ServiceName, Host>,
-    ) {
+    fn add_host_test(c: &mut Controller, i: usize) {
         let name = format!("host{}", i);
         let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
-        assert!(add_host(&name, addr, hosts, unique_hosts, true));
+        assert!(c.add_host(&name, addr, true, PASSWORD));
     }
 
     #[test]
     fn test_add_host() {
-        let karl_path = init_karl_path();
-        let c = Controller::new(karl_path.path().to_path_buf());
-        let mut hosts = c.hosts.lock().unwrap();
-        let mut unique_hosts = c.unique_hosts.lock().unwrap();
-        assert!(hosts.is_empty());
-        assert!(unique_hosts.is_empty());
+        let (_karl_path, mut c) = init_test();
+        assert!(c.hosts.lock().unwrap().is_empty());
+        assert!(c.unique_hosts.lock().unwrap().is_empty());
 
         // Add a host
         let name = "host1";
         let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
-        assert!(add_host(name, addr, &mut hosts, &mut unique_hosts, false));
+        assert!(c.add_host(name, addr, false, "password"));
 
         // Check controller was modified correctly
+        let hosts = c.hosts.lock().unwrap();
+        let unique_hosts = c.unique_hosts.lock().unwrap();
         assert_eq!(hosts.len(), 1);
         assert_eq!(unique_hosts.len(), 1);
         assert_eq!(hosts[0], name, "wrong service name");
@@ -734,18 +781,25 @@ mod test {
     }
 
     #[test]
+    fn test_add_host_password() {
+        let (_karl_path, mut c) = init_test();
+        let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        assert!(!c.add_host("host1", addr.clone(), false, "???"));
+        assert!(c.add_host("host1", addr.clone(), false, "password"));
+    }
+
+    #[test]
     fn test_add_multiple_hosts() {
-        let karl_path = init_karl_path();
-        let c = Controller::new(karl_path.path().to_path_buf());
-        let mut hosts = c.hosts.lock().unwrap();
-        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+        let (_karl_path, mut c) = init_test();
 
         // Add three hosts
-        add_host_test(1, &mut hosts, &mut unique_hosts);
-        add_host_test(2, &mut hosts, &mut unique_hosts);
-        add_host_test(3, &mut hosts, &mut unique_hosts);
+        add_host_test(&mut c, 1);
+        add_host_test(&mut c, 2);
+        add_host_test(&mut c, 3);
 
         // Check the index in unique_hosts corresponds to the index in hosts
+        let hosts = c.hosts.lock().unwrap();
+        let unique_hosts = c.unique_hosts.lock().unwrap();
         for (name, host) in unique_hosts.iter() {
             assert_eq!(name, &host.name);
             assert_eq!(hosts[host.index], host.name);
@@ -754,18 +808,17 @@ mod test {
 
     #[test]
     fn test_remove_host() {
-        let karl_path = init_karl_path();
-        let c = Controller::new(karl_path.path().to_path_buf());
-        let mut hosts = c.hosts.lock().unwrap();
-        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+        let (_karl_path, mut c) = init_test();
 
         // Add hosts
-        add_host_test(1, &mut hosts, &mut unique_hosts);
-        add_host_test(2, &mut hosts, &mut unique_hosts);
-        add_host_test(3, &mut hosts, &mut unique_hosts);
-        add_host_test(4, &mut hosts, &mut unique_hosts);
+        add_host_test(&mut c, 1);
+        add_host_test(&mut c, 2);
+        add_host_test(&mut c, 3);
+        add_host_test(&mut c, 4);
 
         // Remove the last host
+        let mut hosts = c.hosts.lock().unwrap();
+        let mut unique_hosts = c.unique_hosts.lock().unwrap();
         assert!(hosts.contains(&"host4".to_string()));
         assert!(remove_host("host4", &mut hosts, &mut unique_hosts));
         assert!(!hosts.contains(&"host4".to_string()));
@@ -798,22 +851,18 @@ mod test {
 
     #[test]
     fn test_add_remove_host_return_value() {
-        let karl_path = init_karl_path();
-        let c = Controller::new(karl_path.path().to_path_buf());
-        let mut hosts = c.hosts.lock().unwrap();
-        let mut unique_hosts = c.unique_hosts.lock().unwrap();
+        let (_karl_path, mut c) = init_test();
 
         let addr: SocketAddr = "0.0.0.0:8081".parse().unwrap();
-        assert!(add_host("host1", addr.clone(), &mut hosts, &mut unique_hosts, false));
-        assert!(!add_host("host1", addr.clone(), &mut hosts, &mut unique_hosts, false));
-        assert!(remove_host("host1", &mut hosts, &mut unique_hosts));
-        assert!(!remove_host("host1", &mut hosts, &mut unique_hosts));
+        assert!(c.add_host("host1", addr.clone(), true, "password"));
+        assert!(!c.add_host("host1", addr.clone(), true, "password"));
+        assert!(c.remove_host("host1"));
+        assert!(!c.remove_host("host1"));
     }
 
     #[test]
     fn test_find_unconfirmed_host() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
@@ -839,8 +888,7 @@ mod test {
 
     #[test]
     fn test_find_host_non_blocking() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
@@ -848,9 +896,9 @@ mod test {
         let request_token = Token("requesttoken".to_string());
 
         // Add three hosts
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
-        add_host_test(2, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
-        add_host_test(3, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
+        add_host_test(&mut c, 2);
+        add_host_test(&mut c, 3);
         assert_eq!(c.hosts.lock().unwrap().clone(), vec![
             "host1".to_string(),
             "host2".to_string(),
@@ -905,8 +953,7 @@ mod test {
     #[ignore]
     #[timeout(500)]
     fn test_find_host_blocking_no_hosts() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let token = Token(client.get_client_token().to_string());
@@ -920,8 +967,7 @@ mod test {
     #[ignore]
     #[timeout(500)]
     fn test_find_host_blocking_unavailable() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
@@ -929,7 +975,7 @@ mod test {
         let request_token = Token("requesttoken".to_string());
 
         // Add a host.
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         c.heartbeat("host1".to_string(), request_token.clone());
         assert!(c.find_host(&client_token, true).get_found());
         c.heartbeat("host1".to_string(), request_token.clone());
@@ -944,8 +990,7 @@ mod test {
 
     #[test]
     fn test_find_host_invalid_client_token() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
@@ -955,7 +1000,7 @@ mod test {
         let request_token = Token("requesttoken".to_string());
 
         // Add a host.
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         c.heartbeat("host1".to_string(), request_token.clone());
         assert!(c.find_host(&token, false).get_found());
         c.heartbeat("host1".to_string(), request_token.clone());
@@ -968,12 +1013,11 @@ mod test {
 
     #[test]
     fn test_find_host_unconfirmed_client_token() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Add a host.
         let request_token = Token("requesttoken".to_string());
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         c.heartbeat("host1".to_string(), request_token.clone());
 
         // Register an unconfirmed client
@@ -992,8 +1036,7 @@ mod test {
 
     #[test]
     fn test_find_host_request_tokens() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
@@ -1001,8 +1044,8 @@ mod test {
         let request_token = Token("requesttoken".to_string());
 
         // Add a host.
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
-        add_host_test(2, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
+        add_host_test(&mut c, 2);
         assert!(!c.find_host(&token, false).get_found(), "no request tokens");
         c.heartbeat("host1".to_string(), request_token.clone());
         assert!(c.find_host(&token, false).get_found(), "set token in heartbeat");
@@ -1016,8 +1059,7 @@ mod test {
 
     #[test]
     fn test_register_client() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (karl_path, mut c) = init_test();
         let storage_path = karl_path.path().join("storage").join("hello");
         let app_path = karl_path.path().join("www").join("hello.hbs");
 
@@ -1051,8 +1093,7 @@ mod test {
 
     #[test]
     fn test_register_duplicate_clients() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (karl_path, mut c) = init_test();
         let storage_base = karl_path.path().join("storage");
         let app_base = karl_path.path().join("www");
 
@@ -1082,8 +1123,7 @@ mod test {
 
     #[test]
     fn test_register_format_names() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
@@ -1104,8 +1144,7 @@ mod test {
 
     #[test]
     fn test_register_client_result() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
         let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![], true);
         let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![], true);
         let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![], true);
@@ -1118,8 +1157,7 @@ mod test {
 
     #[test]
     fn test_notify_start_no_hosts() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Notify start with no hosts. Nothing errors.
         let service_name = "host1".to_string();
@@ -1127,7 +1165,7 @@ mod test {
         c.notify_start(service_name.clone(), description.to_string());
 
         // Create a host and notify start.
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none(),
             "no initial active request");
         c.notify_start(service_name.clone(), description.to_string());
@@ -1151,8 +1189,7 @@ mod test {
 
     #[test]
     fn test_notify_end() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         // Notify end with no hosts. Nothing errors.
         let service_name = "host1".to_string();
@@ -1161,7 +1198,7 @@ mod test {
         c.notify_end(service_name.clone(), token.clone());
 
         // Create a host. Notify end does not do anything without an active request.
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().active_request.is_none());
         assert!(c.unique_hosts.lock().unwrap().get("host1").unwrap().last_request.is_none());
         c.notify_end(service_name.clone(), token.clone());
@@ -1182,12 +1219,11 @@ mod test {
 
     #[test]
     fn host_heartbeat_sets_request_token() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
         let name = "host1".to_string();
         let token1 = Token("abc".to_string());
         let token2 = Token("def".to_string());
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
         assert!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token.is_none(),
             "no token initially",
@@ -1208,15 +1244,14 @@ mod test {
 
     #[test]
     fn test_notify_end_also_resets_request_tokens() {
-        let karl_path = init_karl_path();
-        let mut c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
 
         let host1 = "host1".to_string();
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
         let client_token = Token(client.get_client_token().to_string());
         let request_token1 = Token("requesttoken1".to_string());
         let request_token2 = Token("requesttoken2".to_string());
-        add_host_test(1, &mut c.hosts.lock().unwrap(), &mut c.unique_hosts.lock().unwrap());
+        add_host_test(&mut c, 1);
 
         // Heartbeat
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_none());
@@ -1246,17 +1281,10 @@ mod test {
 
     #[test]
     fn test_verify_host() {
-        let karl_path = init_karl_path();
-        let c = Controller::new(karl_path.path().to_path_buf());
+        let (_karl_path, mut c) = init_test();
         let addr: SocketAddr = "1.2.3.4:8080".parse().unwrap();
         let ip: IpAddr = addr.ip();
-        assert!(add_host(
-            "host1",
-            addr,
-            &mut c.hosts.lock().unwrap(),
-            &mut c.unique_hosts.lock().unwrap(),
-            true,
-        ));
+        assert!(c.add_host("host1", addr, true, "password"));
 
         assert!(c.verify_host_name("host2", &ip).is_err(), "invalid host name");
         assert!(c.verify_host_name("host1", &ip).is_ok(), "valid name and ip");

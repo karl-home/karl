@@ -25,6 +25,11 @@ fn main() {
             .long("port")
             .takes_value(true)
             .default_value("0"))
+        .arg(Arg::with_name("password")
+            .help("Controller password to register host.")
+            .long("password")
+            .takes_value(true)
+            .default_value("password"))
         .arg(Arg::with_name("controller-ip")
             .help("IP address of the controller")
             .long("controller-ip")
@@ -54,6 +59,7 @@ fn main() {
         matches.value_of("controller-ip").unwrap(),
         matches.value_of("controller-port").unwrap(),
     );
+    let password = matches.value_of("password").unwrap();
     let mut listener = Host::new(karl_path, backend, port, &controller);
-    listener.start().unwrap();
+    listener.start(password).unwrap();
 }

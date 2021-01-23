@@ -131,7 +131,7 @@ pub fn heartbeat(controller_addr: &str, service_id: u32, token: RequestToken) {
 }
 
 /// Register a host with the controller.
-pub fn register_host(controller_addr: &str, service_id: u32, port: u16) {
+pub fn register_host(controller_addr: &str, service_id: u32, port: u16, password: &str) {
     let mut stream = TcpStream::connect(controller_addr).unwrap();
     let mut req = protos::HostRegisterRequest::default();
     req.set_service_name(format!("KarlService-{}", service_id));
@@ -139,6 +139,7 @@ pub fn register_host(controller_addr: &str, service_id: u32, port: u16) {
     socket.connect("8.8.8.8:80").unwrap();
     req.set_ip(socket.local_addr().unwrap().ip().to_string());
     req.set_port(port as _);
+    req.set_password(password.to_string());
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
