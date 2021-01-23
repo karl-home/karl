@@ -38,6 +38,8 @@
           <th>Addr</th>
           <th>Active Request</th>
           <th>Last Request</th>
+          <th>Total Requests</th>
+          <th>Last Message (s ago)</th>
         </tr>
       </thead>
       <tbody>
@@ -56,6 +58,8 @@
             <td>{{this.addr}}</td>
             <td>{{request this.active_request}}</td>
             <td>{{request this.last_request}}</td>
+            <td>{{this.total}}</td>
+            <td>{{this.last_msg}}</td>
           </tr>
         {{/each}}
       </tbody>

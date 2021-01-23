@@ -40,7 +40,7 @@ pub struct Request {
 }
 
 /// Host status and information.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Host {
     /// Whether the user has confirmed this host.
     pub confirmed: bool,
@@ -58,6 +58,10 @@ pub struct Host {
     /// controller, or the controller has already allocated the token to a
     /// client.
     pub token: Option<RequestToken>,
+    /// Time of last heartbeat, notify start, or notify end.
+    pub last_msg: Instant,
+    /// Total number of requests handled.
+    pub total: usize,
 }
 
 /// Client status and information.
@@ -93,6 +97,26 @@ pub struct Controller {
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     /// Password required for a host to register with the controller.
     password: String,
+}
+
+impl Serialize for Host {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let time = format!("{:.3}", self.last_msg.elapsed().as_secs_f32());
+        let mut state = serializer.serialize_struct("Host", 9)?;
+        state.serialize_field("confirmed", &self.confirmed)?;
+        state.serialize_field("index", &self.index)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("addr", &self.addr)?;
+        state.serialize_field("active_request", &self.active_request)?;
+        state.serialize_field("last_request", &self.last_request)?;
+        state.serialize_field("token", &self.token)?;
+        state.serialize_field("last_msg", &time)?;
+        state.serialize_field("total", &self.total)?;
+        state.end()
+    }
 }
 
 impl Serialize for Request {
@@ -163,6 +187,8 @@ fn add_host(
             active_request: None,
             last_request: None,
             token: None,
+            last_msg: Instant::now(),
+            total: 0,
         },
     );
     hosts.push(name.to_string());
@@ -727,6 +753,7 @@ impl Controller {
             if let Some(req) = &host.active_request {
                 error!("overriding active request: {:?}", req)
             }
+            host.last_msg = Instant::now();
             host.active_request = Some(Request::new(description));
         } else {
             error!("missing host");
@@ -753,7 +780,9 @@ impl Controller {
             host.token = Some(token);
             if let Some(mut req) = host.active_request.take() {
                 req.end = Some(Instant::now());
+                host.last_msg = Instant::now();
                 host.last_request = Some(req);
+                host.total += 1;
             } else {
                 error!("no active request, null notify end");
             }
@@ -772,6 +801,7 @@ impl Controller {
         debug!("heartbeat {} {:?}", service_name, token);
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
         if let Some(host) = unique_hosts.get_mut(&service_name) {
+            host.last_msg = Instant::now();
             if !token.is_empty() {
                 host.token = Some(Token(token.to_string()));
             }
@@ -1289,25 +1319,61 @@ mod test {
     fn host_heartbeat_sets_request_token() {
         let (_karl_path, mut c) = init_test();
         let name = "host1".to_string();
-        let token1 = Token("abc".to_string());
-        let token2 = Token("def".to_string());
+        let token1 = "abc";
+        let token2 = "def";
         add_host_test(&mut c, 1);
         assert!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token.is_none(),
             "no token initially",
         );
-        c.heartbeat(name.clone(), &token1.0);
+        c.heartbeat(name.clone(), "");
+        assert!(
+            c.unique_hosts.lock().unwrap().get(&name).unwrap().token.is_none(),
+            "empty token doesn't change the token",
+        );
+        c.heartbeat(name.clone(), token1);
         assert_eq!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token,
-            Some(token1),
+            Some(Token(token1.to_string())),
             "heartbeat sets the initial token",
         );
-        c.heartbeat(name.clone(), &token2.0);
+        c.heartbeat(name.clone(), "");
         assert_eq!(
             c.unique_hosts.lock().unwrap().get(&name).unwrap().token,
-            Some(token2),
+            Some(Token(token1.to_string())),
+            "empty token doesn't change the token",
+        );
+        c.heartbeat(name.clone(), token2);
+        assert_eq!(
+            c.unique_hosts.lock().unwrap().get(&name).unwrap().token,
+            Some(Token(token2.to_string())),
             "heartbeat can also replace tokens",
         );
+    }
+
+    #[test]
+    fn host_messages_update_last_msg_time() {
+        let (_karl_path, mut c) = init_test();
+        let name = "host1".to_string();
+        add_host_test(&mut c, 1);
+
+        let t1 = c.unique_hosts.lock().unwrap().get(&name).unwrap().last_msg.clone();
+        thread::sleep(Duration::from_secs(1));
+        c.heartbeat(name.clone(), "token");
+        let t2 = c.unique_hosts.lock().unwrap().get(&name).unwrap().last_msg.clone();
+        thread::sleep(Duration::from_secs(1));
+        c.heartbeat(name.clone(), "");
+        let t3 = c.unique_hosts.lock().unwrap().get(&name).unwrap().last_msg.clone();
+        thread::sleep(Duration::from_secs(1));
+        c.notify_start(name.clone(), "description".to_string());
+        let t4 = c.unique_hosts.lock().unwrap().get(&name).unwrap().last_msg.clone();
+        thread::sleep(Duration::from_secs(1));
+        c.notify_end(name.clone(), Token("token".to_string()));
+        let t5 = c.unique_hosts.lock().unwrap().get(&name).unwrap().last_msg.clone();
+        assert!(t2 > t1, "regular heartbeat updates time");
+        assert!(t3 > t2, "empty heartbeat also updates time");
+        assert!(t4 > t3, "notify start updates time");
+        assert!(t5 > t4, "notify end updates time");
     }
 
     #[test]
@@ -1345,6 +1411,43 @@ mod test {
         assert!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().token.is_none());
         assert!(host.get_found());
         assert_eq!(host.get_request_token(), request_token2.0);
+    }
+
+    #[test]
+    fn test_notify_end_updates_total_number_of_requests() {
+        let (_karl_path, mut c) = init_test();
+
+        let host1 = "host1".to_string();
+        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
+        let client_token = Token(client.get_client_token().to_string());
+        let request_token1 = Token("requesttoken1".to_string());
+        let request_token2 = Token("requesttoken2".to_string());
+        add_host_test(&mut c, 1);
+
+        // No requests initially.
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 0);
+        c.heartbeat(host1.clone(), &request_token1.0);
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 0);
+        let host = find_host_test(&mut c, &client_token, false);
+        assert!(host.get_found());
+        assert_eq!(host.get_request_token(), request_token1.0);
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 0);
+        c.notify_start(host1.clone(), "description".to_string());
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 0);
+
+        // One request.
+        c.notify_end(host1.clone(), request_token2.clone());
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 1);
+        let host = find_host_test(&mut c, &client_token, false);
+        assert!(host.get_found());
+        assert_eq!(host.get_request_token(), request_token2.0);
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 1);
+        c.notify_start(host1.clone(), "description".to_string());
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 1);
+
+        // Two requests.
+        c.notify_end(host1.clone(), request_token1.clone());
+        assert_eq!(c.unique_hosts.lock().unwrap().get(&host1).unwrap().total, 2);
     }
 
     #[test]
