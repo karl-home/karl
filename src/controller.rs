@@ -97,6 +97,8 @@ pub struct Controller {
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     /// Password required for a host to register with the controller.
     password: String,
+    /// Whether to automatically confirm clients and hosts.
+    autoconfirm: bool,
 }
 
 impl Serialize for Host {
@@ -221,7 +223,7 @@ impl Controller {
     ///
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and client requests.
-    pub fn new(karl_path: PathBuf, password: &str) -> Self {
+    pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
         Controller {
             rt: Runtime::new().unwrap(),
             karl_path,
@@ -229,6 +231,7 @@ impl Controller {
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             password: password.to_string(),
+            autoconfirm,
         }
     }
 
@@ -247,7 +250,6 @@ impl Controller {
     /// - PingRequest: generic ping.
     pub fn start(
         &mut self,
-        use_dashboard: bool,
         port: u16,
     ) -> Result<(), Error> {
         // Make the karl path if it doesn't already exist.
@@ -355,14 +357,12 @@ impl Controller {
         }
 
         // Start the dashboard.
-        if use_dashboard {
-            dashboard::start(
-                &mut self.rt,
-                self.karl_path.clone(),
-                self.unique_hosts.clone(),
-                self.clients.clone(),
-            );
-        }
+        dashboard::start(
+            &mut self.rt,
+            self.karl_path.clone(),
+            self.unique_hosts.clone(),
+            self.clients.clone(),
+        );
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
         for stream in listener.incoming() {
@@ -527,7 +527,13 @@ impl Controller {
             warn!("incorrect password from {} ({:?})", &name, addr);
             false
         } else {
-            add_host(name, addr, &mut hosts.0, &mut unique_hosts, confirmed)
+            add_host(
+                name,
+                addr,
+                &mut hosts.0,
+                &mut unique_hosts,
+                confirmed || self.autoconfirm,
+            )
         }
     }
 
@@ -684,6 +690,7 @@ impl Controller {
     /// - app_bytes - The bytes of the Handlebars template, or an empty
     ///   vector if there is no registered app.
     /// - confirmed - Whether the client should be confirmed by default.
+    ///   Overriden by autoconfirm.
     fn register_client(
         &mut self,
         mut name: String,
@@ -713,7 +720,7 @@ impl Controller {
 
         // generate a client with a unique name and token
         let client = Client {
-            confirmed,
+            confirmed: confirmed || self.autoconfirm,
             name,
             addr: client_addr,
         };
@@ -826,7 +833,7 @@ mod test {
     /// controller with default password "password".
     fn init_test() -> (TempDir, Controller) {
         let dir = TempDir::new("karl").unwrap();
-        let controller = Controller::new(dir.path().to_path_buf(), PASSWORD);
+        let controller = Controller::new(dir.path().to_path_buf(), PASSWORD, false);
         (dir, controller)
     }
 
@@ -1466,5 +1473,38 @@ mod test {
         let localhost2: IpAddr = "0.0.0.0".parse().unwrap();
         assert!(c.verify_host_name("host1", &localhost1).is_ok(), "localhost also ok");
         assert!(c.verify_host_name("host1", &localhost2).is_ok(), "localhost also ok");
+    }
+
+    #[test]
+    fn test_autoconfirm_client() {
+        let dir1 = TempDir::new("karl").unwrap();
+        let dir2 = TempDir::new("karl").unwrap();
+        let mut c1 = Controller::new(dir1.path().to_path_buf(), PASSWORD, false);
+        let mut c2 = Controller::new(dir2.path().to_path_buf(), PASSWORD, true);
+
+        let name: String = "client_name".to_string();
+        let addr: IpAddr = "1.2.3.4".parse().unwrap();
+        c1.register_client(name.clone(), addr.clone(), &vec![], false);
+        c2.register_client(name.clone(), addr.clone(), &vec![], false);
+        let client1 = c1.clients.lock().unwrap().values().next().unwrap().confirmed;
+        let client2 = c2.clients.lock().unwrap().values().next().unwrap().confirmed;
+        assert!(!client1);
+        assert!(client2);
+    }
+
+    #[test]
+    fn test_autoconfirm_host() {
+        let dir1 = TempDir::new("karl").unwrap();
+        let dir2 = TempDir::new("karl").unwrap();
+        let mut c1 = Controller::new(dir1.path().to_path_buf(), PASSWORD, false);
+        let mut c2 = Controller::new(dir2.path().to_path_buf(), PASSWORD, true);
+
+        let addr: SocketAddr = "1.2.3.4:8080".parse().unwrap();
+        assert!(c1.add_host("host", addr.clone(), false, PASSWORD));
+        assert!(c2.add_host("host", addr.clone(), false, PASSWORD));
+        let host1 = c1.unique_hosts.lock().unwrap().values().next().unwrap().confirmed;
+        let host2 = c2.unique_hosts.lock().unwrap().values().next().unwrap().confirmed;
+        assert!(!host1);
+        assert!(host2);
     }
 }
