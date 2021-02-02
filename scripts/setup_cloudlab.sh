@@ -54,8 +54,17 @@ build_cpp_sdk() {
 	cd karl-cpp-sdk
 	./generate.sh
 	./linux.sh
-	$(./register-linux data/index.hbs node0 59582 2>/dev/null)
-	./person_detection-linux data/detect.py data/img.tmp node0 59582
+	# $(./register-linux data/index.hbs node0 59582)
+	# ./person_detection-linux data/detect.py data/img.tmp node0 59582
+	cd ..
+}
+
+build_node_sdk() {
+	cd karl-node-example
+	source init.sh
+	# $(node register.js node0)
+	# node stt_client.js node0
+	cd ..
 }
 
 RUST_LOG=hyper::server=info,debug ./target/debug/controller --karl-path /users/ygina/.karl_controller --autoconfirm
