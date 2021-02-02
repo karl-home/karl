@@ -14,3 +14,6 @@
 [submodule "karl-cpp-sdk"]
 	path = karl-cpp-sdk
 	url = git@github.com:ygina/karl-cpp-sdk.git
+[submodule "karl-node-example"]
+	path = karl-node-example
+	url = git@github.com:ygina/karl-node-example.git
