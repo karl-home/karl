@@ -270,8 +270,7 @@ impl Host {
         unpack_request(&req, &root_path)?;
         let import_paths = resolve_import_paths(
             &self.karl_path, &req.imports.to_vec())?;
-        let binary_path = resolve_binary_path(
-            req.get_config(), &root_path, &import_paths)?;
+        let binary_path = Path::new(req.get_config().get_binary_path()).to_path_buf();
         let mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
