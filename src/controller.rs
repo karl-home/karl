@@ -590,16 +590,16 @@ impl Controller {
                 "found multiple hosts with name => {}", service_name)));
         }
 
-        let allowed_ips = vec![
-            ip[0],
-            "127.0.0.1".parse().unwrap(),
-            "0.0.0.0".parse().unwrap(),
-        ];
-        if !allowed_ips.contains(stream_ip) {
-            return Err(Error::InvalidHostMessage(format!(
-                "expected ip {:?} for host {}, received => {:?}",
-                ip[0], service_name, stream_ip)));
-        }
+        // let allowed_ips = vec![
+        //     ip[0],
+        //     "127.0.0.1".parse().unwrap(),
+        //     "0.0.0.0".parse().unwrap(),
+        // ];
+        // if !allowed_ips.contains(stream_ip) {
+        //     return Err(Error::InvalidHostMessage(format!(
+        //         "expected ip {:?} for host {}, received => {:?}",
+        //         ip[0], service_name, stream_ip)));
+        // }
         Ok(())
     }
 
