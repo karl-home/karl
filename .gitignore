@@ -13,6 +13,7 @@ data/person-detection/PennFudanPed/
 python
 *.svg
 node_modules/
+hooks/
 
 # Protobuf
 protos/js/

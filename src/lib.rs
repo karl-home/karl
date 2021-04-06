@@ -17,5 +17,6 @@ pub mod runtime;
 pub mod common;
 mod controller;
 mod host;
+mod hook;
 pub use controller::Controller;
 pub use host::Host;

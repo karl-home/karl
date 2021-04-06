@@ -13,8 +13,9 @@ use tokio::runtime::Runtime;
 use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
+use crate::hook::{Hook, FileACL, DomainName};
 use crate::protos::{self, MessageType};
-use crate::common::{Error, Token, ClientToken, RequestToken};
+use crate::common::{Error, Token, ClientToken, RequestToken, StringID};
 
 type ServiceName = String;
 
@@ -85,6 +86,8 @@ pub struct Controller {
     /// and the client itself. Generated on registration. All host
     /// requests from the client to the controller must include this token.
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
+    /// Registered hooks and their local hook IDs.
+    hooks: HashMap<StringID, Hook>,
     /// Password required for a host to register with the controller.
     password: String,
     /// Whether to automatically confirm clients and hosts.
@@ -155,6 +158,7 @@ impl Controller {
             hosts: Arc::new(Mutex::new((Vec::new(), 0))),
             unique_hosts: Arc::new(Mutex::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
+            hooks: HashMap::new(),
             password: password.to_string(),
             autoconfirm,
         }
@@ -704,6 +708,36 @@ impl Controller {
         } else {
             error!("missing host");
         }
+    }
+
+    /// Register a hook.
+    ///
+    /// Parameters:
+    /// - global_hook_id - The ID of the hook from the global hook repository.
+    /// - network_perm - Requested network permissions.
+    /// - file_perm - Requested file permissions.
+    /// - envs - Requested environment variables / configuration.
+    fn register_hook(
+        &mut self,
+        global_hook_id: StringID,
+        network_perm: Vec<DomainName>,
+        file_perm: Vec<FileACL>,
+        envs: Vec<(String, String)>,
+    ) -> Result<(), Error> {
+        use rand::Rng;
+        loop {
+            let id: u32 = rand::thread_rng().gen();
+            let hook_id = format!("{}-{}", global_hook_id, id);
+            if !self.hooks.contains_key(&hook_id) {
+                let hook = Hook::new(global_hook_id)?
+                    .set_network_perm(network_perm)
+                    .set_file_perm(file_perm)
+                    .set_envs(envs);
+                self.hooks.insert(hook_id, hook);
+                break;
+            }
+        }
+        Ok(())
     }
 }
 

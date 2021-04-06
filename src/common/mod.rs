@@ -7,6 +7,9 @@ use serde::Serialize;
 pub use error::Error;
 pub use builder::ComputeRequestBuilder;
 
+/// String ID.
+pub type StringID = String;
+
 /// Length of auth token.
 const TOKEN_LEN: usize = 32;
 /// Auth token character set.

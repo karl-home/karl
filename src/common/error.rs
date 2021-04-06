@@ -44,6 +44,8 @@ pub enum Error {
     /// Unable to verify that a NotifyStart, NotifyEnd, or HostHeartbeat
     /// message came from a real host.
     InvalidHostMessage(String),
+    /// Error installing a hook from a global hook ID.
+    HookInstallError(String),
     /// Unknown.
     UnknownError(String),
 }
