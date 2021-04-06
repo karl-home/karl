@@ -10,17 +10,11 @@ use std::io::Read;
 use serde::{Serialize, ser::{Serializer, SerializeStruct}};
 use tokio::runtime::Runtime;
 
-use protobuf::Message;
-use protobuf::parse_from_bytes;
+use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
-use crate::protos;
-use crate::common::{
-    Error, Token, ClientToken, RequestToken,
-    HT_HOST_REQUEST, HT_HOST_RESULT, HT_REGISTER_REQUEST, HT_REGISTER_RESULT,
-    HT_PING_REQUEST, HT_PING_RESULT, HT_NOTIFY_START, HT_NOTIFY_END,
-    HT_HOST_HEARTBEAT, HT_HOST_REGISTER_REQUEST,
-};
+use crate::protos::{self, MessageType};
+use crate::common::{Error, Token, ClientToken, RequestToken};
 
 type ServiceName = String;
 
@@ -315,8 +309,10 @@ impl Controller {
         trace!("=> {} s", now.elapsed().as_secs_f32());
 
         // Deploy the request to correct handler.
-        match req_header.ty {
-            HT_HOST_REQUEST => {
+        let ty = MessageType::from_i32(
+            req_header.ty).ok_or(Error::InvalidPacketType(req_header.ty))?;
+        match ty {
+            MessageType::HOST_REQUEST => {
                 let req = parse_from_bytes::<protos::HostRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -337,7 +333,7 @@ impl Controller {
                         // Return the result to sender.
                         trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
                         let now = Instant::now();
-                        packet::write(&mut stream, HT_HOST_RESULT, &res_bytes).unwrap();
+                        packet::write(&mut stream, MessageType::HOST_RESULT, &res_bytes).unwrap();
                         trace!("=> {} s", now.elapsed().as_secs_f32());
                     });
                 } else {
@@ -353,11 +349,11 @@ impl Controller {
                     // Return the result to sender.
                     trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
                     let now = Instant::now();
-                    packet::write(&mut stream, HT_HOST_RESULT, &res_bytes)?;
+                    packet::write(&mut stream, MessageType::HOST_RESULT, &res_bytes)?;
                     trace!("=> {} s", now.elapsed().as_secs_f32());
                 }
             },
-            HT_REGISTER_REQUEST => {
+            MessageType::REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -372,10 +368,10 @@ impl Controller {
                 // Return the result to sender.
                 debug!("writing packet");
                 let now = Instant::now();
-                packet::write(&mut stream, HT_REGISTER_RESULT, &res_bytes)?;
+                packet::write(&mut stream, MessageType::REGISTER_RESULT, &res_bytes)?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
             },
-            HT_NOTIFY_START => {
+            MessageType::NOTIFY_START => {
                 let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -383,7 +379,7 @@ impl Controller {
                 self.verify_host_name(&req.service_name, &ip)?;
                 self.notify_start(req.service_name, req.description);
             },
-            HT_NOTIFY_END => {
+            MessageType::NOTIFY_END => {
                 let req = parse_from_bytes::<protos::NotifyEnd>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -391,7 +387,7 @@ impl Controller {
                 self.verify_host_name(&req.service_name, &ip)?;
                 self.notify_end(req.service_name, Token(req.request_token));
             },
-            HT_HOST_HEARTBEAT => {
+            MessageType::HOST_HEARTBEAT => {
                 let req = parse_from_bytes::<protos::HostHeartbeat>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -399,7 +395,7 @@ impl Controller {
                 self.verify_host_name(&req.service_name, &ip)?;
                 self.heartbeat(req.service_name, &req.request_token);
             },
-            HT_HOST_REGISTER_REQUEST => {
+            MessageType::HOST_REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::HostRegisterRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -414,7 +410,7 @@ impl Controller {
                 }
                 self.verify_host_name(&req.service_name, &ip)?;
             },
-            HT_PING_REQUEST => {
+            MessageType::PING_REQUEST => {
                 parse_from_bytes::<protos::PingRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
@@ -424,10 +420,10 @@ impl Controller {
                 // Return the result to sender.
                 debug!("writing packet {:?} ({} bytes)", res_bytes, res_bytes.len());
                 let now = Instant::now();
-                packet::write(&mut stream, HT_PING_RESULT, &res_bytes)?;
+                packet::write(&mut stream, MessageType::PING_RESULT, &res_bytes)?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
             },
-            ty => return Err(Error::InvalidPacketType(ty)),
+            ty => return Err(Error::InvalidPacketType(ty.value())),
         };
         Ok(())
     }

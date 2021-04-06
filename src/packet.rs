@@ -1,22 +1,15 @@
 use std::io;
 use std::io::{BufRead, Read, Write};
 use serde::{Serialize, Deserialize};
+use protobuf::ProtobufEnum;
 use crate::common::*;
+use crate::protos::MessageType;
 
 #[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Header {
-    /// Type of struct in the packet.
-    ///
-    /// Possible values:
-    ///   HT_RAW_BYTES = 0
-    ///   HT_PING_REQUEST = 1
-    ///   HT_PING_RESULT = 2
-    ///   HT_COMPUTE_REQUEST = 3
-    ///   HT_COMPUTE_RESULT = 4
-    ///   HT_HOST_REQUEST = 5
-    ///   HT_HOST_RESULT = 6
-    pub ty: HeaderType,
+    /// Type of struct in the packet (see protos::MessageType)
+    pub ty: i32,
     /// Number of bytes in the packet
     pub length: u32,
 }
@@ -121,11 +114,11 @@ pub fn read(
 }
 
 /// Write bytes into a stream. Include the packet length as the first byte.
-pub fn write(inner: &mut dyn Write, ty: HeaderType, buffer: &Vec<u8>) -> io::Result<()> {
+pub fn write(inner: &mut dyn Write, ty: MessageType, buffer: &Vec<u8>) -> io::Result<()> {
     trace!("writing packet... ({} bytes)", buffer.len());
     assert!(buffer.len() <= 4294967294);
     let header = bincode::serialize(&Header {
-        ty,
+        ty: ty.value(),
         length: buffer.len() as u32,
     }).unwrap();
     trace!("writing {:?}", header);
@@ -146,7 +139,7 @@ mod test {
     fn write_packet_short_header() {
         let mut buf = vec![];
         let input = b"helloworld".to_vec();
-        let ty = HT_PING_REQUEST;
+        let ty = MessageType::PING_REQUEST;
         match write(&mut buf, ty, &input) {
             Ok(()) => {},
             Err(e) => assert!(false, format!("failed to write packet: {:?}", e)),
@@ -161,7 +154,7 @@ mod test {
                 unreachable!();
             },
         };
-        assert_eq!(header.ty, ty, "incorrect type");
+        assert_eq!(header.ty, ty.value(), "incorrect type");
         assert_eq!(header.length as usize, input.len(), "incorrect length");
     }
 
@@ -172,7 +165,7 @@ mod test {
         assert!(audio_file.exists(), "run scripts/setup_stt_node.sh");
         let input = fs::read(audio_file).unwrap();
         assert!(input.len() > 65535, "input length still fits in u16");
-        let ty = HT_COMPUTE_REQUEST;
+        let ty = MessageType::COMPUTE_REQUEST;
         match write(&mut buf, ty, &input) {
             Ok(()) => {},
             Err(e) => assert!(false, format!("failed to write packet: {:?}", e)),
@@ -187,7 +180,7 @@ mod test {
                 unreachable!();
             },
         };
-        assert_eq!(header.ty, ty, "incorrect type");
+        assert_eq!(header.ty, ty.value(), "incorrect type");
         assert_eq!(header.length as usize, input.len(), "incorrect header value");
     }
 
@@ -197,7 +190,7 @@ mod test {
         let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
         // assume write packet works correctly
-        write(&mut buf, 0, &input).unwrap();
+        write(&mut buf, MessageType::RAW_BYTES, &input).unwrap();
         let mut cursor = io::Cursor::new(buf);
         let packets = match read(&mut cursor, 1) {
             Ok(packets) => packets,
@@ -223,8 +216,8 @@ mod test {
         let input2 = fs::read(path2).unwrap();
         assert_eq!(input2.len(), 63244);
         // assume write packet works correctly
-        write(&mut buf, 0, &input1).unwrap();
-        write(&mut buf, 0, &input2).unwrap();
+        write(&mut buf, MessageType::RAW_BYTES, &input1).unwrap();
+        write(&mut buf, MessageType::RAW_BYTES, &input2).unwrap();
         assert_eq!(buf.len(), 130842 + 63244 + Header::size() * 2);
         let mut cursor = io::Cursor::new(buf);
         let packets = match read(&mut cursor, 2) {
@@ -264,7 +257,7 @@ mod test {
         let input = fs::read("data/stt/audio/2830-3980-0043.wav").unwrap();
         assert_eq!(input.len(), 63244);
         // assume write packet works correctly
-        write(&mut buf, 0, &input).unwrap();
+        write(&mut buf, MessageType::RAW_BYTES, &input).unwrap();
         let mut cursor = io::Cursor::new(buf);
         match read(&mut cursor, 2) {
             Ok(_) => assert!(false, "expected incorrect number of packets"),
@@ -283,7 +276,7 @@ mod test {
         let mut buf = vec![];
         let input = fs::read("data/stt_node/weather.wav").unwrap();
         assert_eq!(input.len(), 130842);
-        write(&mut buf, 0, &input).unwrap();
+        write(&mut buf, MessageType::RAW_BYTES, &input).unwrap();
         // pretend some bytes got lost at the end
         assert_eq!(buf.len(), 130842 + Header::size());
         let _ = buf.split_off(130840 + Header::size());

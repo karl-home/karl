@@ -9,9 +9,8 @@
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use std::net::{UdpSocket, TcpStream};
-use protobuf;
-use protobuf::Message;
-use crate::protos;
+use protobuf::{self, Message, ProtobufEnum};
+use crate::protos::{self, MessageType};
 use crate::packet;
 use crate::common::*;
 
@@ -34,9 +33,9 @@ pub fn register_client(
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_REGISTER_REQUEST, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::REGISTER_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, HT_REGISTER_RESULT);
+    assert_eq!(header.ty, MessageType::REGISTER_RESULT.value());
     protobuf::parse_from_bytes::<protos::RegisterResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
@@ -58,9 +57,9 @@ pub fn get_host(
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_HOST_REQUEST, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::HOST_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, HT_HOST_RESULT);
+    assert_eq!(header.ty, MessageType::HOST_RESULT.value());
     protobuf::parse_from_bytes::<protos::HostResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
@@ -74,9 +73,9 @@ pub fn send_ping(host: &str) -> protos::PingResult {
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_PING_REQUEST, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::PING_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, HT_PING_RESULT);
+    assert_eq!(header.ty, MessageType::PING_RESULT.value());
     protobuf::parse_from_bytes::<protos::PingResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
@@ -92,9 +91,9 @@ pub fn send_compute(
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_COMPUTE_REQUEST, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::COMPUTE_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, HT_COMPUTE_RESULT);
+    assert_eq!(header.ty, MessageType::COMPUTE_RESULT.value());
     protobuf::parse_from_bytes::<protos::ComputeResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
@@ -129,7 +128,7 @@ pub fn notify_start(controller_addr: &str, service_id: u32, description: String)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     debug!("notify start");
-    packet::write(&mut stream, HT_NOTIFY_START, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::NOTIFY_START, &req_bytes).unwrap();
 }
 
 /// Notify controller about compute request end.
@@ -143,7 +142,7 @@ pub fn notify_end(controller_addr: &str, service_id: u32, token: RequestToken) {
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     debug!("notify_end");
-    packet::write(&mut stream, HT_NOTIFY_END, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::NOTIFY_END, &req_bytes).unwrap();
 }
 
 /// Send a heartbeat to the controller.
@@ -158,7 +157,7 @@ pub fn heartbeat(controller_addr: &str, service_id: u32, token: Option<RequestTo
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_HOST_HEARTBEAT, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::HOST_HEARTBEAT, &req_bytes).unwrap();
 }
 
 /// Register a host with the controller.
@@ -175,5 +174,5 @@ pub fn register_host(controller_addr: &str, service_id: u32, port: u16, password
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, HT_HOST_REGISTER_REQUEST, &req_bytes).unwrap();
+    packet::write(&mut stream, MessageType::HOST_REGISTER_REQUEST, &req_bytes).unwrap();
 }

@@ -28,7 +28,7 @@ pub enum Error {
     /// No available hosts.
     NoAvailableHosts,
     /// Unexpected packet type.
-    InvalidPacketType(u32),
+    InvalidPacketType(i32),
     /// Received a ping result for a compute request or vice versa.
     InvalidResponseType,
     /// Package does not contain a valid binary in its root or imports.

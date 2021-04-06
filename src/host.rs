@@ -9,12 +9,10 @@ use tokio::runtime::Runtime;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use protobuf;
-use protobuf::Message;
-use crate::{packet, protos};
+use protobuf::{self, Message, ProtobufEnum};
+use crate::{packet, protos, protos::MessageType};
 use crate::common::{
     Error, Token, RequestToken,
-    HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
 };
 
 /// Frequency at which the host must send messages to the controller, in seconds.
@@ -268,8 +266,10 @@ impl Host {
         debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
 
         // Deploy the request to correct handler.
-        let (res_bytes, ty) = match header.ty {
-            HT_PING_REQUEST => {
+        let ty = MessageType::from_i32(
+            header.ty).ok_or(Error::InvalidPacketType(header.ty))?;
+        let (res_bytes, ty) = match ty {
+            MessageType::PING_REQUEST => {
                 debug!("deserialize packet");
                 let now = Instant::now();
                 let req = protobuf::parse_from_bytes::<protos::PingRequest>(&buf[..])
@@ -282,9 +282,9 @@ impl Host {
                 let res_bytes = res.write_to_bytes()
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
-                (res_bytes, HT_PING_RESULT)
+                (res_bytes, MessageType::PING_RESULT)
             },
-            HT_COMPUTE_REQUEST => {
+            MessageType::COMPUTE_REQUEST => {
                 debug!("deserialize packet");
                 let now = Instant::now();
                 let req = protobuf::parse_from_bytes::<protos::ComputeRequest>(&buf[..])
@@ -310,9 +310,9 @@ impl Host {
                 let res_bytes = res?.write_to_bytes()
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
                 debug!("=> {} s", now.elapsed().as_secs_f32());
-                (res_bytes, HT_COMPUTE_RESULT)
+                (res_bytes, MessageType::COMPUTE_RESULT)
             },
-            ty => return Err(Error::InvalidPacketType(ty)),
+            ty => return Err(Error::InvalidPacketType(ty.value())),
         };
 
         // Return the result to sender.
