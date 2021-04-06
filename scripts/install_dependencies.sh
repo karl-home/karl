@@ -25,11 +25,13 @@ init_submodules() {
 build_karl() {
 	cargo b --bin controller
 	cargo b --release --bin host
+	cargo b --release --example hello_world
 }
 
 build_cpp_sdk() {
 	cd karl-cpp-sdk
 	./generate.sh
+	./linux.sh
 	cd ..
 }
 

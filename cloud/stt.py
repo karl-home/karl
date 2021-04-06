@@ -4,7 +4,7 @@ import time
 from google.cloud import speech_v1
 
 def read_file():
-    path = '/Users/gina/Documents/Stanford/karl/data/stt/audio/2830-3980-0043.wav'
+    path = 'data/stt_node/weather.wav'
     f = open(path, 'rb')
     audio_bytes = f.read()
     print(f'audio file is {len(audio_bytes)} bytes')

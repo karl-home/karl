@@ -26,7 +26,11 @@ sudo RUST_LOG=debug ./target/release/host \
 
 In a secure deployment, set your own password and don't autoconfirm.
 
-You can try offloading a simple hello world request: `cargo run --release --example hello`.
+You can try offloading a simple hello world request:
+
+```
+RUST_LOG=debug ./target/release/examples/hello_world
+```
 
 ## Evaluation
 
@@ -36,7 +40,6 @@ You can try offloading a simple hello world request: `cargo run --release --exam
 
 ```
 cd karl-cpp-sdk
-./linux.sh
 $(./register-linux data/index.hbs node0 59582)
 ./person_detection-linux data/detect.py data/img.tmp node0 59582
 ```
@@ -66,8 +69,12 @@ Reference: [stanford-oval/almond-server](https://github.com/stanford-oval/almond
 
 3. Cloud baseline.
 
+You will need Google Cloud Speech API credentials.
+
 ```
-python3 cloud/stt.py
+cd cloud
+source env/bin/activate
+python stt.py
 ```
 
 ## Karl Apps

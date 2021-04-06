@@ -17,5 +17,7 @@ cd ../stt_node
 source setup.sh
 cd ../hello_world
 source setup.sh
-cd ../..
+cd ../../cloud
+source setup.sh
+cd ..
 copy_to_storage
