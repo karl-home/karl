@@ -78,42 +78,6 @@ fn get_mapped_dirs(import_paths: Vec<PathBuf>) -> Vec<String> {
         .collect()
 }
 
-/// Resolve the actual host binary path based on the config binary path.
-///
-/// Find an existing path in the following order:
-/// 1. Relative to the package root.
-/// 2. Relative to import paths.
-/// 3. Otherwise, errors with Error::BinaryNotFound.
-fn resolve_binary_path(
-    config: &protos::PkgConfig,
-    pkg_root: &Path,
-    import_paths: &Vec<PathBuf>,
-) -> Result<PathBuf, Error> {
-    assert!(pkg_root.is_absolute());
-    // 1.
-    let bin_path = Path::new(config.get_binary_path());
-    let path = pkg_root.join(&bin_path);
-    if path.exists() {
-        return Ok(path);
-    }
-    // 2.
-    let filename = bin_path.file_name().ok_or(
-        Error::BinaryNotFound(format!("malformed: {:?}", bin_path)))?;
-    for import_path in import_paths {
-        assert!(import_path.is_absolute());
-        let path = import_path.join("bin").join(&filename);
-        if path.exists() {
-            return Ok(path);
-        }
-        let path = import_path.join(&bin_path);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-    // 3.
-    Err(Error::BinaryNotFound(format!("not found: {:?}", bin_path)))
-}
-
 impl Drop for Host {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.base_path);
