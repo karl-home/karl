@@ -1,94 +1,78 @@
 # Karl
-Offload computation from your laptop, phone, and IoT devices to other devices on the local network. Move your data from the cloud to a private fog.
+Karl is a _home datacenter_ for IoT devices that follow a _pure-local_ privacy standard. Karl turns underutilized hardware (a router and computer) into resources that cheap IoT devices can use to mimic the functionality of the cloud, but on user-owned hardware.
 
 ## Setup
-Install [Rust](https://www.rust-lang.org/tools/install) using rustup. The default installation should be fine. You made need to add Cargo's bin directory (`$HOME/.cargo/bin`) to your path. I am on Cargo 1.48.0-nightly.
+For local experiments, we used three Ubuntu 20.04 x86_64 nodes in [CloudLab](https://www.cloudlab.us/), like m510 in CloudLab Utah.
+On prompt, select "1) Proceed with installation (default)". The second script also initializes the `KARL_PATH` with experiment data.
 
 ```
-rustup toolchain install nightly
-rustup default nightly
+source scripts/install_dependencies.sh
+source scripts/install_experiment_data.sh
 ```
 
-Install platform-specific dependencies.
-* **MacOS:** None
-* **Windows:** Download the [Bonjour SDK](https://developer.apple.com/bonjour/). _(WARNING: not tested)_
-* **Linux:** `sudo apt-get install libavahi-compat-libdnssd-dev` or the equivalent library.
-
-Build the binaries.
+Start one controller and any number of hosts. In our setup, we will start the controller on `node0` and a host on `node1`. Each node must have installed dependencies and experiment data.
 
 ```
-git submodule init
-git submodule update
-cargo build --release
+RUST_LOG=hyper::server=info,debug ./target/debug/controller \
+    --karl-path $HOME/.controller \
+    --autoconfirm
 ```
 
-## Example
-The following example executes the given number of tasks across all discoverable Karl instances. Run each command in a separate terminal window.
-
 ```
-cargo r --example service --release
-cargo r --example parallel --release -- 20  # number of tasks
+sudo RUST_LOG=debug ./target/release/host \
+    --karl-path $HOME/.karl \
+    --controller-ip node0
 ```
 
-Prefix each command with `RUST_LOG=info` to enable logging and/or `RUST_BACKTRACE=1` to display backtraces.
+In a secure deployment, set your own password and don't autoconfirm.
 
-## Speech-to-text
+You can try offloading a simple hello world request: `cargo run --release --example hello`.
 
-You will need to install [Virtualenv](https://virtualenv.pypa.io/en/latest/installation.html) and have Python. Initialize Python dependencies with `./scripts/setup_stt.sh`. There should be a directory at `$HOME/.karl/local/stt/` with the STT model and score, a Python binary and packages, and a file `client.py`.
+## Evaluation
 
-### Cloud Baseline
-Run the STT service. The dedicated service takes an audio file through a TCP stream (should this be an HTTP request?) where the first four bytes encode the size of the audio file. The service does STT on the audio file and returns the text to the client.
+### Security Camera
 
-```
-RUST_LOG=debug cargo r --release --example stt_standalone
-RUST_LOG=debug cargo r --release --example stt_client -- --mode cloud --host <HOST_IP>
-```
-
-### Local/Karl Baseline
-Offload STT to a Karl service in the same network.
+1. Local experiment.
 
 ```
-RUST_LOG=info cargo r --release --example service -- --backend binary
-RUST_LOG=debug cargo r --release --example stt_client -- --mode local --import
-# sudo needed to mount filesystem :(
-cargo b --release --example service && RUST_LOG=info sudo ./target/release/examples/service --backend binary
+cd karl-cpp-sdk
+./linux.sh
+$(./register-linux data/index.hbs node0 59582)
+./person_detection-linux data/detect.py data/img.tmp node0 59582
 ```
 
-### Raspberry Pi Baseline
-TODO
+2. Wyze experiment.
 
-## Distributed Example
-
-Initialize driver.
 ```
-git clone git@github.com:ygina/karl.git
-cd karl
-git submodule init
-git submodule update
-./scripts/init.sh  # install Rust and DNS-SD library
+cd karl-cpp-sdk
+./mipsel.sh
 ```
 
-Sanity check.
+Reference: [EliasKotlyar/Xiaomi-Dafang-Hacks](https://github.com/EliasKotlyar/Xiaomi-Dafang-Hacks)
+
+### Virtual Assistant
+
+1. Local experiment.
+
 ```
-cargo b --release
-RUST_LOG=karl=debug,service=debug,warn ./target/release/service
-RUST_LOG=debug ./target/release/parallel -- 1
+cd karl-node-example
+$(node register.js node0)
+node stt_client.js node0
 ```
 
-Distribute.
+2. Almond experiment.
+
+Reference: [stanford-oval/almond-server](https://github.com/stanford-oval/almond-server)
+
+3. Cloud baseline.
+
 ```
-./scripts/sync_and_init.sh  # sync nodes in hosts.txt
-./scripts/start.sh 1  # start 1 service on each node
-RUST_LOG=debug ./target/release/parallel -- 1
-./scripts/kill.sh  # cleanup
-./scripts/retrieve_logs.sh  # get logs in ./scripts/logs/
+python3 cloud/stt.py
 ```
 
-## Troubleshooting
+## Karl Apps
 
-* libavahi compat error? Check platform-specific dependencies.
-* Cannot resolve .local hostname? Modify [`/etc/nsswitch.conf`](https://superuser.com/questions/1417190/why-do-i-need-to-change-the-order-of-hosts-in-nsswitch-conf)
-* `thread '<unnamed>' panicked at 'not implemented', /.../cranelift-codegen-0.52.0/src/isa/arm64/abi.rs:16:5`? Unfortunately, karl requires x86_64.
+Explore the web dashboard at `<CONTROLLER_IP>:8000` in a browser. The Security Camera app allows the user to browse photo files where a person was detected via `/storage`, and take a snapshot from the camera device via `/proxy`.
 
 ## Resources
 * [Fog computing](https://en.wikipedia.org/wiki/Fog_computing)
