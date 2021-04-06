@@ -19,7 +19,11 @@ use crate::common::*;
 ///
 /// If the client wants to register a web app, it needs to include the bytes
 /// of a single Handlebars template file.
-pub fn register_client(controller_addr: &str, id: &str, app_bytes: Option<Vec<u8>>) {
+pub fn register_client(
+    controller_addr: &str,
+    id: &str,
+    app_bytes: Option<Vec<u8>>,
+) -> protos::RegisterResult {
     let mut stream = TcpStream::connect(controller_addr).unwrap();
     let mut req = protos::RegisterRequest::default();
     req.set_id(id.to_string());
@@ -31,16 +35,25 @@ pub fn register_client(controller_addr: &str, id: &str, app_bytes: Option<Vec<u8
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, HT_REGISTER_REQUEST, &req_bytes).unwrap();
-    let (header, _) = &packet::read(&mut stream, 1).unwrap()[0];
+    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_REGISTER_RESULT);
+    protobuf::parse_from_bytes::<protos::RegisterResult>(&res_bytes)
+        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
+        .unwrap()
 }
 
 /// Returns a host address given by the controller.
-pub fn get_host(controller_addr: &str) -> String {
+pub fn get_host(
+    controller_addr: &str,
+    client_token: &str,
+    blocking: bool,
+) -> protos::HostResult {
     // TODO: handle network errors with connecting, writing, reading.
     // Deserialization may also fail due to the other side.
     let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let req = protos::HostRequest::default();
+    let mut req = protos::HostRequest::default();
+    req.set_client_token(client_token.to_string());
+    req.set_blocking(blocking);
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
@@ -48,10 +61,9 @@ pub fn get_host(controller_addr: &str) -> String {
     packet::write(&mut stream, HT_HOST_REQUEST, &req_bytes).unwrap();
     let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
     assert_eq!(header.ty, HT_HOST_RESULT);
-    let res = protobuf::parse_from_bytes::<protos::HostResult>(&res_bytes)
+    protobuf::parse_from_bytes::<protos::HostResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    format!("{}:{}", res.get_ip(), res.get_port())
+        .unwrap()
 }
 
 /// Pings the given host and returns the result.
@@ -86,6 +98,21 @@ pub fn send_compute(
     protobuf::parse_from_bytes::<protos::ComputeResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
+}
+
+/// Like `get_host()` and `send_compute()` combined.
+///
+/// Reserves a host in a blocking request and attempts to send a
+/// compute request. Retries until the request succeeds.
+pub fn send_compute_blocking(
+    controller_addr: &str,
+    client_token: &str,
+    mut req: protos::ComputeRequest,
+) -> protos::ComputeResult {
+    let res = get_host(controller_addr, client_token, true);
+    let host = format!("{}:{}", res.get_ip(), res.get_port());
+    req.set_request_token(res.get_request_token().to_string());
+    send_compute(&host, req)
 }
 
 /*****************************************************************************
