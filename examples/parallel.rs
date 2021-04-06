@@ -9,34 +9,18 @@ use karl::{
     self,
     protos::ComputeRequest,
     common::{Error, ComputeRequestBuilder},
-    backend::Backend,
 };
 
-fn gen_request(backend: &Backend) -> ComputeRequest {
+fn gen_request() -> ComputeRequest {
     let now = Instant::now();
-    let request = match backend {
-        Backend::Wasm => {
-            ComputeRequestBuilder::new("data/add/python.wasm")
-                .args(vec!["data/add/add.py", "20"])
-                // .import(Import::Wapm {
-                //     name: "python".to_string(),
-                //     version: "0.1.0".to_string(),
-                // })
-                .add_file("data/add/add.py")
-                .finalize()
-                .unwrap()
-        },
-        Backend::Binary => {
-            ComputeRequestBuilder::new("data/add/python")
-                .args(vec!["data/add/add.py", "20"])
-                .envs(vec!["PYTHONPATH=data/add/lib/python3.6/"])
-                .add_file("data/add/add.py")
-                .add_file("data/add/python")
-                .add_dir("data/add/lib/")
-                .finalize()
-                .unwrap()
-        },
-    };
+    let request = ComputeRequestBuilder::new("data/add/python")
+        .args(vec!["data/add/add.py", "20"])
+        .envs(vec!["PYTHONPATH=data/add/lib/python3.6/"])
+        .add_file("data/add/add.py")
+        .add_file("data/add/python")
+        .add_dir("data/add/lib/")
+        .finalize()
+        .unwrap();
     debug!("build request => {} s", now.elapsed().as_secs_f32());
     request
 }
@@ -46,26 +30,34 @@ fn gen_request(backend: &Backend) -> ComputeRequest {
 /// Parameters:
 /// - controller - Controller <IP>:<PORT>.
 /// - n - The total number of requests.
-fn send_all(controller: &str, n: usize, backend: &Backend) -> Result<(), Error> {
+fn send_all(controller: &str, n: usize) -> Result<(), Error> {
+    info!("registering client");
+    let now = Instant::now();
+    let res = karl::net::register_client(controller, "parallel", None);
+    let client_token = res.get_client_token();
+    info!("=> {} s", now.elapsed().as_secs_f32());
+
     let mut handles = vec![];
     let start = Instant::now();
     let now = Instant::now();
     let mut rt = Runtime::new().unwrap();
     let mut requests = vec![];
     for _ in 0..n {
-        let mut request = gen_request(backend);
+        let mut request = gen_request();
         request.set_stdout(true);
         request.mut_files().push("output.txt".to_string());
         requests.push(request);
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());
     let now = Instant::now();
-    for request in requests.into_iter() {
+    for mut request in requests.into_iter() {
         debug!("get host from controller");
         let now = Instant::now();
-        let host = karl::net::get_host(controller);
+        let res = karl::net::get_host(controller, client_token, true);
+        let host = format!("{}:{}", res.get_ip(), res.get_port());
         debug!("=> {} s ({:?})", now.elapsed().as_secs_f32(), host);
         debug!("send request");
+        request.set_request_token(res.get_request_token().to_string());
         let handle = rt.spawn(async move {
             karl::net::send_compute(&host, request)
         });
@@ -104,14 +96,6 @@ fn send_all(controller: &str, n: usize, backend: &Backend) -> Result<(), Error> 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Parallel Compute")
-        .arg(Arg::with_name("backend")
-            .help("Service backend. Either 'wasm' for wasm executables or \
-                `binary` for binary executables. Assumes macOS executables \
-                only.")
-            .short("b")
-            .long("backend")
-            .takes_value(true)
-            .default_value("wasm"))
         .arg(Arg::with_name("host")
             .help("Host address of the controller")
             .short("h")
@@ -129,16 +113,10 @@ fn main() {
             .required(true))
         .get_matches();
 
-    warn!("UNIMPLEMENTED WAPM IMPORTS");
     let n = matches.value_of("n").unwrap().parse::<usize>().unwrap();
     let host = matches.value_of("host").unwrap();
     let port = matches.value_of("port").unwrap();
     let addr = format!("{}:{}", host, port);
-    let backend = match matches.value_of("backend").unwrap() {
-        "wasm" => Backend::Wasm,
-        "binary" => Backend::Binary,
-        backend => unimplemented!("unimplemented backend: {}", backend),
-    };
-    send_all(&addr, n, &backend).unwrap();
+    send_all(&addr, n).unwrap();
     info!("done.");
 }

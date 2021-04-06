@@ -209,8 +209,8 @@ mod test {
         };
         let root = unpack_targz(&request.package);
         assert!(root.path().join("examples").is_dir());
-        assert!(root.path().join("examples/stt_client.rs").exists());
-        assert!(root.path().join("examples/stt_client.rs").is_file());
+        assert!(root.path().join("examples/hello_world.rs").exists());
+        assert!(root.path().join("examples/hello_world.rs").is_file());
     }
 
     #[test]
