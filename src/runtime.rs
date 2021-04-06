@@ -1,3 +1,8 @@
+//! Code for executing a process inside a host.
+//!
+//! Runtime for arbitrary Linux executables that mounts the appropriate
+//! directories, configures environment variables, and otherwise manages
+//! the sandbox for offloading compute requests.
 use std::env;
 use std::fs;
 use std::collections::HashSet;

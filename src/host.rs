@@ -11,7 +11,7 @@ use tar::Archive;
 
 use protobuf;
 use protobuf::Message;
-use crate::{packet, protos, backend::Backend};
+use crate::{packet, protos};
 use crate::common::{
     Error, Token, RequestToken,
     HT_COMPUTE_REQUEST, HT_COMPUTE_RESULT, HT_PING_REQUEST, HT_PING_RESULT,
@@ -28,7 +28,6 @@ pub struct Host {
     /// Computation request base, likely ~/.karl/<id>
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
-    backend: Backend,
     port: u16,
     rt: Runtime,
     /// Controller address.
@@ -88,7 +87,6 @@ impl Host {
     /// Generate a new host with a random ID.
     pub fn new(
         karl_path: PathBuf,
-        backend: Backend,
         port: u16,
         controller: &str,
     ) -> Self {
@@ -99,7 +97,6 @@ impl Host {
             id,
             karl_path,
             base_path,
-            backend,
             port,
             rt: Runtime::new().unwrap(),
             controller: controller.to_string(),
@@ -234,21 +231,19 @@ impl Host {
         let mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
-        let res = match self.backend {
-            Backend::Binary => crate::backend::binary::run(
-                binary_path,
-                mapped_dirs,
-                req.get_config().get_args().to_vec(),
-                req.get_config().get_envs().to_vec(),
-                &self.karl_path,
-                &self.base_path,
-                req.get_client_id(),
-                req.get_storage(),
-                req.stdout,
-                req.stderr,
-                req.files.to_vec().into_iter().collect(),
-            )?,
-        };
+        let res = crate::runtime::run(
+            binary_path,
+            mapped_dirs,
+            req.get_config().get_args().to_vec(),
+            req.get_config().get_envs().to_vec(),
+            &self.karl_path,
+            &self.base_path,
+            req.get_client_id(),
+            req.get_storage(),
+            req.stdout,
+            req.stderr,
+            req.files.to_vec().into_iter().collect(),
+        )?;
 
         // Reset the root for the next computation.
         std::env::set_current_dir(&self.karl_path).unwrap();
@@ -338,7 +333,6 @@ mod test {
         let karl_path = TempDir::new("karl").unwrap();
         let host = Host::new(
             karl_path.path().to_path_buf(),
-            Backend::Binary,
             8080,
             "1.2.3.4:8000",
         );
