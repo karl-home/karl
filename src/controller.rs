@@ -143,72 +143,6 @@ impl Request {
     }
 }
 
-/// Add a host. If a host with the same name already exists, don't do anything.
-///
-/// Parameters:
-/// - name - The name of the service.
-/// - addr - The address of the host.
-/// - hosts - List of host service names.
-/// - unique_hosts - Hash map of host service names to host information
-///   to prevent duplication.
-/// - confirmed - Whether the host should be confirmed by default.
-///
-/// Returns:
-/// Whether the host was added. Not added if it is a duplicate by name.
-fn add_host(
-    name: &str,
-    addr: SocketAddr,
-    hosts: &mut Vec<ServiceName>,
-    unique_hosts: &mut HashMap<ServiceName, Host>,
-    confirmed: bool,
-) -> bool {
-    if unique_hosts.contains_key(name) {
-        return false;
-    }
-    // TODO: arbitrarily take the last address
-    // and hope that it is a private IP
-    info!("ADDED host {:?} {:?}", name, addr);
-    unique_hosts.insert(
-        name.to_string(),
-        Host {
-            confirmed,
-            name: name.to_string(),
-            index: hosts.len(),
-            addr,
-            active_request: None,
-            last_request: None,
-            token: None,
-            last_msg: Instant::now(),
-            total: 0,
-        },
-    );
-    hosts.push(name.to_string());
-    true
-}
-
-/// Returns:
-/// Whether the host was removed.
-#[allow(dead_code)]
-fn remove_host(
-    name: &str,
-    hosts: &mut Vec<ServiceName>,
-    unique_hosts: &mut HashMap<ServiceName, Host>,
-) -> bool {
-    let removed_i = if let Some(host) = unique_hosts.remove(name) {
-        hosts.remove(host.index);
-        host.index
-    } else {
-        return false;
-    };
-    info!("REMOVED host {:?}", name);
-    for (_, host) in unique_hosts.iter_mut() {
-        if host.index > removed_i {
-            host.index -= 1;
-        }
-    }
-    true
-}
-
 impl Controller {
     /// Create a new controller.
     ///
@@ -452,13 +386,26 @@ impl Controller {
             warn!("incorrect password from {} ({:?})", &name, addr);
             false
         } else {
-            add_host(
-                name,
-                addr,
-                &mut hosts.0,
-                &mut unique_hosts,
-                confirmed || self.autoconfirm,
-            )
+            if unique_hosts.contains_key(name) {
+                return false;
+            }
+            info!("ADDED host {:?} {:?}", name, addr);
+            unique_hosts.insert(
+                name.to_string(),
+                Host {
+                    confirmed: confirmed || self.autoconfirm,
+                    name: name.to_string(),
+                    index: hosts.0.len(),
+                    addr,
+                    active_request: None,
+                    last_request: None,
+                    token: None,
+                    last_msg: Instant::now(),
+                    total: 0,
+                },
+            );
+            hosts.0.push(name.to_string());
+            true
         }
     }
 
@@ -476,7 +423,19 @@ impl Controller {
     ) -> bool {
         let mut hosts = self.hosts.lock().unwrap();
         let mut unique_hosts = self.unique_hosts.lock().unwrap();
-        remove_host(name, &mut hosts.0, &mut unique_hosts)
+        let removed_i = if let Some(host) = unique_hosts.remove(name) {
+            hosts.0.remove(host.index);
+            host.index
+        } else {
+            return false;
+        };
+        info!("REMOVED host {:?}", name);
+        for (_, host) in unique_hosts.iter_mut() {
+            if host.index > removed_i {
+                host.index -= 1;
+            }
+        }
+        true
     }
 
     /// Verify messages from a host actually came from the host.
@@ -853,35 +812,33 @@ mod test {
         add_host_test(&mut c, 4);
 
         // Remove the last host
-        let mut hosts = c.hosts.lock().unwrap();
-        let mut unique_hosts = c.unique_hosts.lock().unwrap();
-        assert!(hosts.0.contains(&"host4".to_string()));
-        assert!(remove_host("host4", &mut hosts.0, &mut unique_hosts));
-        assert!(!hosts.0.contains(&"host4".to_string()));
-        assert_eq!(hosts.0.len(), 3);
-        assert_eq!(unique_hosts.len(), 3);
-        for host in unique_hosts.values() {
-            assert_eq!(hosts.0[host.index], host.name);
+        assert!(c.hosts.lock().unwrap().0.contains(&"host4".to_string()));
+        assert!(c.remove_host("host4"));
+        assert!(!c.hosts.lock().unwrap().0.contains(&"host4".to_string()));
+        assert_eq!(c.hosts.lock().unwrap().0.len(), 3);
+        assert_eq!(c.unique_hosts.lock().unwrap().len(), 3);
+        for host in c.unique_hosts.lock().unwrap().values() {
+            assert_eq!(c.hosts.lock().unwrap().0[host.index], host.name);
         }
 
         // Remove the middle host
-        assert!(hosts.0.contains(&"host2".to_string()));
-        assert!(remove_host("host2", &mut hosts.0, &mut unique_hosts));
-        assert!(!hosts.0.contains(&"host2".to_string()));
-        assert_eq!(hosts.0.len(), 2);
-        assert_eq!(unique_hosts.len(), 2);
-        for host in unique_hosts.values() {
-            assert_eq!(hosts.0[host.index], host.name);
+        assert!(c.hosts.lock().unwrap().0.contains(&"host2".to_string()));
+        assert!(c.remove_host("host2"));
+        assert!(!c.hosts.lock().unwrap().0.contains(&"host2".to_string()));
+        assert_eq!(c.hosts.lock().unwrap().0.len(), 2);
+        assert_eq!(c.unique_hosts.lock().unwrap().len(), 2);
+        for host in c.unique_hosts.lock().unwrap().values() {
+            assert_eq!(c.hosts.lock().unwrap().0[host.index], host.name);
         }
 
         // Remove the first host
-        assert!(hosts.0.contains(&"host1".to_string()));
-        assert!(remove_host("host1", &mut hosts.0, &mut unique_hosts));
-        assert!(!hosts.0.contains(&"host1".to_string()));
-        assert_eq!(hosts.0.len(), 1);
-        assert_eq!(unique_hosts.len(), 1);
-        for host in unique_hosts.values() {
-            assert_eq!(hosts.0[host.index], host.name);
+        assert!(c.hosts.lock().unwrap().0.contains(&"host1".to_string()));
+        assert!(c.remove_host("host1"));
+        assert!(!c.hosts.lock().unwrap().0.contains(&"host1".to_string()));
+        assert_eq!(c.hosts.lock().unwrap().0.len(), 1);
+        assert_eq!(c.unique_hosts.lock().unwrap().len(), 1);
+        for host in c.unique_hosts.lock().unwrap().values() {
+            assert_eq!(c.hosts.lock().unwrap().0[host.index], host.name);
         }
     }
 
@@ -906,12 +863,11 @@ mod test {
         let request_token = "requesttoken";
 
         // Add an unconfirmed host
-        assert!(add_host(
+        assert!(c.add_host(
             "host1",
             "0.0.0.0:8081".parse().unwrap(),
-            &mut c.hosts.lock().unwrap().0,
-            &mut c.unique_hosts.lock().unwrap(),
             false,
+            "password",
         ));
         assert!(!c.unique_hosts.lock().unwrap().get("host1").unwrap().confirmed);
         c.heartbeat("host1".to_string(), request_token);
