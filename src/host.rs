@@ -38,7 +38,7 @@ pub struct Host {
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.
-/// This is the input root which will be overlayed on top of any imports.
+/// This is the input root.
 ///
 /// Creates the root path directory if it does not already exist.
 fn unpack_request(req: &protos::ComputeRequest, root: &Path) -> Result<(), Error> {
@@ -49,30 +49,6 @@ fn unpack_request(req: &protos::ComputeRequest, root: &Path) -> Result<(), Error
     archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
     info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
     Ok(())
-}
-
-/// Resolve imports.
-fn resolve_import_paths(
-    karl_path: &Path,
-    imports: &Vec<protos::Import>,
-) -> Result<Vec<PathBuf>, Error> {
-    let mut import_paths = vec![];
-    for import in imports {
-        let path = crate::common::import_path(&import, karl_path);
-        import_paths.push(path);
-    }
-    Ok(import_paths)
-}
-
-/// Get mapped directories.
-///
-/// Maps imports to the package root.
-fn get_mapped_dirs(import_paths: Vec<PathBuf>) -> Vec<String> {
-    import_paths
-        .into_iter()
-        .map(|path| path.into_os_string().into_string().unwrap())
-        .map(|path| format!(".:{}", path))
-        .collect()
 }
 
 impl Drop for Host {
@@ -223,15 +199,11 @@ impl Host {
 
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
-        let import_paths = resolve_import_paths(
-            &self.karl_path, &req.imports.to_vec())?;
         let binary_path = Path::new(req.get_config().get_binary_path()).to_path_buf();
-        let mapped_dirs = get_mapped_dirs(import_paths);
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = crate::runtime::run(
             binary_path,
-            mapped_dirs,
             req.get_config().get_args().to_vec(),
             req.get_config().get_envs().to_vec(),
             &self.karl_path,

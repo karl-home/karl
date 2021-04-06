@@ -18,11 +18,6 @@ enum MessageType {
   HOST_REGISTER_REQUEST = 12;
 }
 
-message Import {
-  string name = 1;
-  string hash = 2;
-}
-
 message PkgConfig {
   string binary_path = 1;
   repeated string args = 2;
@@ -35,10 +30,9 @@ message ComputeRequest {
   bool stdout = 3;
   bool stderr = 4;
   repeated string files = 5;
-  repeated Import imports = 6;
-  string client_id = 7;
-  bool storage = 8;
-  string request_token = 9;
+  string client_id = 6;
+  bool storage = 7;
+  string request_token = 8;
 }
 
 message ComputeResult {

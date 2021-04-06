@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use tar::Builder;
 use flate2::{Compression, write::GzEncoder};
@@ -13,7 +13,6 @@ use super::Error;
 pub struct ComputeRequestBuilder {
     pub dirs: Vec<(String, String)>,
     pub files: Vec<(String, String)>,
-    pub imports: Vec<protos::Import>,
     pub config: protos::PkgConfig,
 }
 
@@ -24,7 +23,6 @@ impl ComputeRequestBuilder {
         ComputeRequestBuilder {
             dirs: Vec::new(),
             files: Vec::new(),
-            imports: Vec::new(),
             config,
         }
     }
@@ -44,12 +42,6 @@ impl ComputeRequestBuilder {
             .into_iter()
             .map(|env| env.to_string())
             .collect();
-        self
-    }
-
-    /// Import external library or package.
-    pub fn import(mut self, import: protos::Import) -> ComputeRequestBuilder {
-        self.imports.push(import);
         self
     }
 
@@ -107,16 +99,8 @@ impl ComputeRequestBuilder {
         let mut req = protos::ComputeRequest::default();
         req.set_package(buffer);
         req.set_config(self.config);
-        req.set_imports(protobuf::RepeatedField::from_vec(self.imports));
         Ok(req)
     }
-}
-
-/// Get the path to the local import.
-pub fn import_path(import: &protos::Import, karl_path: &Path) -> PathBuf {
-    let path = format!("local/{}/", import.get_name());
-    let path = karl_path.join(path);
-    path
 }
 
 #[cfg(test)]
@@ -142,12 +126,7 @@ mod test {
     fn compute_request_builder_basic() {
         let builder = ComputeRequestBuilder::new("python")
             .args(vec!["run.py", "10"])
-            .envs(vec!["VAR1=1", "VAR2=abc"])
-            .import(protos::Import {
-                name: "numpy".to_string(),
-                hash: "abc123".to_string(),
-                ..Default::default()
-            });
+            .envs(vec!["VAR1=1", "VAR2=abc"]);
         let request = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
@@ -159,7 +138,6 @@ mod test {
         assert_eq!(config.get_binary_path(), "python");
         assert_eq!(config.get_args().to_vec(), vec!["run.py", "10"]);
         assert_eq!(config.get_envs().to_vec(), vec!["VAR1=1", "VAR2=abc"]);
-        assert_eq!(request.get_imports().len(), 1);
     }
 
     #[test]

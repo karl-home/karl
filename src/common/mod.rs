@@ -5,7 +5,7 @@ use rand::Rng;
 use serde::Serialize;
 
 pub use error::Error;
-pub use builder::{import_path, ComputeRequestBuilder};
+pub use builder::ComputeRequestBuilder;
 
 /// Length of auth token.
 const TOKEN_LEN: usize = 32;

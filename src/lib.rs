@@ -6,8 +6,6 @@ extern crate log;
 #[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
-#[cfg(target_os = "linux")]
-extern crate sys_mount;
 #[cfg(test)]
 extern crate serial_test;
 
