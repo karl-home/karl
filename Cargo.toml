@@ -6,11 +6,6 @@ edition = "2018"
 
 [features]
 default = []
-dnssd = ["astro-dnssd"]
-
-[dependencies.astro-dnssd]
-path = "submodules/astro-dnssd"
-optional = true
 
 [target."cfg(target_os = \"linux\")".dependencies.sys-mount]
 version = "1.2.1"

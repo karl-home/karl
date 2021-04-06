@@ -1,8 +1,6 @@
 use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
 use std::net::{SocketAddr, TcpStream, TcpListener, IpAddr};
-#[cfg(feature = "dnssd")]
-use std::net::{ToSocketAddrs, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
 use std::thread;
@@ -10,8 +8,6 @@ use std::fs;
 use std::io::Read;
 
 use serde::{Serialize, ser::{Serializer, SerializeStruct}};
-#[cfg(feature = "dnssd")]
-use astro_dnssd::browser::{ServiceBrowserBuilder, ServiceEventType};
 use tokio::runtime::Runtime;
 
 use protobuf::Message;
@@ -255,74 +251,6 @@ impl Controller {
     ) -> Result<(), Error> {
         // Make the karl path if it doesn't already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
-
-        #[cfg(feature = "dnssd")]
-        {
-        let hosts = self.hosts.clone();
-        let unique_hosts = self.unique_hosts.clone();
-        debug!("Listening...");
-        self.rt.spawn(async move {
-            let mut browser = ServiceBrowserBuilder::new("_karl._tcp")
-                .build()
-                .unwrap();
-            browser.start(move |result| match result {
-                Ok(mut service) => {
-                    let results = service.resolve();
-                    for r in results.unwrap() {
-                        let status = r.txt_record.as_ref().unwrap().get("status");
-                        trace!("Status: {:?}", status);
-                        let addrs = match r.to_socket_addrs() {
-                            Ok(addrs) => addrs
-                                .filter(|addr| addr.is_ipv4())
-                                .filter(|addr| addr.ip() != Ipv4Addr::LOCALHOST)
-                                .collect::<Vec<_>>(),
-                            Err(e) => {
-                                error!("Failed to resolve\n=> addrs: {:?}\n=> {:?}", r, e);
-                                return;
-                            },
-                        };
-                        if addrs.is_empty() {
-                            warn!("no addresses found\n=> {:?}", r);
-                            return;
-                        }
-                        // Update hosts with IPv4 address.
-                        // Log the discovered service
-                        // NOTE: only adds the first IPv4 address...
-                        let mut hosts = hosts.lock().unwrap();
-                        let mut unique_hosts = unique_hosts.lock().unwrap();
-                        debug!("{:?}", addrs);
-                        match service.event_type {
-                            ServiceEventType::Added => {
-                                let addr = addrs[0];
-                                if add_host(&service.name, addr, &mut hosts.0, &mut unique_hosts, false) {
-                                    info!(
-                                        "ADD if: {} name: {} type: {} domain: {}, addr: {:?}",
-                                        service.interface_index, service.name,
-                                        service.regtype, service.domain, addr,
-                                    );
-                                }
-                            },
-                            ServiceEventType::Removed => {
-                                if remove_host(&service.name, &mut hosts.0, &mut unique_hosts) {
-                                    info!(
-                                        "RMV if: {} name: {} type: {} domain: {}",
-                                        service.interface_index, service.name,
-                                        service.regtype, service.domain,
-                                    );
-                                }
-                            },
-                        }
-                    }
-                }
-                Err(e) => error!("Error: {:?}", e),
-            }).unwrap();
-            loop {
-                if browser.has_data() {
-                    browser.process_result();
-                }
-            }
-        });
-        }
 
         // Initialize clients in the clients file at `<KARL_PATH>/clients.txt`.
         // Expect client serialization format based on `dashboard/mod.rs`:

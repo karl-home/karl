@@ -92,15 +92,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 
 [[package]]
-name = "astro-dnssd"
-version = "0.1.2"
-dependencies = [
- "libc",
- "log 0.4.11",
- "pkg-config",
-]
-
-[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -901,7 +892,6 @@ dependencies = [
 name = "karl"
 version = "0.1.0"
 dependencies = [
- "astro-dnssd",
  "bincode",
  "bytes 0.6.0",
  "clap",
