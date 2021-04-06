@@ -12,9 +12,7 @@ fn main() {
             .takes_value(true)
             .default_value("/home/gina/.karl"))
         .arg(Arg::with_name("backend")
-            .help("Host backend. Either 'wasm' for wasm executables or \
-                `binary` for binary executables. Assumes macOS executables \
-                only.")
+            .help("Host backend. `Binary` for binary executables.")
             .short("b")
             .long("backend")
             .takes_value(true)
@@ -43,12 +41,6 @@ fn main() {
         .get_matches();
 
     let backend = match matches.value_of("backend").unwrap() {
-        "wasm" => {
-            #[cfg(not(feature = "wasm"))]
-            unimplemented!("wasm feature not enabled");
-            #[cfg(feature = "wasm")]
-            Backend::Wasm
-        },
         "binary" => Backend::Binary,
         backend => unimplemented!("unimplemented backend: {}", backend),
     };

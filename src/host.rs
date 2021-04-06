@@ -275,19 +275,6 @@ impl Host {
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = match self.backend {
-            #[cfg(feature = "wasm")]
-            Backend::Wasm => crate::backend::wasm::run(
-                binary_path,
-                mapped_dirs,
-                req.get_config().get_args().to_vec(),
-                req.get_config().get_envs().to_vec(),
-                &root_path,
-                req.stdout,
-                req.stderr,
-                req.files.to_vec().into_iter().collect(),
-            )?,
-            #[cfg(not(feature = "wasm"))]
-            Backend::Wasm => unreachable!(),
             Backend::Binary => crate::backend::binary::run(
                 binary_path,
                 mapped_dirs,
