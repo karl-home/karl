@@ -198,6 +198,7 @@ fn add_host(
 
 /// Returns:
 /// Whether the host was removed.
+#[allow(dead_code)]
 fn remove_host(
     name: &str,
     hosts: &mut Vec<ServiceName>,
@@ -544,6 +545,7 @@ impl Controller {
     ///
     /// Returns:
     /// Whether the host was removed.
+    #[allow(dead_code)]
     fn remove_host(
         &mut self,
         name: &str,
@@ -571,6 +573,7 @@ impl Controller {
     ///
     /// Returns: Ok if the IP addresses are the same, and an error if the IP
     /// addresses are different or a host with the name does not exist.
+    #[allow(unused_variables)]
     fn verify_host_name(
         &self,
         service_name: &str,
