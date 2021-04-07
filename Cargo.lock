@@ -877,6 +877,7 @@ dependencies = [
  "protobuf",
  "protoc-rust",
  "rand 0.8.2",
+ "regex",
  "reqwest",
  "rocket",
  "rocket_contrib",

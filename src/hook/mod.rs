@@ -1,12 +1,11 @@
-use std::io::Read;
-use std::fs::File;
+use std::fs;
 use std::time::SystemTime;
 use std::path::{Path, PathBuf};
 use bincode;
 use serde::{Serialize, Deserialize};
 use crate::common::{StringID, Error};
 
-const HOOK_STORE_PATH: &str = "hooks";
+pub const HOOK_STORE_PATH: &str = "hooks";
 
 pub type DomainName = String;
 
@@ -26,7 +25,7 @@ pub enum HookSchedule {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Hook {
     confirmed: bool,
-    pub global_hook_id: String,
+    pub global_hook_id: StringID,
     pub schedule: HookSchedule,
     pub network_perm: Vec<DomainName>,
     pub file_perm: Vec<FileACL>,
@@ -37,11 +36,35 @@ pub struct Hook {
 }
 
 impl Hook {
-    pub fn new(global_hook_id: StringID) -> Result<Self, Error> {
+    pub fn new(
+        global_hook_id: StringID,
+        watched_file: &str,
+        network_perm: Vec<DomainName>,
+        file_perm: Vec<FileACL>,
+        package: Vec<u8>,
+        binary_path: &str,
+        args: Vec<String>,
+        envs: Vec<(String, String)>,
+    ) -> Self {
+        let watched_file = Path::new(watched_file).to_path_buf();
+        let binary_path = Path::new(binary_path).to_path_buf();
+        Self {
+            confirmed: false,
+            global_hook_id,
+            schedule: HookSchedule::WatchFile(watched_file),
+            network_perm,
+            file_perm,
+            package,
+            binary_path,
+            args,
+            envs,
+        }
+    }
+
+    pub fn import(global_hook_id: StringID) -> Result<Self, Error> {
         let path = Path::new(HOOK_STORE_PATH).join(global_hook_id);
-        let mut bytes = vec![];
-        let mut f = File::open(path)?;
-        f.read(&mut bytes)?;
+        let bytes = fs::read(path)?;
+        debug!("read {} bytes", bytes.len());
         let mut hook: Hook = bincode::deserialize(&bytes[..])
             .map_err(|e| Error::HookInstallError(e.to_string()))?;
         hook.confirm(); // TODO
@@ -74,14 +97,14 @@ mod test {
 
     #[test]
     fn test_hooks_can_be_deserialized() {
-        assert!(Hook::new("person-detection".to_string()).is_ok());
-        assert!(Hook::new("speech-to-text".to_string()).is_ok());
-        assert!(Hook::new("bulb-intensity".to_string()).is_ok());
-        assert!(Hook::new("announcement".to_string()).is_ok());
-        assert!(Hook::new("livestream".to_string()).is_ok());
-        assert!(Hook::new("firmware-update".to_string()).is_ok());
-        assert!(Hook::new("search-engine".to_string()).is_ok());
-        assert!(Hook::new("bug-report".to_string()).is_ok());
-        assert!(Hook::new("bulb-integration".to_string()).is_ok());
+        Hook::import("person-detection".to_string()).unwrap();
+        Hook::import("speech-to-text".to_string()).unwrap();
+        Hook::import("bulb-intensity".to_string()).unwrap();
+        Hook::import("announcement".to_string()).unwrap();
+        Hook::import("livestream".to_string()).unwrap();
+        Hook::import("firmware-update".to_string()).unwrap();
+        Hook::import("search-engine".to_string()).unwrap();
+        Hook::import("bug-report".to_string()).unwrap();
+        Hook::import("bulb-integration".to_string()).unwrap();
     }
 }

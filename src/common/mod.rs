@@ -6,6 +6,7 @@ use serde::Serialize;
 
 pub use error::Error;
 pub use builder::ComputeRequestBuilder;
+pub use builder::TarBuilder;
 
 /// String ID.
 pub type StringID = String;

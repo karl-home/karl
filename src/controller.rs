@@ -729,7 +729,7 @@ impl Controller {
             let id: u32 = rand::thread_rng().gen();
             let hook_id = format!("{}-{}", global_hook_id, id);
             if !self.hooks.contains_key(&hook_id) {
-                let hook = Hook::new(global_hook_id)?
+                let hook = Hook::import(global_hook_id)?
                     .set_network_perm(network_perm)
                     .set_file_perm(file_perm)
                     .set_envs(envs);
