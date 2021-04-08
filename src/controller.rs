@@ -68,12 +68,8 @@ pub struct Client {
     pub addr: IpAddr,
 }
 
-/// Controller used for discovering available Karl services via DNS-SD.
-///
-/// Currently, each client runs its own controller, which is aware of all
-/// available Karl services. Eventually, there may be a central controller
-/// that coordinates client requests among available services.
-/// Non-macOS services need to install the appropriate shims around DNS-SD.
+/// Controller used for discovering available Karl services and coordinating
+/// client requests among available services.
 pub struct Controller {
     pub rt: Runtime,
     karl_path: PathBuf,
@@ -164,19 +160,16 @@ impl Controller {
         }
     }
 
-    /// Start the TCP listener for incoming host requests and spawn a process
-    /// in the background that listens on DNS-SD for available hosts.
-    /// Initializes clients based on the `<KARL_PATH>/clients.txt` file.
-    ///
-    /// In the background process, the controller maintains a list of
-    /// available hosts, adding and removing hosts as specified by DNS-SD
-    /// messages. Otherwise, the host listens for the following messages:
-    ///
-    /// - RegisterRequest: clients register themselves.
-    /// - HostRequest: clients request an available host.
-    /// - NotifyStart: hosts notify the controller they are unavailable.
-    /// - NotifyEnd: hosts notify the controller they are available again.
-    /// - PingRequest: generic ping.
+    /// Initializes clients based on the `<KARL_PATH>/clients.txt` file and
+    /// starts the web dashboard. Also starts a TCP listener for the following
+    /// messages:
+    /// - HostRequest
+    /// - RegisterRequest
+    /// - NotifyStart
+    /// - NotifyEnd
+    /// - HostHeartbeat
+    /// - HostRegisterRequest
+    /// - PingRequest
     pub fn start(
         &mut self,
         port: u16,
