@@ -21,10 +21,6 @@ fn main() {
             .long("password")
             .takes_value(true)
             .default_value("password"))
-        .arg(Arg::with_name("no-register")
-            .help("If the flag is included, does not automatically register \
-                the service with DNS-SD. The default is to register.")
-            .long("no-register"))
         .arg(Arg::with_name("autoconfirm")
             .help("If the flag is included, automatically confirms all clients
                 and hosts. Used for testing ONLY.")
@@ -33,7 +29,6 @@ fn main() {
 
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
-    let _register = !matches.is_present("no-register");
     let autoconfirm = matches.is_present("autoconfirm");
     let password = matches.value_of("password").unwrap();
     let mut controller = Controller::new(karl_path, password, autoconfirm);
