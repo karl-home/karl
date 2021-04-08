@@ -43,9 +43,8 @@ fn send_all(controller: &str, n: usize) -> Result<(), Error> {
     let mut rt = Runtime::new().unwrap();
     let mut requests = vec![];
     for _ in 0..n {
-        let mut request = gen_request();
-        request.set_stdout(true);
-        request.mut_files().push("output.txt".to_string());
+        let request = gen_request();
+        // request.mut_files().push("output.txt".to_string());
         requests.push(request);
     }
     info!("build {} requests: {} s", n, now.elapsed().as_secs_f32());

@@ -196,8 +196,8 @@ impl Host {
         &mut self,
         req: protos::ComputeRequest,
     ) -> Result<protos::ComputeResult, Error> {
-        info!("handling compute from {:?}: (len {}) stdout={} stderr={} storage={} {:?}",
-            req.client_id, req.package.len(), req.stdout, req.stderr, req.storage, req.files);
+        info!("handling compute from {:?}: (len {}) storage={}",
+            req.client_id, req.package.len(), req.storage);
         let now = Instant::now();
 
         let root_path = self.base_path.join("root");
@@ -213,9 +213,6 @@ impl Host {
             &self.base_path,
             req.get_client_id(),
             req.get_storage(),
-            req.stdout,
-            req.stderr,
-            req.files.to_vec().into_iter().collect(),
         )?;
 
         // Reset the root for the next computation.

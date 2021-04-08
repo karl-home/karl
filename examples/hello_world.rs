@@ -30,7 +30,6 @@ fn send(controller: &str) {
     debug!("building request");
     let now = Instant::now();
     let mut request = gen_request();
-    request.set_stdout(true);
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     debug!("get host from controller");

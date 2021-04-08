@@ -5,7 +5,6 @@
 //! the sandbox for offloading compute requests.
 use std::env;
 use std::fs;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
@@ -82,9 +81,6 @@ fn symlink_storage(
 /// - `client_id`: Client ID, used to determine persistent storage path.
 /// - `storage`: Whether to use persistent storage. Mounts the persistent
 ///   storage path at `<base_path>`
-/// - `res_stdout`: Whether to include stdout in the result.
-/// - `res_stderr`: Whether to include stderr in the result.
-/// - `res_files`: Files to include in the result, if they exist.
 pub fn run(
     binary_path: PathBuf,
     args: Vec<String>,
@@ -93,9 +89,6 @@ pub fn run(
     base_path: &Path,
     client_id: &str,
     storage: bool,
-    res_stdout: bool,
-    res_stderr: bool,
-    res_files: HashSet<String>,
 ) -> Result<ComputeResult, Error> {
     // Directory layout
     // <request_id> = 123456
@@ -136,19 +129,15 @@ pub fn run(
     warn!("{}", String::from_utf8_lossy(&output.stderr));
     let now = Instant::now();
     let mut res = ComputeResult::default();
-    if res_stdout {
-        res.set_stdout(output.stdout);
-    }
-    if res_stderr {
-        res.set_stderr(output.stderr);
-    }
-    for path in res_files {
-        let f = root_path.join(&path);
-        match fs::read(&f) {
-            Ok(bytes) => { res.mut_files().insert(path, bytes); },
-            Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
-        }
-    }
+    res.set_stdout(output.stdout);
+    res.set_stderr(output.stderr);
+    // for path in res_files {
+    //     let f = root_path.join(&path);
+    //     match fs::read(&f) {
+    //         Ok(bytes) => { res.mut_files().insert(path, bytes); },
+    //         Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
+    //     }
+    // }
     info!("=> build result: {} s", now.elapsed().as_secs_f32());
     env::set_current_dir(&previous_dir).unwrap();
     Ok(res)
@@ -218,9 +207,6 @@ mod test {
         let karl_path = init_karl_path();
         let client_id = "test_stt_python";
         let storage = false;
-        let res_stdout = true;
-        let res_stderr = true;
-        let res_files = HashSet::new();
         let res = run(
             binary_path,
             args,
@@ -229,9 +215,6 @@ mod test {
             &base_path,
             client_id,
             storage,
-            res_stdout,
-            res_stderr,
-            res_files,
         );
         fs::remove_dir_all(&base_path).unwrap();
         match res {
@@ -277,9 +260,6 @@ mod test {
         let karl_path = init_karl_path();
         let client_id = "test_stt_node";
         let storage = false;
-        let res_stdout = true;
-        let res_stderr = true;
-        let res_files = HashSet::new();
         let res = run(
             binary_path,
             args,
@@ -288,9 +268,6 @@ mod test {
             &base_path,
             client_id,
             storage,
-            res_stdout,
-            res_stderr,
-            res_files,
         );
         fs::remove_dir_all(&base_path).unwrap();
         match res {
