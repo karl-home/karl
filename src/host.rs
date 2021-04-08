@@ -202,13 +202,13 @@ impl Host {
 
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
-        let binary_path = Path::new(req.get_config().get_binary_path()).to_path_buf();
+        let binary_path = Path::new(req.get_binary_path()).to_path_buf();
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = crate::runtime::run(
             binary_path,
-            req.get_config().get_args().to_vec(),
-            req.get_config().get_envs().to_vec(),
+            req.get_args().to_vec(),
+            req.get_envs().to_vec(),
             &self.karl_path,
             &self.base_path,
             req.get_client_id(),

@@ -24,257 +24,18 @@
 // const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_2_18_0;
 
 #[derive(PartialEq,Clone,Default)]
-pub struct PkgConfig {
-    // message fields
-    pub binary_path: ::std::string::String,
-    pub args: ::protobuf::RepeatedField<::std::string::String>,
-    pub envs: ::protobuf::RepeatedField<::std::string::String>,
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-impl<'a> ::std::default::Default for &'a PkgConfig {
-    fn default() -> &'a PkgConfig {
-        <PkgConfig as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl PkgConfig {
-    pub fn new() -> PkgConfig {
-        ::std::default::Default::default()
-    }
-
-    // string binary_path = 1;
-
-
-    pub fn get_binary_path(&self) -> &str {
-        &self.binary_path
-    }
-    pub fn clear_binary_path(&mut self) {
-        self.binary_path.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_binary_path(&mut self, v: ::std::string::String) {
-        self.binary_path = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_binary_path(&mut self) -> &mut ::std::string::String {
-        &mut self.binary_path
-    }
-
-    // Take field
-    pub fn take_binary_path(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.binary_path, ::std::string::String::new())
-    }
-
-    // repeated string args = 2;
-
-
-    pub fn get_args(&self) -> &[::std::string::String] {
-        &self.args
-    }
-    pub fn clear_args(&mut self) {
-        self.args.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_args(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
-        self.args = v;
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_args(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
-        &mut self.args
-    }
-
-    // Take field
-    pub fn take_args(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
-        ::std::mem::replace(&mut self.args, ::protobuf::RepeatedField::new())
-    }
-
-    // repeated string envs = 3;
-
-
-    pub fn get_envs(&self) -> &[::std::string::String] {
-        &self.envs
-    }
-    pub fn clear_envs(&mut self) {
-        self.envs.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_envs(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
-        self.envs = v;
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_envs(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
-        &mut self.envs
-    }
-
-    // Take field
-    pub fn take_envs(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
-        ::std::mem::replace(&mut self.envs, ::protobuf::RepeatedField::new())
-    }
-}
-
-impl ::protobuf::Message for PkgConfig {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.binary_path)?;
-                },
-                2 => {
-                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.args)?;
-                },
-                3 => {
-                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.envs)?;
-                },
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        if !self.binary_path.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.binary_path);
-        }
-        for value in &self.args {
-            my_size += ::protobuf::rt::string_size(2, &value);
-        };
-        for value in &self.envs {
-            my_size += ::protobuf::rt::string_size(3, &value);
-        };
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.binary_path.is_empty() {
-            os.write_string(1, &self.binary_path)?;
-        }
-        for v in &self.args {
-            os.write_string(2, &v)?;
-        };
-        for v in &self.envs {
-            os.write_string(3, &v)?;
-        };
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &dyn (::std::any::Any) {
-        self as &dyn (::std::any::Any)
-    }
-    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
-        self as &mut dyn (::std::any::Any)
-    }
-    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> PkgConfig {
-        PkgConfig::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
-        descriptor.get(|| {
-            let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "binary_path",
-                |m: &PkgConfig| { &m.binary_path },
-                |m: &mut PkgConfig| { &mut m.binary_path },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "args",
-                |m: &PkgConfig| { &m.args },
-                |m: &mut PkgConfig| { &mut m.args },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "envs",
-                |m: &PkgConfig| { &m.envs },
-                |m: &mut PkgConfig| { &mut m.envs },
-            ));
-            ::protobuf::reflect::MessageDescriptor::new_pb_name::<PkgConfig>(
-                "PkgConfig",
-                fields,
-                file_descriptor_proto()
-            )
-        })
-    }
-
-    fn default_instance() -> &'static PkgConfig {
-        static instance: ::protobuf::rt::LazyV2<PkgConfig> = ::protobuf::rt::LazyV2::INIT;
-        instance.get(PkgConfig::new)
-    }
-}
-
-impl ::protobuf::Clear for PkgConfig {
-    fn clear(&mut self) {
-        self.binary_path.clear();
-        self.args.clear();
-        self.envs.clear();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for PkgConfig {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for PkgConfig {
-    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
-        ::protobuf::reflect::ReflectValueRef::Message(self)
-    }
-}
-
-#[derive(PartialEq,Clone,Default)]
 pub struct ComputeRequest {
     // message fields
-    pub package: ::std::vec::Vec<u8>,
-    pub config: ::protobuf::SingularPtrField<PkgConfig>,
     pub stdout: bool,
     pub stderr: bool,
     pub files: ::protobuf::RepeatedField<::std::string::String>,
     pub client_id: ::std::string::String,
     pub storage: bool,
     pub request_token: ::std::string::String,
+    pub package: ::std::vec::Vec<u8>,
+    pub binary_path: ::std::string::String,
+    pub args: ::protobuf::RepeatedField<::std::string::String>,
+    pub envs: ::protobuf::RepeatedField<::std::string::String>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -291,66 +52,7 @@ impl ComputeRequest {
         ::std::default::Default::default()
     }
 
-    // bytes package = 1;
-
-
-    pub fn get_package(&self) -> &[u8] {
-        &self.package
-    }
-    pub fn clear_package(&mut self) {
-        self.package.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_package(&mut self, v: ::std::vec::Vec<u8>) {
-        self.package = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_package(&mut self) -> &mut ::std::vec::Vec<u8> {
-        &mut self.package
-    }
-
-    // Take field
-    pub fn take_package(&mut self) -> ::std::vec::Vec<u8> {
-        ::std::mem::replace(&mut self.package, ::std::vec::Vec::new())
-    }
-
-    // .request.PkgConfig config = 2;
-
-
-    pub fn get_config(&self) -> &PkgConfig {
-        self.config.as_ref().unwrap_or_else(|| <PkgConfig as ::protobuf::Message>::default_instance())
-    }
-    pub fn clear_config(&mut self) {
-        self.config.clear();
-    }
-
-    pub fn has_config(&self) -> bool {
-        self.config.is_some()
-    }
-
-    // Param is passed by value, moved
-    pub fn set_config(&mut self, v: PkgConfig) {
-        self.config = ::protobuf::SingularPtrField::some(v);
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_config(&mut self) -> &mut PkgConfig {
-        if self.config.is_none() {
-            self.config.set_default();
-        }
-        self.config.as_mut().unwrap()
-    }
-
-    // Take field
-    pub fn take_config(&mut self) -> PkgConfig {
-        self.config.take().unwrap_or_else(|| PkgConfig::new())
-    }
-
-    // bool stdout = 3;
+    // bool stdout = 1;
 
 
     pub fn get_stdout(&self) -> bool {
@@ -365,7 +67,7 @@ impl ComputeRequest {
         self.stdout = v;
     }
 
-    // bool stderr = 4;
+    // bool stderr = 2;
 
 
     pub fn get_stderr(&self) -> bool {
@@ -380,7 +82,7 @@ impl ComputeRequest {
         self.stderr = v;
     }
 
-    // repeated string files = 5;
+    // repeated string files = 3;
 
 
     pub fn get_files(&self) -> &[::std::string::String] {
@@ -405,7 +107,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.files, ::protobuf::RepeatedField::new())
     }
 
-    // string client_id = 6;
+    // string client_id = 4;
 
 
     pub fn get_client_id(&self) -> &str {
@@ -431,7 +133,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.client_id, ::std::string::String::new())
     }
 
-    // bool storage = 7;
+    // bool storage = 5;
 
 
     pub fn get_storage(&self) -> bool {
@@ -446,7 +148,7 @@ impl ComputeRequest {
         self.storage = v;
     }
 
-    // string request_token = 8;
+    // string request_token = 6;
 
 
     pub fn get_request_token(&self) -> &str {
@@ -471,15 +173,112 @@ impl ComputeRequest {
     pub fn take_request_token(&mut self) -> ::std::string::String {
         ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
     }
+
+    // bytes package = 7;
+
+
+    pub fn get_package(&self) -> &[u8] {
+        &self.package
+    }
+    pub fn clear_package(&mut self) {
+        self.package.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_package(&mut self, v: ::std::vec::Vec<u8>) {
+        self.package = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_package(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.package
+    }
+
+    // Take field
+    pub fn take_package(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.package, ::std::vec::Vec::new())
+    }
+
+    // string binary_path = 8;
+
+
+    pub fn get_binary_path(&self) -> &str {
+        &self.binary_path
+    }
+    pub fn clear_binary_path(&mut self) {
+        self.binary_path.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_binary_path(&mut self, v: ::std::string::String) {
+        self.binary_path = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_binary_path(&mut self) -> &mut ::std::string::String {
+        &mut self.binary_path
+    }
+
+    // Take field
+    pub fn take_binary_path(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.binary_path, ::std::string::String::new())
+    }
+
+    // repeated string args = 9;
+
+
+    pub fn get_args(&self) -> &[::std::string::String] {
+        &self.args
+    }
+    pub fn clear_args(&mut self) {
+        self.args.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_args(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.args = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_args(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.args
+    }
+
+    // Take field
+    pub fn take_args(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.args, ::protobuf::RepeatedField::new())
+    }
+
+    // repeated string envs = 10;
+
+
+    pub fn get_envs(&self) -> &[::std::string::String] {
+        &self.envs
+    }
+    pub fn clear_envs(&mut self) {
+        self.envs.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_envs(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.envs = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_envs(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.envs
+    }
+
+    // Take field
+    pub fn take_envs(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.envs, ::protobuf::RepeatedField::new())
+    }
 }
 
 impl ::protobuf::Message for ComputeRequest {
     fn is_initialized(&self) -> bool {
-        for v in &self.config {
-            if !v.is_initialized() {
-                return false;
-            }
-        };
         true
     }
 
@@ -488,40 +287,46 @@ impl ::protobuf::Message for ComputeRequest {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.package)?;
-                },
-                2 => {
-                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.config)?;
-                },
-                3 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
                     let tmp = is.read_bool()?;
                     self.stdout = tmp;
                 },
-                4 => {
+                2 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
                     let tmp = is.read_bool()?;
                     self.stderr = tmp;
                 },
-                5 => {
+                3 => {
                     ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.files)?;
                 },
-                6 => {
+                4 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_id)?;
                 },
-                7 => {
+                5 => {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
                     let tmp = is.read_bool()?;
                     self.storage = tmp;
                 },
-                8 => {
+                6 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
+                },
+                7 => {
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.package)?;
+                },
+                8 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.binary_path)?;
+                },
+                9 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.args)?;
+                },
+                10 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.envs)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -535,13 +340,6 @@ impl ::protobuf::Message for ComputeRequest {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.package.is_empty() {
-            my_size += ::protobuf::rt::bytes_size(1, &self.package);
-        }
-        if let Some(ref v) = self.config.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-        }
         if self.stdout != false {
             my_size += 2;
         }
@@ -549,49 +347,65 @@ impl ::protobuf::Message for ComputeRequest {
             my_size += 2;
         }
         for value in &self.files {
-            my_size += ::protobuf::rt::string_size(5, &value);
+            my_size += ::protobuf::rt::string_size(3, &value);
         };
         if !self.client_id.is_empty() {
-            my_size += ::protobuf::rt::string_size(6, &self.client_id);
+            my_size += ::protobuf::rt::string_size(4, &self.client_id);
         }
         if self.storage != false {
             my_size += 2;
         }
         if !self.request_token.is_empty() {
-            my_size += ::protobuf::rt::string_size(8, &self.request_token);
+            my_size += ::protobuf::rt::string_size(6, &self.request_token);
         }
+        if !self.package.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(7, &self.package);
+        }
+        if !self.binary_path.is_empty() {
+            my_size += ::protobuf::rt::string_size(8, &self.binary_path);
+        }
+        for value in &self.args {
+            my_size += ::protobuf::rt::string_size(9, &value);
+        };
+        for value in &self.envs {
+            my_size += ::protobuf::rt::string_size(10, &value);
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.package.is_empty() {
-            os.write_bytes(1, &self.package)?;
-        }
-        if let Some(ref v) = self.config.as_ref() {
-            os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-            os.write_raw_varint32(v.get_cached_size())?;
-            v.write_to_with_cached_sizes(os)?;
-        }
         if self.stdout != false {
-            os.write_bool(3, self.stdout)?;
+            os.write_bool(1, self.stdout)?;
         }
         if self.stderr != false {
-            os.write_bool(4, self.stderr)?;
+            os.write_bool(2, self.stderr)?;
         }
         for v in &self.files {
-            os.write_string(5, &v)?;
+            os.write_string(3, &v)?;
         };
         if !self.client_id.is_empty() {
-            os.write_string(6, &self.client_id)?;
+            os.write_string(4, &self.client_id)?;
         }
         if self.storage != false {
-            os.write_bool(7, self.storage)?;
+            os.write_bool(5, self.storage)?;
         }
         if !self.request_token.is_empty() {
-            os.write_string(8, &self.request_token)?;
+            os.write_string(6, &self.request_token)?;
         }
+        if !self.package.is_empty() {
+            os.write_bytes(7, &self.package)?;
+        }
+        if !self.binary_path.is_empty() {
+            os.write_string(8, &self.binary_path)?;
+        }
+        for v in &self.args {
+            os.write_string(9, &v)?;
+        };
+        for v in &self.envs {
+            os.write_string(10, &v)?;
+        };
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -630,16 +444,6 @@ impl ::protobuf::Message for ComputeRequest {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
-                "package",
-                |m: &ComputeRequest| { &m.package },
-                |m: &mut ComputeRequest| { &mut m.package },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<PkgConfig>>(
-                "config",
-                |m: &ComputeRequest| { &m.config },
-                |m: &mut ComputeRequest| { &mut m.config },
-            ));
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
                 "stdout",
                 |m: &ComputeRequest| { &m.stdout },
@@ -670,6 +474,26 @@ impl ::protobuf::Message for ComputeRequest {
                 |m: &ComputeRequest| { &m.request_token },
                 |m: &mut ComputeRequest| { &mut m.request_token },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+                "package",
+                |m: &ComputeRequest| { &m.package },
+                |m: &mut ComputeRequest| { &mut m.package },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "binary_path",
+                |m: &ComputeRequest| { &m.binary_path },
+                |m: &mut ComputeRequest| { &mut m.binary_path },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "args",
+                |m: &ComputeRequest| { &m.args },
+                |m: &mut ComputeRequest| { &mut m.args },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "envs",
+                |m: &ComputeRequest| { &m.envs },
+                |m: &mut ComputeRequest| { &mut m.envs },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<ComputeRequest>(
                 "ComputeRequest",
                 fields,
@@ -686,14 +510,16 @@ impl ::protobuf::Message for ComputeRequest {
 
 impl ::protobuf::Clear for ComputeRequest {
     fn clear(&mut self) {
-        self.package.clear();
-        self.config.clear();
         self.stdout = false;
         self.stderr = false;
         self.files.clear();
         self.client_id.clear();
         self.storage = false;
         self.request_token.clear();
+        self.package.clear();
+        self.binary_path.clear();
+        self.args.clear();
+        self.envs.clear();
         self.unknown_fields.clear();
     }
 }
@@ -2970,45 +2796,43 @@ impl ::protobuf::reflect::ProtobufValue for MessageType {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\rrequest.proto\x12\x07request\"T\n\tPkgConfig\x12\x1f\n\x0bbinary_pat\
-    h\x18\x01\x20\x01(\tR\nbinaryPath\x12\x12\n\x04args\x18\x02\x20\x03(\tR\
-    \x04args\x12\x12\n\x04envs\x18\x03\x20\x03(\tR\x04envs\"\xf8\x01\n\x0eCo\
-    mputeRequest\x12\x18\n\x07package\x18\x01\x20\x01(\x0cR\x07package\x12*\
-    \n\x06config\x18\x02\x20\x01(\x0b2\x12.request.PkgConfigR\x06config\x12\
-    \x16\n\x06stdout\x18\x03\x20\x01(\x08R\x06stdout\x12\x16\n\x06stderr\x18\
-    \x04\x20\x01(\x08R\x06stderr\x12\x14\n\x05files\x18\x05\x20\x03(\tR\x05f\
-    iles\x12\x1b\n\tclient_id\x18\x06\x20\x01(\tR\x08clientId\x12\x18\n\x07s\
-    torage\x18\x07\x20\x01(\x08R\x07storage\x12#\n\rrequest_token\x18\x08\
-    \x20\x01(\tR\x0crequestToken\"\xb2\x01\n\rComputeResult\x12\x16\n\x06std\
-    out\x18\x01\x20\x01(\x0cR\x06stdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\
-    \x0cR\x06stderr\x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeRe\
-    sult.FilesEntryR\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\
-    \x028\x01\"\r\n\x0bPingRequest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\
-    \x12\x1a\n\x08blocking\x18\x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclien\
-    t_token\x18\x02\x20\x01(\tR\x0bclientToken\"k\n\nHostResult\x12\x0e\n\
-    \x02ip\x18\x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\
-    \x04port\x12\x14\n\x05found\x18\x03\x20\x01(\x08R\x05found\x12#\n\rreque\
-    st_token\x18\x04\x20\x01(\tR\x0crequestToken\"3\n\x0fRegisterRequest\x12\
-    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\
-    \x0cR\x03app\"3\n\x0eRegisterResult\x12!\n\x0cclient_token\x18\x01\x20\
-    \x01(\tR\x0bclientToken\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\
-    \x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01\
-    (\tR\x0bdescription\"S\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\
-    \x01(\tR\x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0creq\
-    uestToken\"W\n\rHostHeartbeat\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
-    \x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToke\
-    n\"x\n\x13HostRegisterRequest\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
-    \x0bserviceName\x12\x0e\n\x02ip\x18\x02\x20\x01(\tR\x02ip\x12\x12\n\x04p\
-    ort\x18\x03\x20\x01(\rR\x04port\x12\x1a\n\x08password\x18\x04\x20\x01(\t\
-    R\x08password*\x87\x02\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\
-    \n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\
-    \x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\
-    \n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\
-    \x10REGISTER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\
-    \x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\x10\n\x12\x12\n\x0eHO\
-    ST_HEARTBEAT\x10\x0b\x12\x19\n\x15HOST_REGISTER_REQUEST\x10\x0cb\x06prot\
-    o3\
+    \n\rrequest.proto\x12\x07request\"\x95\x02\n\x0eComputeRequest\x12\x16\n\
+    \x06stdout\x18\x01\x20\x01(\x08R\x06stdout\x12\x16\n\x06stderr\x18\x02\
+    \x20\x01(\x08R\x06stderr\x12\x14\n\x05files\x18\x03\x20\x03(\tR\x05files\
+    \x12\x1b\n\tclient_id\x18\x04\x20\x01(\tR\x08clientId\x12\x18\n\x07stora\
+    ge\x18\x05\x20\x01(\x08R\x07storage\x12#\n\rrequest_token\x18\x06\x20\
+    \x01(\tR\x0crequestToken\x12\x18\n\x07package\x18\x07\x20\x01(\x0cR\x07p\
+    ackage\x12\x1f\n\x0bbinary_path\x18\x08\x20\x01(\tR\nbinaryPath\x12\x12\
+    \n\x04args\x18\t\x20\x03(\tR\x04args\x12\x12\n\x04envs\x18\n\x20\x03(\tR\
+    \x04envs\"\xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\x18\x01\x20\x01(\
+    \x0cR\x06stdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\x0cR\x06stderr\x127\
+    \n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntryR\x05\
+    files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bPingRe\
+    quest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\x18\
+    \x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\x01(\t\
+    R\x0bclientToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01(\tR\
+    \x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05found\
+    \x18\x03\x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01(\t\
+    R\x0crequestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\
+    \x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eReg\
+    isterResult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\
+    \n\x0bNotifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceN\
+    ame\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNo\
+    tifyEnd\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\
+    \rrequest_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\
+    \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rreque\
+    st_token\x18\x02\x20\x01(\tR\x0crequestToken\"x\n\x13HostRegisterRequest\
+    \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x0e\n\x02\
+    ip\x18\x02\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x03\x20\x01(\rR\x04po\
+    rt\x12\x1a\n\x08password\x18\x04\x20\x01(\tR\x08password*\x87\x02\n\x0bM\
+    essageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\
+    \x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\
+    \x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\
+    \x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\
+    \x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\
+    \x12\x0e\n\nNOTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0b\x12\x19\
+    \n\x15HOST_REGISTER_REQUEST\x10\x0cb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

@@ -13,23 +13,25 @@ use super::Error;
 pub struct ComputeRequestBuilder {
     pub dirs: Vec<(String, String)>,
     pub files: Vec<(String, String)>,
-    pub config: protos::PkgConfig,
+    pub binary_path: String,
+    pub args: Vec<String>,
+    pub envs: Vec<String>,
 }
 
 impl ComputeRequestBuilder {
     pub fn new(binary_path: &str) -> ComputeRequestBuilder {
-        let mut config = protos::PkgConfig::default();
-        config.set_binary_path(binary_path.to_string());
         ComputeRequestBuilder {
             dirs: Vec::new(),
             files: Vec::new(),
-            config,
+            binary_path: binary_path.to_string(),
+            args: Vec::new(),
+            envs: Vec::new(),
         }
     }
 
     /// Arguments, not including the binary path
     pub fn args(mut self, args: Vec<&str>) -> ComputeRequestBuilder {
-        self.config.args = args
+        self.args = args
             .into_iter()
             .map(|arg| arg.to_string())
             .collect();
@@ -38,7 +40,7 @@ impl ComputeRequestBuilder {
 
     /// Environment variables in the format <ENV_VARIABLE>=<VALUE>
     pub fn envs(mut self, envs: Vec<&str>) -> ComputeRequestBuilder {
-        self.config.envs = envs
+        self.envs = envs
             .into_iter()
             .map(|env| env.to_string())
             .collect();
@@ -98,7 +100,9 @@ impl ComputeRequestBuilder {
         drop(tar);
         let mut req = protos::ComputeRequest::default();
         req.set_package(buffer);
-        req.set_config(self.config);
+        req.set_binary_path(self.binary_path);
+        req.set_args(self.args.into_iter().collect());
+        req.set_envs(self.envs.into_iter().collect());
         Ok(req)
     }
 }
@@ -197,10 +201,9 @@ mod test {
                 unreachable!()
             },
         };
-        let config = request.get_config();
-        assert_eq!(config.get_binary_path(), "python");
-        assert_eq!(config.get_args().to_vec(), vec!["run.py", "10"]);
-        assert_eq!(config.get_envs().to_vec(), vec!["VAR1=1", "VAR2=abc"]);
+        assert_eq!(request.get_binary_path(), "python");
+        assert_eq!(request.get_args().to_vec(), vec!["run.py", "10"]);
+        assert_eq!(request.get_envs().to_vec(), vec!["VAR1=1", "VAR2=abc"]);
     }
 
     #[test]

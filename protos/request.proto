@@ -18,21 +18,17 @@ enum MessageType {
   HOST_REGISTER_REQUEST = 12;
 }
 
-message PkgConfig {
-  string binary_path = 1;
-  repeated string args = 2;
-  repeated string envs = 3;
-}
-
 message ComputeRequest {
-  bytes package = 1;
-  PkgConfig config = 2;
-  bool stdout = 3;
-  bool stderr = 4;
-  repeated string files = 5;
-  string client_id = 6;
-  bool storage = 7;
-  string request_token = 8;
+  bool stdout = 1;
+  bool stderr = 2;
+  repeated string files = 3;
+  string client_id = 4;
+  bool storage = 5;
+  string request_token = 6;
+  bytes package = 7;
+  string binary_path = 8;
+  repeated string args = 9;
+  repeated string envs = 10;
 }
 
 message ComputeResult {
