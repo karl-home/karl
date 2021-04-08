@@ -13,7 +13,7 @@ use rocket_contrib::templates::Template;
 use reqwest::{self, header};
 
 use super::{RequestHeaders, HostHeader, SessionState, to_client_id};
-use crate::controller::Client;
+use crate::controller::types::Client;
 
 const SESSION_COOKIE: &str = "client_session";
 

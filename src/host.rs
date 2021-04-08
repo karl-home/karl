@@ -79,7 +79,10 @@ impl Host {
     }
 
     /// Spawns a background process that sends heartbeats to the controller
-    /// at the HEARTBEAT_INTERVAL and processes incoming connections.
+    /// at the HEARTBEAT_INTERVAL and processes incoming connections for
+    /// the following messages:
+    /// - PingRequest
+    /// - ComputeRequest
     ///
     /// The constructor creates a directory at the <KARL_PATH> if it does
     /// not already exist. The working directory for any computation is at

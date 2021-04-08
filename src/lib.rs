@@ -15,7 +15,7 @@ pub mod net;
 pub mod packet;
 pub mod runtime;
 pub mod common;
-mod controller;
+pub mod controller;
 mod host;
 pub mod hook;
 pub use controller::Controller;

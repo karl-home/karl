@@ -15,7 +15,7 @@ use tokio::runtime::Runtime;
 use serde::Serialize;
 
 use crate::common::ClientToken;
-use crate::controller::{Host, Client};
+use crate::controller::{HostScheduler, types::{Host, Client}};
 use helper::*;
 use cookie::SessionState;
 
@@ -42,7 +42,7 @@ fn index(
     base_domain: State<String>,
     karl_path: State<PathBuf>,
     cookies: Cookies,
-    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
+    hosts: State<Arc<Mutex<HostScheduler>>>,
     clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
     sessions: State<Arc<Mutex<SessionState>>>,
 ) -> Option<Template> {
@@ -51,8 +51,7 @@ fn index(
         None => Some(Template::render("index", &MainContext {
             title: "Hello",
             base_domain: base_domain.to_string(),
-            hosts: hosts.lock().unwrap().values().map(
-                |host| host.clone()).collect(),
+            hosts: hosts.lock().unwrap().hosts(),
             clients: clients.lock().unwrap().values().map(
                 |client| client.clone()).collect(),
         })),
@@ -65,23 +64,13 @@ fn confirm_host(
     host_header: HostHeader,
     base_domain: State<String>,
     service_name: String,
-    hosts: State<Arc<Mutex<HashMap<String, Host>>>>,
+    hosts: State<Arc<Mutex<HostScheduler>>>,
 ) {
     if to_client_id(&host_header, base_domain.to_string()).is_some() {
         // Confirm must be to the base domain only.
         return;
     }
-    let mut hosts = hosts.lock().unwrap();
-    if let Some(host) = hosts.get_mut(&service_name) {
-        if host.confirmed {
-            warn!("attempted to confirm already confirmed host: {:?}", service_name);
-        } else {
-            info!("confirmed host {:?}", service_name);
-            host.confirmed = true;
-        }
-    } else {
-        warn!("attempted to confirm nonexistent host: {:?}", service_name);
-    }
+    hosts.lock().unwrap().confirm_host(&service_name);
 }
 
 // TODO: authenticate this request. Only the homeowner can call this.
@@ -132,7 +121,7 @@ fn confirm_client(
 pub fn start(
     rt: &mut Runtime,
     karl_path: PathBuf,
-    hosts: Arc<Mutex<HashMap<String, Host>>>,
+    hosts: Arc<Mutex<HostScheduler>>,
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
 ) {
     let base_domain = "karl.zapto.org".to_string();
