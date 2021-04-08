@@ -5,6 +5,8 @@ use crate::common::RequestToken;
 
 /// Self-assigned string ID uniquely identifying a host.
 pub type HostID = String;
+/// Self-assigned string ID uniquely identifying a sensor.
+pub type SensorID = String;
 
 /// Host status and information.
 #[derive(Debug, Clone)]

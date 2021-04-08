@@ -1,6 +1,8 @@
 pub mod types;
 mod scheduler;
+mod data;
 pub use scheduler::HostScheduler;
+pub use data::DataSink;
 use types::*;
 
 use std::collections::{HashSet, HashMap};
@@ -27,6 +29,8 @@ pub struct Controller {
     karl_path: PathBuf,
     /// Data structure for adding and allocating hosts
     scheduler: Arc<Mutex<HostScheduler>>,
+    /// Data structure for managing sensor data.
+    data_sink: Arc<Mutex<DataSink>>,
     /// Map from client token to client.
     ///
     /// Unique identifier for the client, known only by the controller
@@ -47,8 +51,9 @@ impl Controller {
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
         Controller {
             rt: Runtime::new().unwrap(),
-            karl_path,
+            karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
+            data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
             clients: Arc::new(Mutex::new(HashMap::new())),
             hooks: HashMap::new(),
             autoconfirm,
