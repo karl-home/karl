@@ -1,5 +1,5 @@
 use std::fs;
-use std::time::SystemTime;
+use std::time::Duration;
 use std::path::{Path, PathBuf};
 use bincode;
 use serde::{Serialize, Deserialize};
@@ -18,7 +18,7 @@ pub struct FileACL {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum HookSchedule {
-    Daily(SystemTime),
+    Interval(Duration),
     WatchFile(PathBuf),
 }
 
@@ -38,7 +38,7 @@ pub struct Hook {
 impl Hook {
     pub fn new(
         global_hook_id: StringID,
-        watched_file: &str,
+        schedule: HookSchedule,
         network_perm: Vec<DomainName>,
         file_perm: Vec<FileACL>,
         package: Vec<u8>,
@@ -46,12 +46,11 @@ impl Hook {
         args: Vec<String>,
         envs: Vec<(String, String)>,
     ) -> Self {
-        let watched_file = Path::new(watched_file).to_path_buf();
         let binary_path = Path::new(binary_path).to_path_buf();
         Self {
             confirmed: false,
             global_hook_id,
-            schedule: HookSchedule::WatchFile(watched_file),
+            schedule,
             network_perm,
             file_perm,
             package,

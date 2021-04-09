@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use bincode;
 use regex::Regex;
-use karl::hook::{Hook, FileACL, HOOK_STORE_PATH};
+use karl::hook::{Hook, HookSchedule, FileACL, HOOK_STORE_PATH};
 use karl::common::TarBuilder;
 
 fn read_nonempty_line() -> String {
@@ -139,8 +139,20 @@ fn main() {
     let (binary_path, args) = read_invoke_command();
     println!("Environment variables (one per line):");
     let envs = read_envs();
-    println!("Watched file (the hook spawns a process when this file is modified):");
-    let watched_file = read_nonempty_line();
+    println!("Interval (i) or watch file (w)?:");
+    let schedule = loop {
+        let line = read_nonempty_line();
+        if line == "i".to_string() {
+            println!("Time (spawned at this interval, in seconds):");
+            let secs: usize = read_nonempty_line().parse().unwrap();
+            let duration = std::time::Duration::from_secs(secs as _);
+            break HookSchedule::Interval(duration);
+        } else if line == "w".to_string() {
+            println!("File path (spawned when this file is modified):");
+            let path = read_nonempty_line();
+            break HookSchedule::WatchFile(Path::new(&path).to_path_buf());
+        }
+    };
     println!("Permitted network domains (one per line):");
     let network_perm = read_network_perm();
     println!("Permitted file ACLs (one per line):");
@@ -150,7 +162,7 @@ fn main() {
     let package = handle.join().expect("failed to build tar");
     let hook = Hook::new(
         global_hook_id,
-        &watched_file,
+        schedule,
         network_perm,
         file_perm,
         package,
