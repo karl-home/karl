@@ -1,28 +1,29 @@
 use std::fs;
-use std::time::Duration;
 use std::path::{Path, PathBuf};
 use bincode;
 use serde::{Serialize, Deserialize};
+use tokio::time::Duration;
 use crate::common::{StringID, Error};
+use crate::protos::ComputeRequest;
 
 pub const HOOK_STORE_PATH: &str = "hooks";
 
 pub type DomainName = String;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct FileACL {
     pub path: PathBuf,
     pub read: bool,
     pub write: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HookSchedule {
     Interval(Duration),
     WatchFile(PathBuf),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Hook {
     confirmed: bool,
     pub global_hook_id: StringID,
@@ -33,6 +34,16 @@ pub struct Hook {
     pub binary_path: PathBuf,
     pub args: Vec<String>,
     pub envs: Vec<(String, String)>,
+}
+
+impl FileACL {
+    pub fn new(path: &str, read: bool, write: bool) -> Self {
+        Self {
+            path: Path::new(path).to_path_buf(),
+            read,
+            write,
+        }
+    }
 }
 
 impl Hook {
@@ -60,7 +71,7 @@ impl Hook {
         }
     }
 
-    pub fn import(global_hook_id: StringID) -> Result<Self, Error> {
+    pub fn import(global_hook_id: &StringID) -> Result<Self, Error> {
         let path = Path::new(HOOK_STORE_PATH).join(global_hook_id);
         let bytes = fs::read(path)?;
         debug!("read {} bytes", bytes.len());
@@ -88,6 +99,11 @@ impl Hook {
     pub fn confirm(&mut self) {
         self.confirmed = true;
     }
+
+    pub fn to_compute_request(&self) -> ComputeRequest {
+        // TODO: unimplemented!()
+        ComputeRequest::default()
+    }
 }
 
 #[cfg(test)]
@@ -96,14 +112,14 @@ mod test {
 
     #[test]
     fn test_hooks_can_be_deserialized() {
-        Hook::import("person-detection".to_string()).unwrap();
-        Hook::import("speech-to-text".to_string()).unwrap();
-        Hook::import("bulb-intensity".to_string()).unwrap();
-        Hook::import("announcement".to_string()).unwrap();
-        Hook::import("livestream".to_string()).unwrap();
-        Hook::import("firmware-update".to_string()).unwrap();
-        Hook::import("search-engine".to_string()).unwrap();
-        Hook::import("bug-report".to_string()).unwrap();
-        Hook::import("bulb-integration".to_string()).unwrap();
+        Hook::import(&"person-detection".to_string()).unwrap();
+        Hook::import(&"speech-to-text".to_string()).unwrap();
+        Hook::import(&"bulb-intensity".to_string()).unwrap();
+        Hook::import(&"announcement".to_string()).unwrap();
+        Hook::import(&"livestream".to_string()).unwrap();
+        Hook::import(&"firmware-update".to_string()).unwrap();
+        Hook::import(&"search-engine".to_string()).unwrap();
+        Hook::import(&"bug-report".to_string()).unwrap();
+        Hook::import(&"bulb-integration".to_string()).unwrap();
     }
 }

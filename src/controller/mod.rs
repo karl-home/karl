@@ -2,9 +2,11 @@ pub mod types;
 mod scheduler;
 mod data;
 mod audit;
+mod runner;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
 pub use audit::{AuditLog, LogEntry, LogEntryType};
+pub use runner::HookRunner;
 use types::*;
 
 use std::collections::{HashSet, HashMap};
@@ -20,9 +22,8 @@ use tokio::runtime::Runtime;
 use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
-use crate::hook::{Hook, FileACL, DomainName};
 use crate::protos::{self, MessageType};
-use crate::common::{Error, Token, ClientToken, StringID};
+use crate::common::{Error, Token, ClientToken};
 
 /// Controller used for discovering available Karl services and coordinating
 /// client requests among available services.
@@ -33,6 +34,8 @@ pub struct Controller {
     scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
     data_sink: Arc<Mutex<DataSink>>,
+    /// Data structure for queueing and spawning processes from hooks.
+    runner: HookRunner,
     /// Audit log indexed by process ID and path accessed.
     audit_log: Arc<Mutex<AuditLog>>,
     /// Map from client token to client.
@@ -41,8 +44,6 @@ pub struct Controller {
     /// and the client itself. Generated on registration. All host
     /// requests from the client to the controller must include this token.
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
-    /// Registered hooks and their local hook IDs.
-    hooks: HashMap<HookID, Hook>,
     /// Whether to automatically confirm clients and hosts.
     autoconfirm: bool,
 }
@@ -53,14 +54,15 @@ impl Controller {
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and client requests.
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
+        let scheduler = Arc::new(Mutex::new(HostScheduler::new(password)));
         Controller {
             rt: Runtime::new().unwrap(),
             karl_path: karl_path.clone(),
-            scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
+            scheduler: scheduler.clone(),
             data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
+            runner: HookRunner::new(scheduler),
             audit_log: Arc::new(Mutex::new(AuditLog::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
-            hooks: HashMap::new(),
             autoconfirm,
         }
     }
@@ -122,6 +124,8 @@ impl Controller {
             self.scheduler.clone(),
             self.clients.clone(),
         );
+        // Start the hook runner.
+        self.runner.start(false);
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         info!("Karl controller listening on port {}", listener.local_addr()?.port());
         for stream in listener.incoming() {
@@ -386,36 +390,6 @@ impl Controller {
         let mut res = protos::RegisterResult::default();
         res.set_client_token(token.0);
         res
-    }
-
-    /// Register a hook.
-    ///
-    /// Parameters:
-    /// - global_hook_id - The ID of the hook from the global hook repository.
-    /// - network_perm - Requested network permissions.
-    /// - file_perm - Requested file permissions.
-    /// - envs - Requested environment variables / configuration.
-    fn register_hook(
-        &mut self,
-        global_hook_id: StringID,
-        network_perm: Vec<DomainName>,
-        file_perm: Vec<FileACL>,
-        envs: Vec<(String, String)>,
-    ) -> Result<(), Error> {
-        use rand::Rng;
-        loop {
-            let id: u32 = rand::thread_rng().gen();
-            let hook_id = format!("{}-{}", global_hook_id, id);
-            if !self.hooks.contains_key(&hook_id) {
-                let hook = Hook::import(global_hook_id)?
-                    .set_network_perm(network_perm)
-                    .set_file_perm(file_perm)
-                    .set_envs(envs);
-                self.hooks.insert(hook_id, hook);
-                break;
-            }
-        }
-        Ok(())
     }
 }
 
