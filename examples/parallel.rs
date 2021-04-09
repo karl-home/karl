@@ -40,7 +40,7 @@ fn send_all(controller: &str, n: usize) -> Result<(), Error> {
     let mut handles = vec![];
     let start = Instant::now();
     let now = Instant::now();
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     let mut requests = vec![];
     for _ in 0..n {
         let request = gen_request();
