@@ -16,6 +16,36 @@ enum MessageType {
   NOTIFY_END = 10;
   HOST_HEARTBEAT = 11;
   HOST_REGISTER_REQUEST = 12;
+  PUT_DATA = 13;
+  GET_DATA = 14;
+  GET_DATA_RESULT = 15;
+  DELETE_DATA = 16;
+  NETWORK_ACCESS = 17;
+}
+
+message PutData {
+  uint32 process_id = 1;
+  string path = 2;
+  bytes data = 3;
+}
+
+message GetData {
+  uint32 process_id = 1;
+  string path = 2;
+}
+
+message DeleteData {
+  uint32 process_id = 1;
+  string path = 2;
+}
+
+message GetDataResult {
+  bytes data = 1;
+}
+
+message NetworkAccess {
+  uint32 process_id = 1;
+  string domain = 2;
 }
 
 message ComputeRequest {

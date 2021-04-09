@@ -1,8 +1,10 @@
 pub mod types;
 mod scheduler;
 mod data;
+mod audit;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
+pub use audit::{AuditLog, LogEntry, LogEntryType};
 use types::*;
 
 use std::collections::{HashSet, HashMap};
@@ -31,6 +33,8 @@ pub struct Controller {
     scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
     data_sink: Arc<Mutex<DataSink>>,
+    /// Audit log indexed by process ID and path accessed.
+    audit_log: Arc<Mutex<AuditLog>>,
     /// Map from client token to client.
     ///
     /// Unique identifier for the client, known only by the controller
@@ -38,7 +42,7 @@ pub struct Controller {
     /// requests from the client to the controller must include this token.
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     /// Registered hooks and their local hook IDs.
-    hooks: HashMap<StringID, Hook>,
+    hooks: HashMap<HookID, Hook>,
     /// Whether to automatically confirm clients and hosts.
     autoconfirm: bool,
 }
@@ -54,6 +58,7 @@ impl Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
             data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
+            audit_log: Arc::new(Mutex::new(AuditLog::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             hooks: HashMap::new(),
             autoconfirm,

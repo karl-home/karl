@@ -7,6 +7,12 @@ use crate::common::RequestToken;
 pub type HostID = String;
 /// Self-assigned string ID uniquely identifying a sensor.
 pub type SensorID = String;
+/// ID uniquely identifying a host, assigned by the controller
+/// in incrementing order starting at 0.
+pub type ProcessID = u32;
+/// String ID uniquely identifying a hook, assigned by the controller
+/// on registration based on the global hook ID, and verified by a user.
+pub type HookID = String;
 
 /// Host status and information.
 #[derive(Debug, Clone)]
