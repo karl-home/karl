@@ -17,7 +17,6 @@ use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
-use tokio::runtime::Runtime;
 use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
@@ -28,7 +27,6 @@ use crate::common::{Error, Token, ClientToken};
 /// Controller used for discovering available Karl services and coordinating
 /// client requests among available services.
 pub struct Controller {
-    pub rt: Runtime,
     karl_path: PathBuf,
     /// Data structure for adding and allocating hosts
     scheduler: Arc<Mutex<HostScheduler>>,
@@ -56,7 +54,6 @@ impl Controller {
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
         let scheduler = Arc::new(Mutex::new(HostScheduler::new(password)));
         Controller {
-            rt: Runtime::new().unwrap(),
             karl_path: karl_path.clone(),
             scheduler: scheduler.clone(),
             data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
@@ -119,7 +116,6 @@ impl Controller {
 
         // Start the dashboard.
         dashboard::start(
-            &mut self.rt,
             self.karl_path.clone(),
             self.scheduler.clone(),
             self.clients.clone(),

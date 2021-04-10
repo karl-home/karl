@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 
-use tokio::runtime::Runtime;
+use tokio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
@@ -27,7 +27,6 @@ pub struct Host {
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
     port: u16,
-    rt: Runtime,
     /// Controller address.
     controller: String,
     /// Request token, or none if the host is processing a ComputeRequest.
@@ -72,7 +71,6 @@ impl Host {
             karl_path,
             base_path,
             port,
-            rt: Runtime::new().unwrap(),
             controller: controller.to_string(),
             token: Arc::new(Mutex::new((Some(Token::gen()), Instant::now()))),
         }
@@ -106,7 +104,7 @@ impl Host {
         let token_lock = self.token.clone();
         let controller_addr = self.controller.clone();
         let host_id = self.id.clone();
-        self.rt.spawn(async move {
+        tokio::spawn(async move {
             // Every HEARTBEAT_INTERVAL seconds, this process wakes up
             // sends a heartbeat message to the controller.
             //

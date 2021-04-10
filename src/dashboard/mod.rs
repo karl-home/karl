@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 
+use tokio;
 use rocket::{self, http::Cookies, State};
 use rocket_contrib::templates::Template;
-use tokio::runtime::Runtime;
 use serde::Serialize;
 
 use crate::common::ClientToken;
@@ -119,14 +119,13 @@ fn confirm_client(
 }
 
 pub fn start(
-    rt: &mut Runtime,
     karl_path: PathBuf,
     hosts: Arc<Mutex<HostScheduler>>,
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
 ) {
     let base_domain = "karl.zapto.org".to_string();
     let sessions = Arc::new(Mutex::new(SessionState::new()));
-    rt.spawn(async move {
+    tokio::spawn(async move {
         rocket::ignite()
         .manage(karl_path)
         .manage(base_domain)
