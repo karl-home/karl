@@ -1001,15 +1001,244 @@ impl ::protobuf::reflect::ProtobufValue for NetworkAccess {
 }
 
 #[derive(PartialEq,Clone,Default)]
+pub struct FileACL {
+    // message fields
+    pub path: ::std::string::String,
+    pub read: bool,
+    pub write: bool,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a FileACL {
+    fn default() -> &'a FileACL {
+        <FileACL as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FileACL {
+    pub fn new() -> FileACL {
+        ::std::default::Default::default()
+    }
+
+    // string path = 1;
+
+
+    pub fn get_path(&self) -> &str {
+        &self.path
+    }
+    pub fn clear_path(&mut self) {
+        self.path.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_path(&mut self, v: ::std::string::String) {
+        self.path = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_path(&mut self) -> &mut ::std::string::String {
+        &mut self.path
+    }
+
+    // Take field
+    pub fn take_path(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.path, ::std::string::String::new())
+    }
+
+    // bool read = 2;
+
+
+    pub fn get_read(&self) -> bool {
+        self.read
+    }
+    pub fn clear_read(&mut self) {
+        self.read = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_read(&mut self, v: bool) {
+        self.read = v;
+    }
+
+    // bool write = 3;
+
+
+    pub fn get_write(&self) -> bool {
+        self.write
+    }
+    pub fn clear_write(&mut self) {
+        self.write = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_write(&mut self, v: bool) {
+        self.write = v;
+    }
+}
+
+impl ::protobuf::Message for FileACL {
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.path)?;
+                },
+                2 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.read = tmp;
+                },
+                3 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.write = tmp;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if !self.path.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.path);
+        }
+        if self.read != false {
+            my_size += 2;
+        }
+        if self.write != false {
+            my_size += 2;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if !self.path.is_empty() {
+            os.write_string(1, &self.path)?;
+        }
+        if self.read != false {
+            os.write_bool(2, self.read)?;
+        }
+        if self.write != false {
+            os.write_bool(3, self.write)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> FileACL {
+        FileACL::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "path",
+                |m: &FileACL| { &m.path },
+                |m: &mut FileACL| { &mut m.path },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "read",
+                |m: &FileACL| { &m.read },
+                |m: &mut FileACL| { &mut m.read },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "write",
+                |m: &FileACL| { &m.write },
+                |m: &mut FileACL| { &mut m.write },
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<FileACL>(
+                "FileACL",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static FileACL {
+        static instance: ::protobuf::rt::LazyV2<FileACL> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(FileACL::new)
+    }
+}
+
+impl ::protobuf::Clear for FileACL {
+    fn clear(&mut self) {
+        self.path.clear();
+        self.read = false;
+        self.write = false;
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for FileACL {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FileACL {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
 pub struct ComputeRequest {
     // message fields
-    pub client_id: ::std::string::String,
-    pub storage: bool,
     pub request_token: ::std::string::String,
     pub package: ::std::vec::Vec<u8>,
     pub binary_path: ::std::string::String,
     pub args: ::protobuf::RepeatedField<::std::string::String>,
     pub envs: ::protobuf::RepeatedField<::std::string::String>,
+    pub file_perm: ::protobuf::RepeatedField<FileACL>,
+    pub network_perm: ::protobuf::RepeatedField<::std::string::String>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1026,48 +1255,7 @@ impl ComputeRequest {
         ::std::default::Default::default()
     }
 
-    // string client_id = 1;
-
-
-    pub fn get_client_id(&self) -> &str {
-        &self.client_id
-    }
-    pub fn clear_client_id(&mut self) {
-        self.client_id.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_client_id(&mut self, v: ::std::string::String) {
-        self.client_id = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_client_id(&mut self) -> &mut ::std::string::String {
-        &mut self.client_id
-    }
-
-    // Take field
-    pub fn take_client_id(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.client_id, ::std::string::String::new())
-    }
-
-    // bool storage = 2;
-
-
-    pub fn get_storage(&self) -> bool {
-        self.storage
-    }
-    pub fn clear_storage(&mut self) {
-        self.storage = false;
-    }
-
-    // Param is passed by value, moved
-    pub fn set_storage(&mut self, v: bool) {
-        self.storage = v;
-    }
-
-    // string request_token = 3;
+    // string request_token = 1;
 
 
     pub fn get_request_token(&self) -> &str {
@@ -1093,7 +1281,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
     }
 
-    // bytes package = 4;
+    // bytes package = 2;
 
 
     pub fn get_package(&self) -> &[u8] {
@@ -1119,7 +1307,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.package, ::std::vec::Vec::new())
     }
 
-    // string binary_path = 5;
+    // string binary_path = 3;
 
 
     pub fn get_binary_path(&self) -> &str {
@@ -1145,7 +1333,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.binary_path, ::std::string::String::new())
     }
 
-    // repeated string args = 6;
+    // repeated string args = 4;
 
 
     pub fn get_args(&self) -> &[::std::string::String] {
@@ -1170,7 +1358,7 @@ impl ComputeRequest {
         ::std::mem::replace(&mut self.args, ::protobuf::RepeatedField::new())
     }
 
-    // repeated string envs = 7;
+    // repeated string envs = 5;
 
 
     pub fn get_envs(&self) -> &[::std::string::String] {
@@ -1194,10 +1382,65 @@ impl ComputeRequest {
     pub fn take_envs(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
         ::std::mem::replace(&mut self.envs, ::protobuf::RepeatedField::new())
     }
+
+    // repeated .request.FileACL file_perm = 6;
+
+
+    pub fn get_file_perm(&self) -> &[FileACL] {
+        &self.file_perm
+    }
+    pub fn clear_file_perm(&mut self) {
+        self.file_perm.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_file_perm(&mut self, v: ::protobuf::RepeatedField<FileACL>) {
+        self.file_perm = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_file_perm(&mut self) -> &mut ::protobuf::RepeatedField<FileACL> {
+        &mut self.file_perm
+    }
+
+    // Take field
+    pub fn take_file_perm(&mut self) -> ::protobuf::RepeatedField<FileACL> {
+        ::std::mem::replace(&mut self.file_perm, ::protobuf::RepeatedField::new())
+    }
+
+    // repeated string network_perm = 7;
+
+
+    pub fn get_network_perm(&self) -> &[::std::string::String] {
+        &self.network_perm
+    }
+    pub fn clear_network_perm(&mut self) {
+        self.network_perm.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_network_perm(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.network_perm = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_network_perm(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.network_perm
+    }
+
+    // Take field
+    pub fn take_network_perm(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.network_perm, ::protobuf::RepeatedField::new())
+    }
 }
 
 impl ::protobuf::Message for ComputeRequest {
     fn is_initialized(&self) -> bool {
+        for v in &self.file_perm {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
         true
     }
 
@@ -1206,29 +1449,25 @@ impl ::protobuf::Message for ComputeRequest {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_id)?;
-                },
-                2 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_bool()?;
-                    self.storage = tmp;
-                },
-                3 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
                 },
-                4 => {
+                2 => {
                     ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.package)?;
                 },
-                5 => {
+                3 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.binary_path)?;
                 },
-                6 => {
+                4 => {
                     ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.args)?;
                 },
-                7 => {
+                5 => {
                     ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.envs)?;
+                },
+                6 => {
+                    ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.file_perm)?;
+                },
+                7 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.network_perm)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -1242,25 +1481,26 @@ impl ::protobuf::Message for ComputeRequest {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.client_id.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.client_id);
-        }
-        if self.storage != false {
-            my_size += 2;
-        }
         if !self.request_token.is_empty() {
-            my_size += ::protobuf::rt::string_size(3, &self.request_token);
+            my_size += ::protobuf::rt::string_size(1, &self.request_token);
         }
         if !self.package.is_empty() {
-            my_size += ::protobuf::rt::bytes_size(4, &self.package);
+            my_size += ::protobuf::rt::bytes_size(2, &self.package);
         }
         if !self.binary_path.is_empty() {
-            my_size += ::protobuf::rt::string_size(5, &self.binary_path);
+            my_size += ::protobuf::rt::string_size(3, &self.binary_path);
         }
         for value in &self.args {
-            my_size += ::protobuf::rt::string_size(6, &value);
+            my_size += ::protobuf::rt::string_size(4, &value);
         };
         for value in &self.envs {
+            my_size += ::protobuf::rt::string_size(5, &value);
+        };
+        for value in &self.file_perm {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        };
+        for value in &self.network_perm {
             my_size += ::protobuf::rt::string_size(7, &value);
         };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
@@ -1269,25 +1509,27 @@ impl ::protobuf::Message for ComputeRequest {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.client_id.is_empty() {
-            os.write_string(1, &self.client_id)?;
-        }
-        if self.storage != false {
-            os.write_bool(2, self.storage)?;
-        }
         if !self.request_token.is_empty() {
-            os.write_string(3, &self.request_token)?;
+            os.write_string(1, &self.request_token)?;
         }
         if !self.package.is_empty() {
-            os.write_bytes(4, &self.package)?;
+            os.write_bytes(2, &self.package)?;
         }
         if !self.binary_path.is_empty() {
-            os.write_string(5, &self.binary_path)?;
+            os.write_string(3, &self.binary_path)?;
         }
         for v in &self.args {
-            os.write_string(6, &v)?;
+            os.write_string(4, &v)?;
         };
         for v in &self.envs {
+            os.write_string(5, &v)?;
+        };
+        for v in &self.file_perm {
+            os.write_tag(6, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
+        };
+        for v in &self.network_perm {
             os.write_string(7, &v)?;
         };
         os.write_unknown_fields(self.get_unknown_fields())?;
@@ -1329,16 +1571,6 @@ impl ::protobuf::Message for ComputeRequest {
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "client_id",
-                |m: &ComputeRequest| { &m.client_id },
-                |m: &mut ComputeRequest| { &mut m.client_id },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
-                "storage",
-                |m: &ComputeRequest| { &m.storage },
-                |m: &mut ComputeRequest| { &mut m.storage },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                 "request_token",
                 |m: &ComputeRequest| { &m.request_token },
                 |m: &mut ComputeRequest| { &mut m.request_token },
@@ -1363,6 +1595,16 @@ impl ::protobuf::Message for ComputeRequest {
                 |m: &ComputeRequest| { &m.envs },
                 |m: &mut ComputeRequest| { &mut m.envs },
             ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<FileACL>>(
+                "file_perm",
+                |m: &ComputeRequest| { &m.file_perm },
+                |m: &mut ComputeRequest| { &mut m.file_perm },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "network_perm",
+                |m: &ComputeRequest| { &m.network_perm },
+                |m: &mut ComputeRequest| { &mut m.network_perm },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<ComputeRequest>(
                 "ComputeRequest",
                 fields,
@@ -1379,13 +1621,13 @@ impl ::protobuf::Message for ComputeRequest {
 
 impl ::protobuf::Clear for ComputeRequest {
     fn clear(&mut self) {
-        self.client_id.clear();
-        self.storage = false;
         self.request_token.clear();
         self.package.clear();
         self.binary_path.clear();
         self.args.clear();
         self.envs.clear();
+        self.file_perm.clear();
+        self.network_perm.clear();
         self.unknown_fields.clear();
     }
 }
@@ -3685,44 +3927,46 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x20\x01(\rR\tprocessId\x12\x12\n\x04path\x18\x02\x20\x01(\tR\x04pat\
     h\"#\n\rGetDataResult\x12\x12\n\x04data\x18\x01\x20\x01(\x0cR\x04data\"F\
     \n\rNetworkAccess\x12\x1d\n\nprocess_id\x18\x01\x20\x01(\rR\tprocessId\
-    \x12\x16\n\x06domain\x18\x02\x20\x01(\tR\x06domain\"\xcf\x01\n\x0eComput\
-    eRequest\x12\x1b\n\tclient_id\x18\x01\x20\x01(\tR\x08clientId\x12\x18\n\
-    \x07storage\x18\x02\x20\x01(\x08R\x07storage\x12#\n\rrequest_token\x18\
-    \x03\x20\x01(\tR\x0crequestToken\x12\x18\n\x07package\x18\x04\x20\x01(\
-    \x0cR\x07package\x12\x1f\n\x0bbinary_path\x18\x05\x20\x01(\tR\nbinaryPat\
-    h\x12\x12\n\x04args\x18\x06\x20\x03(\tR\x04args\x12\x12\n\x04envs\x18\
-    \x07\x20\x03(\tR\x04envs\"\xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\
-    \x18\x01\x20\x01(\x0cR\x06stdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\
-    \x0cR\x06stderr\x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeRe\
-    sult.FilesEntryR\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\
-    \x028\x01\"\r\n\x0bPingRequest\"\x0c\n\nPingResult\"L\n\x0bHostRequest\
-    \x12\x1a\n\x08blocking\x18\x01\x20\x01(\x08R\x08blocking\x12!\n\x0cclien\
-    t_token\x18\x02\x20\x01(\tR\x0bclientToken\"k\n\nHostResult\x12\x0e\n\
-    \x02ip\x18\x01\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x02\x20\x01(\rR\
-    \x04port\x12\x14\n\x05found\x18\x03\x20\x01(\x08R\x05found\x12#\n\rreque\
-    st_token\x18\x04\x20\x01(\tR\x0crequestToken\"3\n\x0fRegisterRequest\x12\
-    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\x18\x02\x20\x01(\
-    \x0cR\x03app\"3\n\x0eRegisterResult\x12!\n\x0cclient_token\x18\x01\x20\
-    \x01(\tR\x0bclientToken\"R\n\x0bNotifyStart\x12!\n\x0cservice_name\x18\
-    \x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescription\x18\x02\x20\x01\
-    (\tR\x0bdescription\"S\n\tNotifyEnd\x12!\n\x0cservice_name\x18\x01\x20\
-    \x01(\tR\x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0creq\
-    uestToken\"W\n\rHostHeartbeat\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
-    \x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\x01(\tR\x0crequestToke\
-    n\"x\n\x13HostRegisterRequest\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\
-    \x0bserviceName\x12\x0e\n\x02ip\x18\x02\x20\x01(\tR\x02ip\x12\x12\n\x04p\
-    ort\x18\x03\x20\x01(\rR\x04port\x12\x1a\n\x08password\x18\x04\x20\x01(\t\
-    R\x08password*\xdd\x02\n\x0bMessageType\x12\r\n\tRAW_BYTES\x10\0\x12\x10\
-    \n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\x10\x02\x12\x13\n\
-    \x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESULT\x10\x04\x12\x10\
-    \n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\x0bHOST_RESULT\x10\x06\x12\x14\n\
-    \x10REGISTER_REQUEST\x10\x07\x12\x13\n\x0fREGISTER_RESULT\x10\x08\x12\
-    \x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nNOTIFY_END\x10\n\x12\x12\n\x0eHO\
-    ST_HEARTBEAT\x10\x0b\x12\x19\n\x15HOST_REGISTER_REQUEST\x10\x0c\x12\x0c\
-    \n\x08PUT_DATA\x10\r\x12\x0c\n\x08GET_DATA\x10\x0e\x12\x13\n\x0fGET_DATA\
-    _RESULT\x10\x0f\x12\x0f\n\x0bDELETE_DATA\x10\x10\x12\x12\n\x0eNETWORK_AC\
-    CESS\x10\x11b\x06proto3\
+    \x12\x16\n\x06domain\x18\x02\x20\x01(\tR\x06domain\"G\n\x07FileACL\x12\
+    \x12\n\x04path\x18\x01\x20\x01(\tR\x04path\x12\x12\n\x04read\x18\x02\x20\
+    \x01(\x08R\x04read\x12\x14\n\x05write\x18\x03\x20\x01(\x08R\x05write\"\
+    \xea\x01\n\x0eComputeRequest\x12#\n\rrequest_token\x18\x01\x20\x01(\tR\
+    \x0crequestToken\x12\x18\n\x07package\x18\x02\x20\x01(\x0cR\x07package\
+    \x12\x1f\n\x0bbinary_path\x18\x03\x20\x01(\tR\nbinaryPath\x12\x12\n\x04a\
+    rgs\x18\x04\x20\x03(\tR\x04args\x12\x12\n\x04envs\x18\x05\x20\x03(\tR\
+    \x04envs\x12-\n\tfile_perm\x18\x06\x20\x03(\x0b2\x10.request.FileACLR\
+    \x08filePerm\x12!\n\x0cnetwork_perm\x18\x07\x20\x03(\tR\x0bnetworkPerm\"\
+    \xb2\x01\n\rComputeResult\x12\x16\n\x06stdout\x18\x01\x20\x01(\x0cR\x06s\
+    tdout\x12\x16\n\x06stderr\x18\x02\x20\x01(\x0cR\x06stderr\x127\n\x05file\
+    s\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntryR\x05files\x1a8\
+    \n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05\
+    value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bPingRequest\"\
+    \x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\x18\x01\x20\
+    \x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\x01(\tR\x0bcli\
+    entToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\
+    \x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05found\x18\x03\
+    \x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01(\tR\x0creq\
+    uestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
+    \x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eRegisterRes\
+    ult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\n\x0bNo\
+    tifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\
+    \x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNotifyEnd\
+    \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rreque\
+    st_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\x12!\n\
+    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rrequest_toke\
+    n\x18\x02\x20\x01(\tR\x0crequestToken\"x\n\x13HostRegisterRequest\x12!\n\
+    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x0e\n\x02ip\x18\
+    \x02\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x03\x20\x01(\rR\x04port\x12\
+    \x1a\n\x08password\x18\x04\x20\x01(\tR\x08password*\xdd\x02\n\x0bMessage\
+    Type\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\
+    \n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\
+    \x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\
+    \x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\
+    \x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nN\
+    OTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0b\x12\x19\n\x15HOST_RE\
+    GISTER_REQUEST\x10\x0c\x12\x0c\n\x08PUT_DATA\x10\r\x12\x0c\n\x08GET_DATA\
+    \x10\x0e\x12\x13\n\x0fGET_DATA_RESULT\x10\x0f\x12\x0f\n\x0bDELETE_DATA\
+    \x10\x10\x12\x12\n\x0eNETWORK_ACCESS\x10\x11b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

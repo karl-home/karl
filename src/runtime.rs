@@ -31,6 +31,7 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     cmd.output().expect("failed to run process")
 }
 
+/*
 /// Adds a symlink `storage` to the root path and links to a directory
 /// containing the particularly client's persistent storage.
 ///
@@ -64,7 +65,7 @@ fn symlink_storage(
     std::os::unix::fs::symlink(storage_path, target_path).map_err(|e|
         Error::StorageError(format!("{:?}", e)))?;
     Ok(())
-}
+}*/
 
 /// Run the compute request with the native backend.
 ///
@@ -78,17 +79,12 @@ fn symlink_storage(
 ///   The path to the computation root should be a directory within the service
 ///   base path, and should exist. The computation root contains the unpacked
 ///   and decompressed bytes of the compute request.
-/// - `client_id`: Client ID, used to determine persistent storage path.
-/// - `storage`: Whether to use persistent storage. Mounts the persistent
-///   storage path at `<base_path>`
 pub fn run(
     binary_path: PathBuf,
     args: Vec<String>,
     envs: Vec<String>,
-    karl_path: &Path,
+    _karl_path: &Path,
     base_path: &Path,
-    client_id: &str,
-    storage: bool,
 ) -> Result<ComputeResult, Error> {
     // Directory layout
     // <request_id> = 123456
@@ -112,13 +108,14 @@ pub fn run(
     assert!(root_path.is_dir());
     env::set_current_dir(&root_path).unwrap();
 
+    /*
     // Create a symlink to persistent storage.
     if storage {
         #[cfg(target_os = "linux")]
         symlink_storage(karl_path, &root_path, client_id)?;
         #[cfg(target_os = "macos")]
         unimplemented!("storage is unimplemented on macos");
-    }
+    }*/
 
     let now = Instant::now();
     let output = run_cmd(binary_path, envs, args);
@@ -205,16 +202,12 @@ mod test {
             lib/python3.6/site-packages".to_string()
         ];
         let karl_path = init_karl_path();
-        let client_id = "test_stt_python";
-        let storage = false;
         let res = run(
             binary_path,
             args,
             envs,
             &karl_path,
             &base_path,
-            client_id,
-            storage,
         );
         fs::remove_dir_all(&base_path).unwrap();
         match res {
@@ -258,16 +251,12 @@ mod test {
         ];
         let envs = vec![];
         let karl_path = init_karl_path();
-        let client_id = "test_stt_node";
-        let storage = false;
         let res = run(
             binary_path,
             args,
             envs,
             &karl_path,
             &base_path,
-            client_id,
-            storage,
         );
         fs::remove_dir_all(&base_path).unwrap();
         match res {

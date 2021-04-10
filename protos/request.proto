@@ -48,14 +48,20 @@ message NetworkAccess {
   string domain = 2;
 }
 
+message FileACL {
+  string path = 1;
+  bool read = 2;
+  bool write = 3;
+}
+
 message ComputeRequest {
-  string client_id = 1;
-  bool storage = 2;
-  string request_token = 3;
-  bytes package = 4;
-  string binary_path = 5;
-  repeated string args = 6;
-  repeated string envs = 7;
+  string request_token = 1;
+  bytes package = 2;
+  string binary_path = 3;
+  repeated string args = 4;
+  repeated string envs = 5;
+  repeated FileACL file_perm = 6;
+  repeated string network_perm = 7;
 }
 
 message ComputeResult {

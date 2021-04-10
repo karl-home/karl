@@ -196,8 +196,13 @@ impl Host {
         &mut self,
         req: protos::ComputeRequest,
     ) -> Result<protos::ComputeResult, Error> {
-        info!("handling compute from {:?}: (len {}) storage={}",
-            req.client_id, req.package.len(), req.storage);
+        info!("handling compute (len {}):\n\
+            command => {:?} {:?}\n\
+            envs => {:?}\n\
+            file_perm => {:?}\n\
+            network_perm => {:?}",
+            req.package.len(), req.get_binary_path(), req.get_args(),
+            req.get_envs(), req.get_file_perm(), req.get_network_perm());
         let now = Instant::now();
 
         let root_path = self.base_path.join("root");
@@ -211,8 +216,6 @@ impl Host {
             req.get_envs().to_vec(),
             &self.karl_path,
             &self.base_path,
-            req.get_client_id(),
-            req.get_storage(),
         )?;
 
         // Reset the root for the next computation.
@@ -267,7 +270,7 @@ impl Host {
                 // Notify the controller of the start and end of the request, if
                 // the request token is valid and the host processes compute.
                 self.use_request_token(&Token(req.request_token.clone()))?;
-                crate::net::notify_start(&self.controller, self.id, req.client_id.clone());
+                crate::net::notify_start(&self.controller, self.id, req.request_token.clone());
                 let res = self.handle_compute(req);
 
                 // Notify end and create a new token.
