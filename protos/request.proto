@@ -8,19 +8,18 @@ enum MessageType {
   PING_RESULT = 2;
   COMPUTE_REQUEST = 3;
   COMPUTE_RESULT = 4;
-  HOST_REQUEST = 5;
-  HOST_RESULT = 6;
-  REGISTER_REQUEST = 7;
-  REGISTER_RESULT = 8;
-  NOTIFY_START = 9;
-  NOTIFY_END = 10;
-  HOST_HEARTBEAT = 11;
-  HOST_REGISTER_REQUEST = 12;
-  PUT_DATA = 13;
-  GET_DATA = 14;
-  GET_DATA_RESULT = 15;
-  DELETE_DATA = 16;
-  NETWORK_ACCESS = 17;
+  REGISTER_HOOK = 5;
+  REGISTER_REQUEST = 6;
+  REGISTER_RESULT = 7;
+  NOTIFY_START = 8;
+  NOTIFY_END = 9;
+  HOST_HEARTBEAT = 10;
+  HOST_REGISTER_REQUEST = 11;
+  PUT_DATA = 12;
+  GET_DATA = 13;
+  GET_DATA_RESULT = 14;
+  DELETE_DATA = 15;
+  NETWORK_ACCESS = 16;
 }
 
 message PutData {
@@ -76,16 +75,12 @@ message PingRequest {
 message PingResult {
 }
 
-message HostRequest {
-  bool blocking = 1;
-  string client_token = 2;
-}
-
-message HostResult {
-  string ip = 1;
-  uint32 port = 2;
-  bool found = 3;
-  string request_token = 4;
+message RegisterHook {
+  string client_token = 1;
+  string global_hook_id = 2;
+  repeated string envs = 3;
+  repeated FileACL file_perm = 4;
+  repeated string network_perm = 5;
 }
 
 message RegisterRequest {

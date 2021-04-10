@@ -46,6 +46,16 @@ impl FileACL {
     }
 }
 
+impl From<&protos::FileACL> for FileACL {
+    fn from(acl: &protos::FileACL) -> Self {
+        Self {
+            path: Path::new(acl.get_path()).to_path_buf(),
+            read: acl.get_read(),
+            write: acl.get_write(),
+        }
+    }
+}
+
 impl Hook {
     pub fn new(
         global_hook_id: StringID,
@@ -91,9 +101,18 @@ impl Hook {
         self
     }
 
-    pub fn set_envs(mut self, envs: Vec<(String, String)>) -> Self {
-        self.envs = envs;
-        self
+    /// `<KEY>=<VALUE>`
+    pub fn set_envs(mut self, envs: Vec<String>) -> Result<Self, Error> {
+        self.envs = vec![];
+        for env in envs {
+            let env = env.split("=").collect::<Vec<_>>();
+            if env.len() != 2 {
+                return Err(Error::HookInstallError(format!(
+                    "bad format for envvar: {:?}", env)));
+            }
+            self.envs.push((env[0].to_string(), env[1].to_string()));
+        }
+        Ok(self)
     }
 
     pub fn confirm(&mut self) {
@@ -104,7 +123,7 @@ impl Hook {
     ///
     /// The caller must set the request token before sending the compute
     /// reuqest to a host over the network.
-    pub fn to_compute_request(&self) -> protos::ComputeRequest {
+    pub fn to_compute_request(&self) -> Result<protos::ComputeRequest, Error> {
         let mut req = protos::ComputeRequest::default();
         let hook = self.clone();
         req.set_package(hook.package);
@@ -119,7 +138,7 @@ impl Hook {
             new
         }).collect());
         req.set_network_perm(hook.network_perm.into_iter().collect());
-        req
+        Ok(req)
     }
 }
 
@@ -146,7 +165,7 @@ mod test {
             args.clone(),
             envs.clone(),
         );
-        let r = hook.to_compute_request();
+        let r = hook.to_compute_request().unwrap();
         assert_eq!(r.get_package(), package);
         assert_eq!(r.get_binary_path(), binary_path);
         assert_eq!(r.get_args(), args);
@@ -154,11 +173,8 @@ mod test {
             envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
         assert_eq!(r.get_envs(), expected_envs);
         assert_eq!(r.get_network_perm(), network_perm);
-        let rfile_perm = r.get_file_perm();
-        assert_eq!(rfile_perm.len(), 1);
-        assert_eq!(Path::new(&rfile_perm[0].path).to_path_buf(), file_perm[0].path);
-        assert_eq!(rfile_perm[0].read, file_perm[0].read);
-        assert_eq!(rfile_perm[0].write, file_perm[0].write);
+        assert_eq!(r.get_file_perm().len(), 1);
+        assert_eq!(FileACL::from(&r.get_file_perm()[0]), file_perm[0]);
     }
 
     #[test]

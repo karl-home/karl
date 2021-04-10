@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::net::{SocketAddr, IpAddr};
 use std::time::Instant;
 
-use crate::protos;
 use crate::controller::types::*;
 use crate::common::{Error, Token, RequestToken};
 
@@ -16,6 +15,16 @@ pub struct HostScheduler {
     hosts: Vec<HostID>,
     /// Enforces unique host names.
     unique_hosts: HashMap<HostID, Host>,
+}
+
+/// Data structure so the controller knows how to contact the host.
+pub struct HostResult {
+    /// Host IP.
+    pub ip: String,
+    /// Host port.
+    pub port: u16,
+    /// Request token to include in the compute request.
+    pub request_token: RequestToken,
 }
 
 impl HostScheduler {
@@ -101,11 +110,10 @@ impl HostScheduler {
     /// A host is available if there is at least one host is registered,
     /// the host does not have an active request, and the last message from
     /// the host was received less than two heartbeat intervals ago.
-    pub fn find_host(&mut self) -> Option<protos::HostResult> {
+    pub fn find_host(&mut self) -> Option<HostResult> {
         if self.hosts.is_empty() {
             return None;
         }
-        let mut res = protos::HostResult::default();
         let mut host_i = self.prev_host_i;
         for _ in 0..self.hosts.len() {
             host_i = (host_i + 1) % self.hosts.len();
@@ -121,11 +129,11 @@ impl HostScheduler {
             if let Some(token) = host.md.token.take() {
                 self.prev_host_i = host_i;
                 println!("find_host picked => {:?}", host.addr);
-                res.set_ip(host.addr.ip().to_string());
-                res.set_port(host.addr.port().into());
-                res.set_request_token(token.0);
-                res.set_found(true);
-                return Some(res);
+                return Some(HostResult {
+                    ip: host.addr.ip().to_string(),
+                    port: host.addr.port(),
+                    request_token: token,
+                });
             }
         }
         None
@@ -398,7 +406,6 @@ mod test {
         s.confirm_host(&id);
         let host = s.find_host();
         assert!(host.is_some());
-        assert!(host.unwrap().get_found());
     }
 
     #[test]
@@ -423,14 +430,11 @@ mod test {
         // find_host returns 2 3 1 round-robin.
         s.unique_hosts.get_mut("host2").unwrap().md.last_request = Some(Request::default());
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8082);
+        assert_eq!(host.port, 8082);
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8083);
+        assert_eq!(host.port, 8083);
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8081);
+        assert_eq!(host.port, 8081);
         s.heartbeat("host1".to_string(), request_token);
         s.heartbeat("host2".to_string(), request_token);
         s.heartbeat("host3".to_string(), request_token);
@@ -439,16 +443,13 @@ mod test {
         // find_host should return 2 1 2 round-robin.
         s.unique_hosts.get_mut("host3").unwrap().md.active_request = Some(Request::default());
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8082);
+        assert_eq!(host.port, 8082);
         s.heartbeat("host2".to_string(), request_token);
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8081);
+        assert_eq!(host.port, 8081);
         s.heartbeat("host1".to_string(), request_token);
         let host = s.find_host().unwrap();
-        assert!(host.get_found());
-        assert_eq!(host.get_port(), 8082);
+        assert_eq!(host.port, 8082);
         s.heartbeat("host2".to_string(), request_token);
 
         // Make host 1 and 2 busy.
@@ -617,7 +618,7 @@ mod test {
         let host = s.find_host();
         assert!(host.is_some());
         assert!(s.md(&host1).token.is_none());
-        assert_eq!(host.unwrap().get_request_token(), request_token1.0);
+        assert_eq!(host.unwrap().request_token, request_token1);
 
         // NotifyStart
         s.notify_start(host1.clone(), "description".to_string());
@@ -631,7 +632,7 @@ mod test {
         let host = s.find_host();
         assert!(host.is_some());
         assert!(s.md(&host1).token.is_none());
-        assert_eq!(host.unwrap().get_request_token(), request_token2.0);
+        assert_eq!(host.unwrap().request_token, request_token2);
     }
 
     #[test]
@@ -649,7 +650,7 @@ mod test {
         assert_eq!(s.md(&host1).total, 0);
         let host = s.find_host();
         assert!(host.is_some());
-        assert_eq!(host.unwrap().get_request_token(), request_token1.0);
+        assert_eq!(host.unwrap().request_token, request_token1);
         assert_eq!(s.md(&host1).total, 0);
         s.notify_start(host1.clone(), "description".to_string());
         assert_eq!(s.md(&host1).total, 0);
@@ -659,7 +660,7 @@ mod test {
         assert_eq!(s.md(&host1).total, 1);
         let host = s.find_host();
         assert!(host.is_some());
-        assert_eq!(host.unwrap().get_request_token(), request_token2.0);
+        assert_eq!(host.unwrap().request_token, request_token2);
         assert_eq!(s.md(&host1).total, 1);
         s.notify_start(host1.clone(), "description".to_string());
         assert_eq!(s.md(&host1).total, 1);

@@ -13,8 +13,7 @@ use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
 use std::net::{TcpStream, TcpListener, IpAddr};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
-use std::thread;
+use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
@@ -22,6 +21,7 @@ use tokio::runtime::Runtime;
 use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
+use crate::hook::FileACL;
 use crate::protos::{self, MessageType};
 use crate::common::{Error, Token, ClientToken};
 
@@ -152,43 +152,17 @@ impl Controller {
         let ty = MessageType::from_i32(
             req_header.ty).ok_or(Error::InvalidPacketType(req_header.ty))?;
         match ty {
-            MessageType::HOST_REQUEST => {
-                let req = parse_from_bytes::<protos::HostRequest>(&req_bytes)
+            MessageType::REGISTER_HOOK => {
+                let req = parse_from_bytes::<protos::RegisterHook>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let scheduler = self.scheduler.clone();
-                let clients = self.clients.clone();
-                if req.blocking {
-                    self.rt.spawn(async move {
-                        let res = Self::find_host(
-                            scheduler,
-                            clients,
-                            &Token(req.client_token),
-                            req.blocking,
-                        );
-                        let res_bytes = res.write_to_bytes().unwrap();
-
-                        // Return the result to sender.
-                        trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
-                        let now = Instant::now();
-                        packet::write(&mut stream, MessageType::HOST_RESULT, &res_bytes).unwrap();
-                        trace!("=> {} s", now.elapsed().as_secs_f32());
-                    });
-                } else {
-                    let res = Self::find_host(
-                        scheduler,
-                        clients,
-                        &Token(req.client_token),
-                        req.blocking,
-                    );
-                    let res_bytes = res.write_to_bytes().unwrap();
-
-                    // Return the result to sender.
-                    trace!("writing packet ({} bytes) {:?}", res_bytes.len(), res_bytes);
-                    let now = Instant::now();
-                    packet::write(&mut stream, MessageType::HOST_RESULT, &res_bytes)?;
-                    trace!("=> {} s", now.elapsed().as_secs_f32());
-                }
+                self.register_hook(
+                    &Token(req.get_client_token().to_string()),
+                    req.get_global_hook_id().to_string(),
+                    req.get_network_perm().to_vec(),
+                    req.get_file_perm().iter().map(|acl| FileACL::from(acl)).collect(),
+                    req.get_envs().to_vec(),
+                )?;
             },
             MessageType::REGISTER_REQUEST => {
                 let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
@@ -269,45 +243,43 @@ impl Controller {
         Ok(())
     }
 
-    /// Find a host to connect to round-robin, authenticating the client.
+    /// Register a hook, authenticating the client.
     ///
     /// If the provided client token does not correspond to a registered
-    /// client, logs a warning message about an unauthorized client and
-    /// returns no hosts found, even if hosts are available.
+    /// client, logs a warning message about an unauthorized client.
     ///
-    /// If `blocking` is true, loops in 1-second intervals until a host is
-    /// available, and otherwise immediately sets `found` to false in the
-    /// HostResult. A host is available if there is at least one host is
-    /// registered and none of the registered hosts have active requests.
-    fn find_host(
-        scheduler: Arc<Mutex<HostScheduler>>,
-        clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
+    /// IoError if error importing hook from filesystem.
+    /// HookInstallError if environment variables are formatted incorrectly.
+    /// AuthError if not a valid client token.
+    fn register_hook(
+        &self,
         token: &ClientToken,
-        blocking: bool,
-    ) -> protos::HostResult {
+        global_hook_id: String,
+        network_perm: Vec<String>,
+        file_perm: Vec<FileACL>,
+        envs: Vec<String>,
+    ) -> Result<(), Error> {
         // Validate the client token.
-        let res = protos::HostResult::default();
-        if let Some(client) = clients.lock().unwrap().get(token) {
+        if let Some(client) = self.clients.lock().unwrap().get(token) {
             if !client.confirmed {
-                println!("find_host unconfirmed client token {:?}", token);
-                return res;
+                println!("register_hook unconfirmed client token {:?}", token);
+                return Err(Error::AuthError("invalid client token".to_string()));
             }
         } else {
-            println!("find_host invalid client token {:?}", token);
-            return res;
+            println!("register_hook invalid client token {:?}", token);
+            return Err(Error::AuthError("invalid client token".to_string()));
         }
 
-        // Find a host.
-        loop {
-            if let Some(host) = scheduler.lock().unwrap().find_host() {
-                return host;
-            }
-            if !blocking {
-                println!("find_host no hosts available {:?}", token);
-                return res;
-            }
-            thread::sleep(Duration::from_secs(1));
-        }
+        // Register the hook.
+        HookRunner::register_hook(
+            global_hook_id,
+            network_perm,
+            file_perm,
+            envs,
+            self.runner.hooks.clone(),
+            self.runner.tx.as_ref().unwrap().clone(),
+        )?;
+        Ok(())
     }
 
     /// Register a client.
@@ -397,7 +369,6 @@ impl Controller {
 mod test {
     use super::*;
     use std::net::SocketAddr;
-    use ntest::timeout;
     use tempdir::TempDir;
 
     const PASSWORD: &str = "password";
@@ -417,63 +388,16 @@ mod test {
         assert!(c.scheduler.lock().unwrap().add_host(&name, addr, true, PASSWORD));
     }
 
-    /// Wrapper around find_host for testing without having to clone locks.
-    fn find_host_test(
+    /// Wrapper around register_hook to avoid rewriting parameters
+    fn register_hook_test(
         c: &mut Controller,
-        token: &ClientToken,
-        blocking: bool,
-    ) -> protos::HostResult {
-        Controller::find_host(
-            c.scheduler.clone(),
-            c.clients.clone(),
-            token,
-            blocking,
-        )
+        token: &Token,
+    ) -> Result<(), Error> {
+        c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![])
     }
 
-    /// If the test times out, it actually succeeds!
-    #[test]
-    #[ignore]
-    #[timeout(500)]
-    fn test_find_host_blocking_no_hosts() {
-        let (_karl_path, mut c) = init_test();
-        // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
-        let token = Token(client.get_client_token().to_string());
-        let blocking = true;
-        find_host_test(&mut c, &token, blocking);
-        unreachable!("default controller should not return without hosts");
-    }
-
-    /// If the test times out, it actually succeeds!
-    #[test]
-    #[ignore]
-    #[timeout(500)]
-    fn test_find_host_blocking_unavailable() {
-        let (_karl_path, mut c) = init_test();
-
-        // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
-        let client_token = Token(client.get_client_token().to_string());
-        let request_token = "requesttoken";
-
-        // Add a host.
-        add_host_test(&mut c, 1);
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-        assert!(find_host_test(&mut c, &client_token, true).get_found());
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-        assert!(find_host_test(&mut c, &client_token, true).get_found());
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-
-        // Now make it busy.
-        c.scheduler.lock().unwrap().notify_start(
-            "host1".to_string(), "description".to_string());
-        find_host_test(&mut c, &client_token, true);
-        unreachable!("default controller should not return with busy hosts");
-    }
-
-    #[test]
-    fn test_find_host_invalid_client_token() {
+    #[tokio::test]
+    async fn test_register_hook_invalid_client_token() {
         let (_karl_path, mut c) = init_test();
 
         // Register a client
@@ -484,23 +408,25 @@ mod test {
         let request_token = "requesttoken";
 
         // Add a host.
+        c.runner.start(true);
         add_host_test(&mut c, 1);
         c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-        assert!(find_host_test(&mut c, &token, false).get_found());
+        assert!(register_hook_test(&mut c, &token).is_ok());
         c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-        assert!(find_host_test(&mut c, &token, false).get_found());
+        assert!(register_hook_test(&mut c, &token).is_ok());
         c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
-        assert!(!find_host_test(&mut c, &bad_token1, false).get_found());
-        assert!(!find_host_test(&mut c, &bad_token2, false).get_found());
-        assert!(find_host_test(&mut c, &token, false).get_found());
+        assert!(register_hook_test(&mut c, &bad_token1).is_err());
+        assert!(register_hook_test(&mut c, &bad_token2).is_err());
+        assert!(register_hook_test(&mut c, &token).is_ok());
     }
 
-    #[test]
-    fn test_find_host_unconfirmed_client_token() {
+    #[tokio::test]
+    async fn test_register_hook_unconfirmed_client_token() {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
         let request_token = "requesttoken";
+        c.runner.start(true);
         add_host_test(&mut c, 1);
         c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
 
@@ -509,12 +435,12 @@ mod test {
         let token = Token(client.get_client_token().to_string());
         assert_eq!(c.clients.lock().unwrap().len(), 1);
         assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
-        assert!(!find_host_test(&mut c, &token, false).get_found(),
+        assert!(!register_hook_test(&mut c, &token).is_ok(),
             "found host with unconfirmed token");
 
         // Confirm the client and find a host.
         c.clients.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
-        assert!(find_host_test(&mut c, &token, false).get_found(),
+        assert!(register_hook_test(&mut c, &token).is_ok(),
             "failed to find host with confirmed token");
     }
 

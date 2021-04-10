@@ -46,6 +46,8 @@ pub enum Error {
     InvalidHostMessage(String),
     /// Error installing a hook from a global hook ID.
     HookInstallError(String),
+    /// Error authenticating a token.
+    AuthError(String),
     /// Unknown.
     UnknownError(String),
 }

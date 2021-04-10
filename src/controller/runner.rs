@@ -11,7 +11,7 @@ use crate::common::*;
 pub struct HookRunner {
     pub tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
-    hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
+    pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     /// Request tokens for each spawned process. Cleared on NotifyEnd.
     request_tokens: Arc<Mutex<HashMap<RequestToken, (ProcessID, HookID)>>>,
     /// Scheduler for finding hosts
@@ -60,19 +60,25 @@ impl HookRunner {
     /// - global_hook_id - The ID of the hook from the global hook repository.
     /// - network_perm - Requested network permissions.
     /// - file_perm - Requested file permissions.
-    /// - envs - Requested environment variables / configuration.
+    /// - envs - Requested environment variables / configuration `<KEY>=<VALUE>`.
+    ///   Replaces the imported environment variables only if non-empty.
+    ///
+    /// IoError if error importing hook from filesystem.
+    /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
         global_hook_id: StringID,
         network_perm: Vec<DomainName>,
         file_perm: Vec<FileACL>,
-        envs: Vec<(String, String)>,
+        envs: Vec<String>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
         tx: mpsc::Sender<HookID>,
     ) -> Result<HookID, Error> {
-        let hook = Hook::import(&global_hook_id)?
+        let mut hook = Hook::import(&global_hook_id)?
             .set_network_perm(network_perm)
-            .set_file_perm(file_perm)
-            .set_envs(envs);
+            .set_file_perm(file_perm);
+        if !envs.is_empty() {
+            hook = hook.set_envs(envs)?;
+        }
         let schedule = hook.schedule.clone();
         use rand::Rng;
         let hook_id = loop {
@@ -119,7 +125,13 @@ impl HookRunner {
             // Generate a compute request based on the queued hook.
             let hook_id: HookID = rx.recv().await.unwrap();
             let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
-                hook.to_compute_request()
+                match hook.to_compute_request() {
+                    Ok(req) => req,
+                    Err(e) => {
+                        error!("Error converting hook {:?}: {:?}", hook_id, e);
+                        continue;
+                    },
+                }
             } else {
                 continue;
             };
@@ -131,15 +143,15 @@ impl HookRunner {
                 }
                 time::sleep(Duration::from_secs(1)).await;
             };
-            let host_addr = format!("{}:{}", host.get_ip(), host.get_port());
-            let request_token = host.get_request_token();
-            request.set_request_token(request_token.to_string());
+            let host_addr = format!("{}:{}", host.ip, host.port);
+            let request_token = host.request_token;
+            request.set_request_token(request_token.0.clone());
 
             // Update internal data structures.
             // In particular, the process's request token for authentication.
             let process_id = gen_process_id();
             request_tokens.lock().unwrap().insert(
-                Token(request_token.to_string()),
+                request_token,
                 (process_id, hook_id),
             );
 
@@ -218,7 +230,7 @@ mod test {
         runner.start(true);
         let network_perm = vec!["https://www.stanford.edu".to_string()];
         let file_perm = vec![FileACL::new("main", true, true)];
-        let envs = vec![("KEY".to_string(), "VALUE".to_string())];
+        let envs = vec!["KEY=VALUE".to_string()];
         let hook_id = HookRunner::register_hook(
             "hello-world".to_string(),
             network_perm.clone(),
@@ -238,7 +250,7 @@ mod test {
         assert!(!hook.package.is_empty());
         assert_eq!(hook.binary_path, Path::new("./main").to_path_buf());
         assert!(hook.args.is_empty());
-        assert_eq!(hook.envs, envs);
+        assert_eq!(hook.envs, vec![("KEY".to_string(), "VALUE".to_string())]);
     }
 
     #[tokio::test]

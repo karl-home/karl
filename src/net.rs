@@ -41,28 +41,23 @@ pub fn register_client(
         .unwrap()
 }
 
-/// Returns a host address given by the controller.
-pub fn get_host(
+/// Registers a hook.
+pub fn register_hook(
     controller_addr: &str,
     client_token: &str,
-    blocking: bool,
-) -> protos::HostResult {
+    global_hook_id: &str,
+) {
     // TODO: handle network errors with connecting, writing, reading.
     // Deserialization may also fail due to the other side.
     let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let mut req = protos::HostRequest::default();
+    let mut req = protos::RegisterHook::default();
     req.set_client_token(client_token.to_string());
-    req.set_blocking(blocking);
+    req.set_global_hook_id(global_hook_id.to_string());
     let req_bytes = req
         .write_to_bytes()
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
-    packet::write(&mut stream, MessageType::HOST_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, MessageType::HOST_RESULT.value());
-    protobuf::parse_from_bytes::<protos::HostResult>(&res_bytes)
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap()
+    packet::write(&mut stream, MessageType::REGISTER_HOOK, &req_bytes).unwrap();
 }
 
 /// Pings the given host and returns the result.
@@ -97,21 +92,6 @@ pub fn send_compute(
     protobuf::parse_from_bytes::<protos::ComputeResult>(&res_bytes)
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap()
-}
-
-/// Like `get_host()` and `send_compute()` combined.
-///
-/// Reserves a host in a blocking request and attempts to send a
-/// compute request. Retries until the request succeeds.
-pub fn send_compute_blocking(
-    controller_addr: &str,
-    client_token: &str,
-    mut req: protos::ComputeRequest,
-) -> protos::ComputeResult {
-    let res = get_host(controller_addr, client_token, true);
-    let host = format!("{}:{}", res.get_ip(), res.get_port());
-    req.set_request_token(res.get_request_token().to_string());
-    send_compute(&host, req)
 }
 
 /*****************************************************************************

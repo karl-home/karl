@@ -2115,42 +2115,30 @@ impl ::protobuf::reflect::ProtobufValue for PingResult {
 }
 
 #[derive(PartialEq,Clone,Default)]
-pub struct HostRequest {
+pub struct RegisterHook {
     // message fields
-    pub blocking: bool,
     pub client_token: ::std::string::String,
+    pub global_hook_id: ::std::string::String,
+    pub envs: ::protobuf::RepeatedField<::std::string::String>,
+    pub file_perm: ::protobuf::RepeatedField<FileACL>,
+    pub network_perm: ::protobuf::RepeatedField<::std::string::String>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
 }
 
-impl<'a> ::std::default::Default for &'a HostRequest {
-    fn default() -> &'a HostRequest {
-        <HostRequest as ::protobuf::Message>::default_instance()
+impl<'a> ::std::default::Default for &'a RegisterHook {
+    fn default() -> &'a RegisterHook {
+        <RegisterHook as ::protobuf::Message>::default_instance()
     }
 }
 
-impl HostRequest {
-    pub fn new() -> HostRequest {
+impl RegisterHook {
+    pub fn new() -> RegisterHook {
         ::std::default::Default::default()
     }
 
-    // bool blocking = 1;
-
-
-    pub fn get_blocking(&self) -> bool {
-        self.blocking
-    }
-    pub fn clear_blocking(&mut self) {
-        self.blocking = false;
-    }
-
-    // Param is passed by value, moved
-    pub fn set_blocking(&mut self, v: bool) {
-        self.blocking = v;
-    }
-
-    // string client_token = 2;
+    // string client_token = 1;
 
 
     pub fn get_client_token(&self) -> &str {
@@ -2175,10 +2163,116 @@ impl HostRequest {
     pub fn take_client_token(&mut self) -> ::std::string::String {
         ::std::mem::replace(&mut self.client_token, ::std::string::String::new())
     }
+
+    // string global_hook_id = 2;
+
+
+    pub fn get_global_hook_id(&self) -> &str {
+        &self.global_hook_id
+    }
+    pub fn clear_global_hook_id(&mut self) {
+        self.global_hook_id.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_global_hook_id(&mut self, v: ::std::string::String) {
+        self.global_hook_id = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_global_hook_id(&mut self) -> &mut ::std::string::String {
+        &mut self.global_hook_id
+    }
+
+    // Take field
+    pub fn take_global_hook_id(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.global_hook_id, ::std::string::String::new())
+    }
+
+    // repeated string envs = 3;
+
+
+    pub fn get_envs(&self) -> &[::std::string::String] {
+        &self.envs
+    }
+    pub fn clear_envs(&mut self) {
+        self.envs.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_envs(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.envs = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_envs(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.envs
+    }
+
+    // Take field
+    pub fn take_envs(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.envs, ::protobuf::RepeatedField::new())
+    }
+
+    // repeated .request.FileACL file_perm = 4;
+
+
+    pub fn get_file_perm(&self) -> &[FileACL] {
+        &self.file_perm
+    }
+    pub fn clear_file_perm(&mut self) {
+        self.file_perm.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_file_perm(&mut self, v: ::protobuf::RepeatedField<FileACL>) {
+        self.file_perm = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_file_perm(&mut self) -> &mut ::protobuf::RepeatedField<FileACL> {
+        &mut self.file_perm
+    }
+
+    // Take field
+    pub fn take_file_perm(&mut self) -> ::protobuf::RepeatedField<FileACL> {
+        ::std::mem::replace(&mut self.file_perm, ::protobuf::RepeatedField::new())
+    }
+
+    // repeated string network_perm = 5;
+
+
+    pub fn get_network_perm(&self) -> &[::std::string::String] {
+        &self.network_perm
+    }
+    pub fn clear_network_perm(&mut self) {
+        self.network_perm.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_network_perm(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.network_perm = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_network_perm(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.network_perm
+    }
+
+    // Take field
+    pub fn take_network_perm(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.network_perm, ::protobuf::RepeatedField::new())
+    }
 }
 
-impl ::protobuf::Message for HostRequest {
+impl ::protobuf::Message for RegisterHook {
     fn is_initialized(&self) -> bool {
+        for v in &self.file_perm {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
         true
     }
 
@@ -2187,261 +2281,19 @@ impl ::protobuf::Message for HostRequest {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_bool()?;
-                    self.blocking = tmp;
-                },
-                2 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.client_token)?;
                 },
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        if self.blocking != false {
-            my_size += 2;
-        }
-        if !self.client_token.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.client_token);
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if self.blocking != false {
-            os.write_bool(1, self.blocking)?;
-        }
-        if !self.client_token.is_empty() {
-            os.write_string(2, &self.client_token)?;
-        }
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &dyn (::std::any::Any) {
-        self as &dyn (::std::any::Any)
-    }
-    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
-        self as &mut dyn (::std::any::Any)
-    }
-    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> HostRequest {
-        HostRequest::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
-        descriptor.get(|| {
-            let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
-                "blocking",
-                |m: &HostRequest| { &m.blocking },
-                |m: &mut HostRequest| { &mut m.blocking },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "client_token",
-                |m: &HostRequest| { &m.client_token },
-                |m: &mut HostRequest| { &mut m.client_token },
-            ));
-            ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostRequest>(
-                "HostRequest",
-                fields,
-                file_descriptor_proto()
-            )
-        })
-    }
-
-    fn default_instance() -> &'static HostRequest {
-        static instance: ::protobuf::rt::LazyV2<HostRequest> = ::protobuf::rt::LazyV2::INIT;
-        instance.get(HostRequest::new)
-    }
-}
-
-impl ::protobuf::Clear for HostRequest {
-    fn clear(&mut self) {
-        self.blocking = false;
-        self.client_token.clear();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for HostRequest {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for HostRequest {
-    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
-        ::protobuf::reflect::ReflectValueRef::Message(self)
-    }
-}
-
-#[derive(PartialEq,Clone,Default)]
-pub struct HostResult {
-    // message fields
-    pub ip: ::std::string::String,
-    pub port: u32,
-    pub found: bool,
-    pub request_token: ::std::string::String,
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-impl<'a> ::std::default::Default for &'a HostResult {
-    fn default() -> &'a HostResult {
-        <HostResult as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl HostResult {
-    pub fn new() -> HostResult {
-        ::std::default::Default::default()
-    }
-
-    // string ip = 1;
-
-
-    pub fn get_ip(&self) -> &str {
-        &self.ip
-    }
-    pub fn clear_ip(&mut self) {
-        self.ip.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_ip(&mut self, v: ::std::string::String) {
-        self.ip = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_ip(&mut self) -> &mut ::std::string::String {
-        &mut self.ip
-    }
-
-    // Take field
-    pub fn take_ip(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.ip, ::std::string::String::new())
-    }
-
-    // uint32 port = 2;
-
-
-    pub fn get_port(&self) -> u32 {
-        self.port
-    }
-    pub fn clear_port(&mut self) {
-        self.port = 0;
-    }
-
-    // Param is passed by value, moved
-    pub fn set_port(&mut self, v: u32) {
-        self.port = v;
-    }
-
-    // bool found = 3;
-
-
-    pub fn get_found(&self) -> bool {
-        self.found
-    }
-    pub fn clear_found(&mut self) {
-        self.found = false;
-    }
-
-    // Param is passed by value, moved
-    pub fn set_found(&mut self, v: bool) {
-        self.found = v;
-    }
-
-    // string request_token = 4;
-
-
-    pub fn get_request_token(&self) -> &str {
-        &self.request_token
-    }
-    pub fn clear_request_token(&mut self) {
-        self.request_token.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_request_token(&mut self, v: ::std::string::String) {
-        self.request_token = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_request_token(&mut self) -> &mut ::std::string::String {
-        &mut self.request_token
-    }
-
-    // Take field
-    pub fn take_request_token(&mut self) -> ::std::string::String {
-        ::std::mem::replace(&mut self.request_token, ::std::string::String::new())
-    }
-}
-
-impl ::protobuf::Message for HostResult {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                1 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.ip)?;
-                },
                 2 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_uint32()?;
-                    self.port = tmp;
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.global_hook_id)?;
                 },
                 3 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_bool()?;
-                    self.found = tmp;
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.envs)?;
                 },
                 4 => {
-                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.request_token)?;
+                    ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.file_perm)?;
+                },
+                5 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.network_perm)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -2455,36 +2307,45 @@ impl ::protobuf::Message for HostResult {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        if !self.ip.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.ip);
+        if !self.client_token.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.client_token);
         }
-        if self.port != 0 {
-            my_size += ::protobuf::rt::value_size(2, self.port, ::protobuf::wire_format::WireTypeVarint);
+        if !self.global_hook_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.global_hook_id);
         }
-        if self.found != false {
-            my_size += 2;
-        }
-        if !self.request_token.is_empty() {
-            my_size += ::protobuf::rt::string_size(4, &self.request_token);
-        }
+        for value in &self.envs {
+            my_size += ::protobuf::rt::string_size(3, &value);
+        };
+        for value in &self.file_perm {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        };
+        for value in &self.network_perm {
+            my_size += ::protobuf::rt::string_size(5, &value);
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        if !self.ip.is_empty() {
-            os.write_string(1, &self.ip)?;
+        if !self.client_token.is_empty() {
+            os.write_string(1, &self.client_token)?;
         }
-        if self.port != 0 {
-            os.write_uint32(2, self.port)?;
+        if !self.global_hook_id.is_empty() {
+            os.write_string(2, &self.global_hook_id)?;
         }
-        if self.found != false {
-            os.write_bool(3, self.found)?;
-        }
-        if !self.request_token.is_empty() {
-            os.write_string(4, &self.request_token)?;
-        }
+        for v in &self.envs {
+            os.write_string(3, &v)?;
+        };
+        for v in &self.file_perm {
+            os.write_tag(4, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
+        };
+        for v in &self.network_perm {
+            os.write_string(5, &v)?;
+        };
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -2515,8 +2376,8 @@ impl ::protobuf::Message for HostResult {
         Self::descriptor_static()
     }
 
-    fn new() -> HostResult {
-        HostResult::new()
+    fn new() -> RegisterHook {
+        RegisterHook::new()
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -2524,56 +2385,62 @@ impl ::protobuf::Message for HostResult {
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "ip",
-                |m: &HostResult| { &m.ip },
-                |m: &mut HostResult| { &mut m.ip },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint32>(
-                "port",
-                |m: &HostResult| { &m.port },
-                |m: &mut HostResult| { &mut m.port },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
-                "found",
-                |m: &HostResult| { &m.found },
-                |m: &mut HostResult| { &mut m.found },
+                "client_token",
+                |m: &RegisterHook| { &m.client_token },
+                |m: &mut RegisterHook| { &mut m.client_token },
             ));
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "request_token",
-                |m: &HostResult| { &m.request_token },
-                |m: &mut HostResult| { &mut m.request_token },
+                "global_hook_id",
+                |m: &RegisterHook| { &m.global_hook_id },
+                |m: &mut RegisterHook| { &mut m.global_hook_id },
             ));
-            ::protobuf::reflect::MessageDescriptor::new_pb_name::<HostResult>(
-                "HostResult",
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "envs",
+                |m: &RegisterHook| { &m.envs },
+                |m: &mut RegisterHook| { &mut m.envs },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<FileACL>>(
+                "file_perm",
+                |m: &RegisterHook| { &m.file_perm },
+                |m: &mut RegisterHook| { &mut m.file_perm },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "network_perm",
+                |m: &RegisterHook| { &m.network_perm },
+                |m: &mut RegisterHook| { &mut m.network_perm },
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<RegisterHook>(
+                "RegisterHook",
                 fields,
                 file_descriptor_proto()
             )
         })
     }
 
-    fn default_instance() -> &'static HostResult {
-        static instance: ::protobuf::rt::LazyV2<HostResult> = ::protobuf::rt::LazyV2::INIT;
-        instance.get(HostResult::new)
+    fn default_instance() -> &'static RegisterHook {
+        static instance: ::protobuf::rt::LazyV2<RegisterHook> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(RegisterHook::new)
     }
 }
 
-impl ::protobuf::Clear for HostResult {
+impl ::protobuf::Clear for RegisterHook {
     fn clear(&mut self) {
-        self.ip.clear();
-        self.port = 0;
-        self.found = false;
-        self.request_token.clear();
+        self.client_token.clear();
+        self.global_hook_id.clear();
+        self.envs.clear();
+        self.file_perm.clear();
+        self.network_perm.clear();
         self.unknown_fields.clear();
     }
 }
 
-impl ::std::fmt::Debug for HostResult {
+impl ::std::fmt::Debug for RegisterHook {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for HostResult {
+impl ::protobuf::reflect::ProtobufValue for RegisterHook {
     fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
         ::protobuf::reflect::ReflectValueRef::Message(self)
     }
@@ -3827,19 +3694,18 @@ pub enum MessageType {
     PING_RESULT = 2,
     COMPUTE_REQUEST = 3,
     COMPUTE_RESULT = 4,
-    HOST_REQUEST = 5,
-    HOST_RESULT = 6,
-    REGISTER_REQUEST = 7,
-    REGISTER_RESULT = 8,
-    NOTIFY_START = 9,
-    NOTIFY_END = 10,
-    HOST_HEARTBEAT = 11,
-    HOST_REGISTER_REQUEST = 12,
-    PUT_DATA = 13,
-    GET_DATA = 14,
-    GET_DATA_RESULT = 15,
-    DELETE_DATA = 16,
-    NETWORK_ACCESS = 17,
+    REGISTER_HOOK = 5,
+    REGISTER_REQUEST = 6,
+    REGISTER_RESULT = 7,
+    NOTIFY_START = 8,
+    NOTIFY_END = 9,
+    HOST_HEARTBEAT = 10,
+    HOST_REGISTER_REQUEST = 11,
+    PUT_DATA = 12,
+    GET_DATA = 13,
+    GET_DATA_RESULT = 14,
+    DELETE_DATA = 15,
+    NETWORK_ACCESS = 16,
 }
 
 impl ::protobuf::ProtobufEnum for MessageType {
@@ -3854,19 +3720,18 @@ impl ::protobuf::ProtobufEnum for MessageType {
             2 => ::std::option::Option::Some(MessageType::PING_RESULT),
             3 => ::std::option::Option::Some(MessageType::COMPUTE_REQUEST),
             4 => ::std::option::Option::Some(MessageType::COMPUTE_RESULT),
-            5 => ::std::option::Option::Some(MessageType::HOST_REQUEST),
-            6 => ::std::option::Option::Some(MessageType::HOST_RESULT),
-            7 => ::std::option::Option::Some(MessageType::REGISTER_REQUEST),
-            8 => ::std::option::Option::Some(MessageType::REGISTER_RESULT),
-            9 => ::std::option::Option::Some(MessageType::NOTIFY_START),
-            10 => ::std::option::Option::Some(MessageType::NOTIFY_END),
-            11 => ::std::option::Option::Some(MessageType::HOST_HEARTBEAT),
-            12 => ::std::option::Option::Some(MessageType::HOST_REGISTER_REQUEST),
-            13 => ::std::option::Option::Some(MessageType::PUT_DATA),
-            14 => ::std::option::Option::Some(MessageType::GET_DATA),
-            15 => ::std::option::Option::Some(MessageType::GET_DATA_RESULT),
-            16 => ::std::option::Option::Some(MessageType::DELETE_DATA),
-            17 => ::std::option::Option::Some(MessageType::NETWORK_ACCESS),
+            5 => ::std::option::Option::Some(MessageType::REGISTER_HOOK),
+            6 => ::std::option::Option::Some(MessageType::REGISTER_REQUEST),
+            7 => ::std::option::Option::Some(MessageType::REGISTER_RESULT),
+            8 => ::std::option::Option::Some(MessageType::NOTIFY_START),
+            9 => ::std::option::Option::Some(MessageType::NOTIFY_END),
+            10 => ::std::option::Option::Some(MessageType::HOST_HEARTBEAT),
+            11 => ::std::option::Option::Some(MessageType::HOST_REGISTER_REQUEST),
+            12 => ::std::option::Option::Some(MessageType::PUT_DATA),
+            13 => ::std::option::Option::Some(MessageType::GET_DATA),
+            14 => ::std::option::Option::Some(MessageType::GET_DATA_RESULT),
+            15 => ::std::option::Option::Some(MessageType::DELETE_DATA),
+            16 => ::std::option::Option::Some(MessageType::NETWORK_ACCESS),
             _ => ::std::option::Option::None
         }
     }
@@ -3878,8 +3743,7 @@ impl ::protobuf::ProtobufEnum for MessageType {
             MessageType::PING_RESULT,
             MessageType::COMPUTE_REQUEST,
             MessageType::COMPUTE_RESULT,
-            MessageType::HOST_REQUEST,
-            MessageType::HOST_RESULT,
+            MessageType::REGISTER_HOOK,
             MessageType::REGISTER_REQUEST,
             MessageType::REGISTER_RESULT,
             MessageType::NOTIFY_START,
@@ -3941,32 +3805,32 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     s\x18\x03\x20\x03(\x0b2!.request.ComputeResult.FilesEntryR\x05files\x1a8\
     \n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05\
     value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\"\r\n\x0bPingRequest\"\
-    \x0c\n\nPingResult\"L\n\x0bHostRequest\x12\x1a\n\x08blocking\x18\x01\x20\
-    \x01(\x08R\x08blocking\x12!\n\x0cclient_token\x18\x02\x20\x01(\tR\x0bcli\
-    entToken\"k\n\nHostResult\x12\x0e\n\x02ip\x18\x01\x20\x01(\tR\x02ip\x12\
-    \x12\n\x04port\x18\x02\x20\x01(\rR\x04port\x12\x14\n\x05found\x18\x03\
-    \x20\x01(\x08R\x05found\x12#\n\rrequest_token\x18\x04\x20\x01(\tR\x0creq\
-    uestToken\"3\n\x0fRegisterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
-    \x02id\x12\x10\n\x03app\x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eRegisterRes\
-    ult\x12!\n\x0cclient_token\x18\x01\x20\x01(\tR\x0bclientToken\"R\n\x0bNo\
-    tifyStart\x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\
-    \x20\n\x0bdescription\x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNotifyEnd\
-    \x12!\n\x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rreque\
-    st_token\x18\x02\x20\x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\x12!\n\
-    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rrequest_toke\
-    n\x18\x02\x20\x01(\tR\x0crequestToken\"x\n\x13HostRegisterRequest\x12!\n\
-    \x0cservice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x0e\n\x02ip\x18\
-    \x02\x20\x01(\tR\x02ip\x12\x12\n\x04port\x18\x03\x20\x01(\rR\x04port\x12\
-    \x1a\n\x08password\x18\x04\x20\x01(\tR\x08password*\xdd\x02\n\x0bMessage\
-    Type\x12\r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\
-    \n\x0bPING_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\
-    \x0eCOMPUTE_RESULT\x10\x04\x12\x10\n\x0cHOST_REQUEST\x10\x05\x12\x0f\n\
-    \x0bHOST_RESULT\x10\x06\x12\x14\n\x10REGISTER_REQUEST\x10\x07\x12\x13\n\
-    \x0fREGISTER_RESULT\x10\x08\x12\x10\n\x0cNOTIFY_START\x10\t\x12\x0e\n\nN\
-    OTIFY_END\x10\n\x12\x12\n\x0eHOST_HEARTBEAT\x10\x0b\x12\x19\n\x15HOST_RE\
-    GISTER_REQUEST\x10\x0c\x12\x0c\n\x08PUT_DATA\x10\r\x12\x0c\n\x08GET_DATA\
-    \x10\x0e\x12\x13\n\x0fGET_DATA_RESULT\x10\x0f\x12\x0f\n\x0bDELETE_DATA\
-    \x10\x10\x12\x12\n\x0eNETWORK_ACCESS\x10\x11b\x06proto3\
+    \x0c\n\nPingResult\"\xbd\x01\n\x0cRegisterHook\x12!\n\x0cclient_token\
+    \x18\x01\x20\x01(\tR\x0bclientToken\x12$\n\x0eglobal_hook_id\x18\x02\x20\
+    \x01(\tR\x0cglobalHookId\x12\x12\n\x04envs\x18\x03\x20\x03(\tR\x04envs\
+    \x12-\n\tfile_perm\x18\x04\x20\x03(\x0b2\x10.request.FileACLR\x08filePer\
+    m\x12!\n\x0cnetwork_perm\x18\x05\x20\x03(\tR\x0bnetworkPerm\"3\n\x0fRegi\
+    sterRequest\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x10\n\x03app\
+    \x18\x02\x20\x01(\x0cR\x03app\"3\n\x0eRegisterResult\x12!\n\x0cclient_to\
+    ken\x18\x01\x20\x01(\tR\x0bclientToken\"R\n\x0bNotifyStart\x12!\n\x0cser\
+    vice_name\x18\x01\x20\x01(\tR\x0bserviceName\x12\x20\n\x0bdescription\
+    \x18\x02\x20\x01(\tR\x0bdescription\"S\n\tNotifyEnd\x12!\n\x0cservice_na\
+    me\x18\x01\x20\x01(\tR\x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\
+    \x01(\tR\x0crequestToken\"W\n\rHostHeartbeat\x12!\n\x0cservice_name\x18\
+    \x01\x20\x01(\tR\x0bserviceName\x12#\n\rrequest_token\x18\x02\x20\x01(\t\
+    R\x0crequestToken\"x\n\x13HostRegisterRequest\x12!\n\x0cservice_name\x18\
+    \x01\x20\x01(\tR\x0bserviceName\x12\x0e\n\x02ip\x18\x02\x20\x01(\tR\x02i\
+    p\x12\x12\n\x04port\x18\x03\x20\x01(\rR\x04port\x12\x1a\n\x08password\
+    \x18\x04\x20\x01(\tR\x08password*\xcd\x02\n\x0bMessageType\x12\r\n\tRAW_\
+    BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPING_RESULT\
+    \x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPUTE_RESUL\
+    T\x10\x04\x12\x11\n\rREGISTER_HOOK\x10\x05\x12\x14\n\x10REGISTER_REQUEST\
+    \x10\x06\x12\x13\n\x0fREGISTER_RESULT\x10\x07\x12\x10\n\x0cNOTIFY_START\
+    \x10\x08\x12\x0e\n\nNOTIFY_END\x10\t\x12\x12\n\x0eHOST_HEARTBEAT\x10\n\
+    \x12\x19\n\x15HOST_REGISTER_REQUEST\x10\x0b\x12\x0c\n\x08PUT_DATA\x10\
+    \x0c\x12\x0c\n\x08GET_DATA\x10\r\x12\x13\n\x0fGET_DATA_RESULT\x10\x0e\
+    \x12\x0f\n\x0bDELETE_DATA\x10\x0f\x12\x12\n\x0eNETWORK_ACCESS\x10\x10b\
+    \x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
