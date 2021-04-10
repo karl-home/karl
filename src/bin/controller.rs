@@ -2,7 +2,8 @@ use std::path::Path;
 use clap::{Arg, App};
 use karl::Controller;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Controller")
         .arg(Arg::with_name("karl-path")

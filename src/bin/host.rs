@@ -2,7 +2,8 @@ use std::path::Path;
 use clap::{Arg, App};
 use karl::Host;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Karl Host")
         .arg(Arg::with_name("karl-path")

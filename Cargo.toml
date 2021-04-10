@@ -12,7 +12,7 @@ bincode = "1.3.1"
 env_logger = "0.7"
 log = "0.4"
 serde = { version = "1.0",  features = ["derive"] }
-tokio = { version = "1.4", features = ["macros"] }
+tokio = { version = "1.4", features = ["rt", "macros", "sync", "time"] }
 flate2 = "1.0.17"
 tar = "0.4.30"
 clap = "2.33.3"
@@ -36,4 +36,3 @@ protoc-rust = "2.18.0"
 [dev-dependencies]
 tempdir = "0.3"
 serial_test = "*"
-ntest = "0.7"

@@ -12,13 +12,13 @@ use karl;
 fn send(controller: &str) {
     debug!("registering client");
     let now = Instant::now();
-    let result = karl::net::register_client(controller, "hello_world", None);
-    let _client_token = result.get_client_token();
+    let result = karl::net::register_client(controller, "hello-world-client", None);
+    let client_token = result.get_client_token();
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     debug!("registering hook");
     let now = Instant::now();
-    // TODO
+    karl::net::register_hook(controller, client_token, "hello-world");
     debug!("=> {} s", now.elapsed().as_secs_f32());
 }
 
