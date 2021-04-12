@@ -1,6 +1,5 @@
 use std::fs;
 use std::thread;
-use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
@@ -9,11 +8,9 @@ use tokio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use tonic::{Request, Response, Status, Code};
-use crate::protos2::karl_controller_client::KarlControllerClient;
+use tonic::{Request, Response, Status};
 use crate::protos2::*;
-use protobuf::{self, Message, ProtobufEnum};
-use crate::{packet, protos, protos::MessageType};
+use crate::protos;
 use crate::common::{
     Error, Token, RequestToken,
 };
@@ -29,8 +26,6 @@ pub struct Host {
     /// Computation request base, likely ~/.karl/<id>
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
-    ip: String,
-    port: u16,
     /// Controller address.
     controller: String,
     /// Request token, or none if the host is processing a ComputeRequest.
@@ -44,8 +39,26 @@ pub struct Host {
 impl karl_host_server::KarlHost for Host {
     async fn start_compute(
         &self, req: Request<ComputeRequest>,
-    ) -> Result<Response<NotifyStart>, Status> {
-        unimplemented!()
+    ) -> Result<Response<()>, Status> {
+        let req = req.into_inner();
+
+        // Verify that the compute request includes a valid request token.
+        // Notify the controller of the start and end of the request, if
+        // the request token is valid and the host processes compute.
+        self.use_request_token(&Token(req.request_token.clone()))
+            .map_err(|e| e.into_status())?;
+        crate::net::notify_start(&self.controller, self.id, req.request_token.clone()).await?;
+        let _res = self.handle_compute(req);
+
+        // Notify end and create a new token.
+        let token = {
+            let mut token = self.token.lock().unwrap();
+            *token = (Some(Token::gen()), Instant::now());
+            token.0.clone().unwrap()
+        };
+        crate::net::notify_end(&self.controller, self.id, token).await?;
+
+        Ok(Response::new(()))
     }
 
     async fn network(
@@ -83,9 +96,9 @@ impl karl_host_server::KarlHost for Host {
 /// This is the input root.
 ///
 /// Creates the root path directory if it does not already exist.
-fn unpack_request(req: &protos::ComputeRequest, root: &Path) -> Result<(), Error> {
+fn unpack_request(req: &ComputeRequest, root: &Path) -> Result<(), Error> {
     let now = Instant::now();
-    let tar = GzDecoder::new(&req.get_package()[..]);
+    let tar = GzDecoder::new(&req.package[..]);
     let mut archive = Archive::new(tar);
     fs::create_dir_all(root).unwrap();
     archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
@@ -103,20 +116,15 @@ impl Host {
     /// Generate a new host with a random ID.
     pub fn new(
         karl_path: PathBuf,
-        port: u16,
         controller: &str,
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let base_path = karl_path.join(id.to_string());
-        let ip = std::net::UdpSocket::bind("0.0.0.0:0").unwrap()
-            .local_addr().unwrap().ip().to_string();
         Self {
             id,
             karl_path,
             base_path,
-            ip,
-            port,
             controller: controller.to_string(),
             token: Arc::new(Mutex::new((Some(Token::gen()), Instant::now()))),
         }
@@ -135,26 +143,12 @@ impl Host {
     ///
     /// Parameters:
     /// - password - The password to register with the controller.
-    pub async fn start(&mut self, password: &str) -> Result<(), Status> {
+    pub async fn start(&mut self, port: u16, password: &str) -> Result<(), Status> {
         // Create the <KARL_PATH> if it does not already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
         // Set the current working directory to the <KARL_PATH>.
         std::env::set_current_dir(&self.karl_path).unwrap();
         debug!("create karl_path {:?}", &self.karl_path);
-
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
-        self.port = listener.local_addr()?.port();
-        info!("ID {} listening on port {}", self.id, self.port);
-        let mut client = KarlControllerClient::connect(self.controller.clone())
-            .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-        let request = tonic::Request::new(HostRegisterRequest {
-            host_id: self.id.to_string(),
-            ip: self.ip.clone(),
-            port: self.port as _,
-            password: password.to_string(),
-            service_name: self.id.to_string(),
-        });
-        let _result = client.host_register(request).await?;
 
         let token_lock = self.token.clone();
         let controller_addr = self.controller.clone();
@@ -180,41 +174,30 @@ impl Host {
             // This mechanism protects the host from clients that reserve
             // hosts with the controller and fails to make a ComputeRequest.
             loop {
-                let mut token = token_lock.lock().unwrap();
-                let active_request = token.0.is_none();
-                let recent_renewal = token.1.elapsed().as_secs_f32() < (HEARTBEAT_INTERVAL-1) as f32;
-                let token_to_send = if !active_request && !recent_renewal {
-                    // Renew the token if not processing a request or if it
-                    // has been less than HEARTBEAT_INTERVAL-1 seconds since
-                    // renewing the token.
-                    let token_to_send = Token::gen();
-                    debug!("heartbeat {:?}", &token_to_send);
-                    *token = (Some(token_to_send.clone()), Instant::now());
-                    Some(token_to_send)
-                } else {
-                    None
+                let token_to_send = {
+                    let mut token = token_lock.lock().unwrap();
+                    let active_request = token.0.is_none();
+                    let recent_renewal = token.1.elapsed().as_secs_f32() < (HEARTBEAT_INTERVAL-1) as f32;
+                    if !active_request && !recent_renewal {
+                        // Renew the token if not processing a request or if it
+                        // has been less than HEARTBEAT_INTERVAL-1 seconds since
+                        // renewing the token.
+                        let token_to_send = Token::gen();
+                        debug!("heartbeat {:?}", &token_to_send);
+                        *token = (Some(token_to_send.clone()), Instant::now());
+                        Some(token_to_send)
+                    } else {
+                        None
+                    }
                 };
-                crate::net::heartbeat(&controller_addr, host_id, token_to_send);
-                drop(token);
+                crate::net::heartbeat(&controller_addr, host_id, token_to_send).await.unwrap();
                 thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL));
             }
         });
 
-        for stream in listener.incoming() {
-            let stream = stream?;
-            debug!("incoming stream {:?}", stream.peer_addr());
-            let now = Instant::now();
-            if let Err(e) = self.handle_client(stream) {
-                error!("{:?}", e);
-            }
-            warn!("total: {} s", now.elapsed().as_secs_f32());
-        }
+        crate::net::register_host(&self.controller, self.id, port, password).await?;
+        info!("ID {} listening on port {}", self.id, port);
         Ok(())
-    }
-
-    /// Handle a ping request.
-    fn handle_ping(&mut self, _req: protos::PingRequest) -> protos::PingResult {
-        protos::PingResult::default()
     }
 
     /// Validate and use the request token.
@@ -222,7 +205,7 @@ impl Host {
     /// If the token is valid, "uses" the token by invalidating it for
     /// future requests, indicating that the host has an active request.
     /// If not, returns Error::InvalidRequestToken.
-    fn use_request_token(&mut self, token: &RequestToken) -> Result<(), Error> {
+    fn use_request_token(&self, token: &RequestToken) -> Result<(), Error> {
         let mut real_token = self.token.lock().unwrap();
         if let Some(real_token) = &real_token.0 {
             if token != real_token {
@@ -246,27 +229,27 @@ impl Host {
     ///
     /// The client must be verified by the caller.
     fn handle_compute(
-        &mut self,
-        req: protos::ComputeRequest,
+        &self,
+        req: ComputeRequest,
     ) -> Result<protos::ComputeResult, Error> {
         info!("handling compute (len {}):\n\
             command => {:?} {:?}\n\
             envs => {:?}\n\
             file_perm => {:?}\n\
             network_perm => {:?}",
-            req.package.len(), req.get_binary_path(), req.get_args(),
-            req.get_envs(), req.get_file_perm(), req.get_network_perm());
+            req.package.len(), req.binary_path, req.args,
+            req.envs, req.file_perm, req.network_perm);
         let now = Instant::now();
 
         let root_path = self.base_path.join("root");
         unpack_request(&req, &root_path)?;
-        let binary_path = Path::new(req.get_binary_path()).to_path_buf();
+        let binary_path = Path::new(&req.binary_path).to_path_buf();
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let res = crate::runtime::run(
             binary_path,
-            req.get_args().to_vec(),
-            req.get_envs().to_vec(),
+            req.args,
+            req.envs,
             &self.karl_path,
             &self.base_path,
         )?;
@@ -283,72 +266,6 @@ impl Host {
             now.elapsed().as_secs_f32(),
         );
         Ok(res)
-    }
-
-    /// Handle an incoming TCP stream.
-    fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
-        // Read the computation request from the TCP stream.
-        let now = Instant::now();
-        debug!("reading packet");
-        let (header, buf) = packet::read(&mut stream, 1)?.remove(0);
-        debug!("=> {} s ({} bytes)", now.elapsed().as_secs_f32(), buf.len());
-
-        // Deploy the request to correct handler.
-        let ty = MessageType::from_i32(
-            header.ty).ok_or(Error::InvalidPacketType(header.ty))?;
-        let (res_bytes, ty) = match ty {
-            MessageType::PING_REQUEST => {
-                debug!("deserialize packet");
-                let now = Instant::now();
-                let req = protobuf::parse_from_bytes::<protos::PingRequest>(&buf[..])
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-                let res = self.handle_ping(req);
-                debug!("=> {:?}", res);
-                debug!("serialize packet");
-                let now = Instant::now();
-                let res_bytes = res.write_to_bytes()
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-                (res_bytes, MessageType::PING_RESULT)
-            },
-            MessageType::COMPUTE_REQUEST => {
-                debug!("deserialize packet");
-                let now = Instant::now();
-                let req = protobuf::parse_from_bytes::<protos::ComputeRequest>(&buf[..])
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-
-                // Verify that the compute request includes a valid request token.
-                // Notify the controller of the start and end of the request, if
-                // the request token is valid and the host processes compute.
-                self.use_request_token(&Token(req.request_token.clone()))?;
-                crate::net::notify_start(&self.controller, self.id, req.request_token.clone());
-                let res = self.handle_compute(req);
-
-                // Notify end and create a new token.
-                let mut token = self.token.lock().unwrap();
-                *token = (Some(Token::gen()), Instant::now());
-                crate::net::notify_end(&self.controller, self.id, token.0.clone().unwrap());
-                drop(token);
-
-                debug!("=> {:?}", res);
-                debug!("serialize packet");
-                let now = Instant::now();
-                let res_bytes = res?.write_to_bytes()
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-                (res_bytes, MessageType::COMPUTE_RESULT)
-            },
-            ty => return Err(Error::InvalidPacketType(ty.value())),
-        };
-
-        // Return the result to sender.
-        debug!("writing packet");
-        let now = Instant::now();
-        packet::write(&mut stream, ty, &res_bytes)?;
-        debug!("=> {} s", now.elapsed().as_secs_f32());
-        Ok(())
     }
 }
 

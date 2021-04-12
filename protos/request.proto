@@ -4,7 +4,7 @@ import "google/protobuf/empty.proto";
 package request;
 
 service KarlHost {
-  rpc StartCompute (ComputeRequest) returns (NotifyStart);
+  rpc StartCompute (ComputeRequest) returns (google.protobuf.Empty);
   rpc Network (NetworkAccess) returns (NetworkAccessResult);
   rpc Get (GetData) returns (GetDataResult);
   rpc Put (PutData) returns (google.protobuf.Empty);
@@ -14,6 +14,7 @@ service KarlHost {
 
 service KarlController {
   // hosts
+  rpc StartCompute (NotifyStart) returns (google.protobuf.Empty);
   rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
   rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
   rpc ForwardGet (GetData) returns (GetDataResult);

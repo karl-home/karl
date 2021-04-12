@@ -12,7 +12,6 @@ extern crate serial_test;
 mod dashboard;
 pub mod protos;
 pub mod net;
-pub mod packet;
 pub mod runtime;
 pub mod common;
 pub mod controller;

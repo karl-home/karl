@@ -11,7 +11,7 @@ use types::*;
 
 use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
-use std::net::{TcpStream, TcpListener, IpAddr};
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::fs;
@@ -19,12 +19,8 @@ use std::io::Read;
 
 use tonic::{Request, Response, Status};
 use crate::protos2::*;
-
-use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
-use crate::packet;
 use crate::hook::FileACL;
-use crate::protos::{self, MessageType};
 use crate::common::{Error, Token, ClientToken};
 
 /// Controller used for discovering available Karl services and coordinating
@@ -53,9 +49,22 @@ pub struct Controller {
 impl karl_controller_server::KarlController for Controller {
     // hosts
 
+    async fn start_compute(
+        &self, req: Request<NotifyStart>,
+    ) -> Result<Response<()>, Status> {
+        let now = Instant::now();
+        let req = req.into_inner();
+        let mut scheduler = self.scheduler.lock().unwrap();
+        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
+        scheduler.notify_start(req.service_name, req.description);
+        trace!("start_compute => {} s", now.elapsed().as_secs_f32());
+        Ok(Response::new(()))
+    }
+
     async fn host_register(
         &self, req: Request<HostRegisterRequest>,
     ) -> Result<Response<HostRegisterResult>, Status> {
+        let now = Instant::now();
         let req = req.into_inner();
         let mut scheduler = self.scheduler.lock().unwrap();
         if !scheduler.add_host(
@@ -67,6 +76,7 @@ impl karl_controller_server::KarlController for Controller {
             warn!("failed to register {} ({:?})", &req.service_name, req.ip);
         }
         scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
+        trace!("host_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(HostRegisterResult::default()))
     }
 
@@ -103,13 +113,24 @@ impl karl_controller_server::KarlController for Controller {
     async fn finish_compute(
         &self, req: Request<NotifyEnd>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let now = Instant::now();
+        let req = req.into_inner();
+        let mut scheduler = self.scheduler.lock().unwrap();
+        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
+        scheduler.notify_end(req.service_name, Token(req.request_token));
+        Ok(Response::new(()))
     }
 
     async fn heartbeat(
         &self, req: Request<HostHeartbeat>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let now = Instant::now();
+        let req = req.into_inner();
+        let mut scheduler = self.scheduler.lock().unwrap();
+        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
+        scheduler.heartbeat(req.service_name, &req.request_token);
+        trace!("heartbeat => {} s", now.elapsed().as_secs_f32());
+        Ok(Response::new(()))
     }
 
     // sensors
@@ -117,6 +138,7 @@ impl karl_controller_server::KarlController for Controller {
     async fn sensor_register(
         &self, req: Request<SensorRegisterRequest>,
     ) -> Result<Response<SensorRegisterResult>, Status> {
+        let now = Instant::now();
         let req = req.into_inner();
         let res = self.register_client(
             req.id,
@@ -124,6 +146,7 @@ impl karl_controller_server::KarlController for Controller {
             &req.app[..],
             false,
         );
+        trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
     }
 
@@ -156,7 +179,17 @@ impl karl_controller_server::KarlController for Controller {
     async fn register_hook(
         &self, req: Request<RegisterHookRequest>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let now = Instant::now();
+        let req = req.into_inner();
+        self.register_hook(
+            &Token(req.client_token.to_string()),
+            req.global_hook_id.to_string(),
+            req.network_perm.to_vec(),
+            req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
+            req.envs.to_vec(),
+        ).map_err(|e| e.into_status())?;
+        trace!("register_hook => {} s", now.elapsed().as_secs_f32());
+        Ok(Response::new(()))
     }
 }
 
@@ -179,16 +212,8 @@ impl Controller {
     }
 
     /// Initializes clients based on the `<KARL_PATH>/clients.txt` file and
-    /// starts the web dashboard. Also starts a TCP listener for the following
-    /// messages:
-    /// - HostRequest
-    /// - RegisterRequest
-    /// - NotifyStart
-    /// - NotifyEnd
-    /// - HostHeartbeat
-    /// - HostRegisterRequest
-    /// - PingRequest
-    pub fn start(
+    /// starts the web dashboard.
+    pub async fn start(
         &mut self,
         port: u16,
     ) -> Result<(), Error> {
@@ -236,83 +261,8 @@ impl Controller {
         );
         // Start the hook runner.
         self.runner.start(false);
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
-        info!("Karl controller listening on port {}", listener.local_addr()?.port());
-        for stream in listener.incoming() {
-            let stream = stream?;
-            trace!("incoming stream {:?}", stream.local_addr());
-            let now = Instant::now();
-            if let Err(e) = self.handle_client(stream) {
-                error!("{:?}", e);
-            }
-            info!("total: {} s", now.elapsed().as_secs_f32());
-        }
-        Ok(())
-    }
 
-    /// Handle an incoming TCP stream.
-    fn handle_client(&mut self, mut stream: TcpStream) -> Result<(), Error> {
-        // Read the computation request from the TCP stream.
-        let now = Instant::now();
-        trace!("reading packet");
-        let (req_header, req_bytes) = packet::read(&mut stream, 1)?.remove(0);
-        trace!("=> {} s", now.elapsed().as_secs_f32());
-
-        // Deploy the request to correct handler.
-        let ty = MessageType::from_i32(
-            req_header.ty).ok_or(Error::InvalidPacketType(req_header.ty))?;
-        match ty {
-            MessageType::REGISTER_HOOK => {
-                let req = parse_from_bytes::<protos::RegisterHookRequest>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                self.register_hook(
-                    &Token(req.get_client_token().to_string()),
-                    req.get_global_hook_id().to_string(),
-                    req.get_network_perm().to_vec(),
-                    req.get_file_perm().iter().map(|acl| FileACL::from(acl)).collect(),
-                    req.get_envs().to_vec(),
-                )?;
-            },
-            MessageType::NOTIFY_START => {
-                let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name)?;
-                scheduler.notify_start(req.service_name, req.description);
-            },
-            MessageType::NOTIFY_END => {
-                let req = parse_from_bytes::<protos::NotifyEnd>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name)?;
-                scheduler.notify_end(req.service_name, Token(req.request_token));
-            },
-            MessageType::HOST_HEARTBEAT => {
-                let req = parse_from_bytes::<protos::HostHeartbeat>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name)?;
-                scheduler.heartbeat(req.service_name, &req.request_token);
-            },
-            MessageType::PING_REQUEST => {
-                parse_from_bytes::<protos::PingRequest>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let res = protos::PingResult::default();
-                let res_bytes = res.write_to_bytes().unwrap();
-
-                // Return the result to sender.
-                debug!("writing packet {:?} ({} bytes)", res_bytes, res_bytes.len());
-                let now = Instant::now();
-                packet::write(&mut stream, MessageType::PING_RESULT, &res_bytes)?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-            },
-            ty => return Err(Error::InvalidPacketType(ty.value())),
-        };
+        info!("Karl controller listening on port {}", port);
         Ok(())
     }
 

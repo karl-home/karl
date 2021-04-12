@@ -2,8 +2,11 @@ use std::path::Path;
 use clap::{Arg, App};
 use karl::Host;
 
+use tonic::transport::Server;
+use karl::protos2::karl_host_server::KarlHostServer;
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Karl Host")
         .arg(Arg::with_name("karl-path")
@@ -16,7 +19,7 @@ async fn main() {
             .short("p")
             .long("port")
             .takes_value(true)
-            .default_value("0"))
+            .default_value("59583"))
         .arg(Arg::with_name("password")
             .help("Controller password to register host.")
             .long("password")
@@ -42,6 +45,12 @@ async fn main() {
         matches.value_of("controller-port").unwrap(),
     );
     let password = matches.value_of("password").unwrap();
-    let mut listener = Host::new(karl_path, port, &controller);
-    listener.start(password).await.unwrap();
+    let mut host = Host::new(karl_path, &controller);
+    host.start(port, password).await.unwrap();
+    Server::builder()
+        .add_service(KarlHostServer::new(host))
+        .serve(format!("0.0.0.0:{}", port).parse()?)
+        .await
+        .unwrap();
+    Ok(())
 }

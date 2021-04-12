@@ -145,7 +145,7 @@ impl HookRunner {
             };
             let host_addr = format!("{}:{}", host.ip, host.port);
             let request_token = host.request_token;
-            request.set_request_token(request_token.0.clone());
+            request.request_token = request_token.0.clone();
 
             // Update internal data structures.
             // In particular, the process's request token for authentication.
@@ -158,7 +158,7 @@ impl HookRunner {
             // Send the request.
             // TODO: check if the result has no error!
             if !mock_send_compute {
-                crate::net::send_compute(&host_addr, request);
+                crate::net::send_compute(&host_addr, request).await.unwrap();
             }
         }
     }

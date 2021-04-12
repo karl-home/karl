@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 use tokio::time::Duration;
 use crate::common::{StringID, Error};
 use crate::protos;
+use crate::protos2;
 
 pub const HOOK_STORE_PATH: &str = "hooks";
 
@@ -52,6 +53,26 @@ impl From<&protos::FileACL> for FileACL {
             path: Path::new(acl.get_path()).to_path_buf(),
             read: acl.get_read(),
             write: acl.get_write(),
+        }
+    }
+}
+
+impl From<&protos2::FileAcl> for FileACL {
+    fn from(acl: &protos2::FileAcl) -> Self {
+        Self {
+            path: Path::new(&acl.path).to_path_buf(),
+            read: acl.read,
+            write: acl.write,
+        }
+    }
+}
+
+impl Into<protos2::FileAcl> for FileACL {
+    fn into(self) -> protos2::FileAcl {
+        protos2::FileAcl {
+            path: self.path.into_os_string().into_string().unwrap(),
+            read: self.read,
+            write: self.write,
         }
     }
 }
@@ -123,21 +144,15 @@ impl Hook {
     ///
     /// The caller must set the request token before sending the compute
     /// reuqest to a host over the network.
-    pub fn to_compute_request(&self) -> Result<protos::ComputeRequest, Error> {
-        let mut req = protos::ComputeRequest::default();
+    pub fn to_compute_request(&self) -> Result<protos2::ComputeRequest, Error> {
+        let mut req = protos2::ComputeRequest::default();
         let hook = self.clone();
-        req.set_package(hook.package);
-        req.set_binary_path(hook.binary_path.into_os_string().into_string().unwrap());
-        req.set_args(hook.args.into_iter().collect());
-        req.set_envs(hook.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect());
-        req.set_file_perm(hook.file_perm.into_iter().map(|old| {
-            let mut new = protos::FileACL::default();
-            new.set_path(old.path.into_os_string().into_string().unwrap());
-            new.set_read(old.read);
-            new.set_write(old.write);
-            new
-        }).collect());
-        req.set_network_perm(hook.network_perm.into_iter().collect());
+        req.package = hook.package;
+        req.binary_path = hook.binary_path.into_os_string().into_string().unwrap();
+        req.args = hook.args.into_iter().collect();
+        req.envs = hook.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        req.file_perm = hook.file_perm.into_iter().map(|acl| acl.into()).collect();
+        req.network_perm = hook.network_perm.into_iter().collect();
         Ok(req)
     }
 }

@@ -8,107 +8,108 @@
 //! If the request to a host is unsuccessful, the client must query the
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
-use std::net::TcpStream;
-use protobuf::{self, Message, ProtobufEnum};
-use crate::protos::{self, MessageType};
-use crate::packet;
+use tonic::{Request, Response, Status, Code};
+use crate::protos2::karl_controller_client::KarlControllerClient;
+use crate::protos2::karl_host_client::KarlHostClient;
+use crate::protos2::*;
 use crate::common::*;
 
 /// Registers a hook.
-pub fn register_hook(
+pub async fn register_hook(
     controller_addr: &str,
     client_token: &str,
     global_hook_id: &str,
-) {
-    // TODO: handle network errors with connecting, writing, reading.
-    // Deserialization may also fail due to the other side.
-    let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let mut req = protos::RegisterHookRequest::default();
-    req.set_client_token(client_token.to_string());
-    req.set_global_hook_id(global_hook_id.to_string());
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::REGISTER_HOOK, &req_bytes).unwrap();
-}
-
-/// Pings the given host and returns the result.
-pub fn send_ping(host: &str) -> protos::PingResult {
-    let mut stream = TcpStream::connect(&host).unwrap();
-    let req = protos::PingRequest::default();
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::PING_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, MessageType::PING_RESULT.value());
-    protobuf::parse_from_bytes::<protos::PingResult>(&res_bytes)
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap()
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = Request::new(RegisterHookRequest {
+        user_token: "TEMPORARY".to_string(),
+        global_hook_id: global_hook_id.to_string(),
+        envs: vec![],
+        file_perm: vec![],
+        network_perm: vec![],
+        client_token: client_token.to_string(),
+    });
+    client.register_hook(request).await
 }
 
 /// Sends a compute request to the given host and returns the result.
-pub fn send_compute(
+pub async fn send_compute(
     host: &str,
-    req: protos::ComputeRequest,
-) -> protos::ComputeResult {
-    let mut stream = TcpStream::connect(&host).unwrap();
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::COMPUTE_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, MessageType::COMPUTE_RESULT.value());
-    protobuf::parse_from_bytes::<protos::ComputeResult>(&res_bytes)
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap()
+    req: ComputeRequest,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlHostClient::connect(host.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = Request::new(req);
+    client.start_compute(request).await
 }
 
 /*****************************************************************************
  * Service API
  *****************************************************************************/
 /// Notify controller about compute request start.
-pub fn notify_start(controller_addr: &str, service_id: u32, description: String) {
-    let mut stream = TcpStream::connect(&controller_addr).unwrap();
-    let mut req = protos::NotifyStart::default();
-    req.set_service_name(format!("KarlService-{}", service_id));
-    req.set_description(description);
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
+pub async fn notify_start(
+    controller_addr: &str, service_id: u32, description: String,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let service_name = format!("KarlService-{}", service_id);
+    let request = Request::new(NotifyStart {
+        process_token: "TEMPORARY".to_string(),
+        service_name,
+        description,
+    });
     debug!("notify start");
-    packet::write(&mut stream, MessageType::NOTIFY_START, &req_bytes).unwrap();
+    client.start_compute(request).await
 }
 
 /// Notify controller about compute request end.
-pub fn notify_end(controller_addr: &str, service_id: u32, token: RequestToken) {
-    let mut stream = TcpStream::connect(&controller_addr).unwrap();
-    let mut req = protos::NotifyEnd::default();
-    req.set_service_name(format!("KarlService-{}", service_id));
-    req.set_request_token(token.0);
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
+pub async fn notify_end(
+    controller_addr: &str, service_id: u32, token: RequestToken,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let service_name = format!("KarlService-{}", service_id);
+    let request = Request::new(NotifyEnd {
+        host_token: "TEMPORARY".to_string(),
+        process_token: "TEMPORARY".to_string(),
+        service_name,
+        request_token: token.0,
+    });
     debug!("notify_end");
-    packet::write(&mut stream, MessageType::NOTIFY_END, &req_bytes).unwrap();
+    client.finish_compute(request).await
 }
 
 /// Send a heartbeat to the controller.
-pub fn heartbeat(controller_addr: &str, service_id: u32, token: Option<RequestToken>) {
-    let mut stream = TcpStream::connect(&controller_addr).unwrap();
-    let mut req = protos::HostHeartbeat::default();
-    req.set_service_name(format!("KarlService-{}", service_id));
-    if let Some(token) = token {
-        req.set_request_token(token.0);
-    }
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::HOST_HEARTBEAT, &req_bytes).unwrap();
+pub async fn heartbeat(
+    controller_addr: &str, service_id: u32, token: Option<RequestToken>,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let service_name = format!("KarlService-{}", service_id);
+    let request = Request::new(HostHeartbeat {
+        host_token: "TEMPORARY".to_string(),
+        service_name,
+        request_token: token.unwrap_or(Token("".to_string())).0,
+    });
+    client.heartbeat(request).await
+}
+
+/// Register a host with the controller.
+pub async fn register_host(
+    controller_addr: &str, service_id: u32, port: u16, password: &str,
+) -> Result<Response<HostRegisterResult>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let service_name = format!("KarlService-{}", service_id);
+    let ip = std::net::UdpSocket::bind("0.0.0.0:0").unwrap()
+        .local_addr().unwrap().ip().to_string();
+    let request = Request::new(HostRegisterRequest {
+        host_id: service_name.clone(),
+        ip,
+        port: port as _,
+        password: password.to_string(),
+        service_name: service_name,
+    });
+    client.host_register(request).await
 }
