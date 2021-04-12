@@ -18,7 +18,7 @@ use std::fs;
 use std::io::Read;
 
 use tonic::{Request, Response, Status};
-use crate::protos2::*;
+use crate::protos::*;
 use crate::dashboard;
 use crate::hook::FileACL;
 use crate::common::{Error, Token, ClientToken};

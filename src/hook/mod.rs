@@ -5,7 +5,6 @@ use serde::{Serialize, Deserialize};
 use tokio::time::Duration;
 use crate::common::{StringID, Error};
 use crate::protos;
-use crate::protos2;
 
 pub const HOOK_STORE_PATH: &str = "hooks";
 
@@ -47,18 +46,8 @@ impl FileACL {
     }
 }
 
-impl From<&protos::FileACL> for FileACL {
-    fn from(acl: &protos::FileACL) -> Self {
-        Self {
-            path: Path::new(acl.get_path()).to_path_buf(),
-            read: acl.get_read(),
-            write: acl.get_write(),
-        }
-    }
-}
-
-impl From<&protos2::FileAcl> for FileACL {
-    fn from(acl: &protos2::FileAcl) -> Self {
+impl From<&protos::FileAcl> for FileACL {
+    fn from(acl: &protos::FileAcl) -> Self {
         Self {
             path: Path::new(&acl.path).to_path_buf(),
             read: acl.read,
@@ -67,9 +56,9 @@ impl From<&protos2::FileAcl> for FileACL {
     }
 }
 
-impl Into<protos2::FileAcl> for FileACL {
-    fn into(self) -> protos2::FileAcl {
-        protos2::FileAcl {
+impl Into<protos::FileAcl> for FileACL {
+    fn into(self) -> protos::FileAcl {
+        protos::FileAcl {
             path: self.path.into_os_string().into_string().unwrap(),
             read: self.read,
             write: self.write,
@@ -144,8 +133,8 @@ impl Hook {
     ///
     /// The caller must set the request token before sending the compute
     /// reuqest to a host over the network.
-    pub fn to_compute_request(&self) -> Result<protos2::ComputeRequest, Error> {
-        let mut req = protos2::ComputeRequest::default();
+    pub fn to_compute_request(&self) -> Result<protos::ComputeRequest, Error> {
+        let mut req = protos::ComputeRequest::default();
         let hook = self.clone();
         req.package = hook.package;
         req.binary_path = hook.binary_path.into_os_string().into_string().unwrap();

@@ -3,7 +3,7 @@ use clap::{Arg, App};
 use karl::Controller;
 
 use tonic::transport::Server;
-use karl::protos2::karl_controller_server::KarlControllerServer;
+use karl::protos::karl_controller_server::KarlControllerServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
-use crate::protos::ComputeResult;
 use crate::common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
@@ -85,7 +84,7 @@ pub fn run(
     envs: Vec<String>,
     _karl_path: &Path,
     base_path: &Path,
-) -> Result<ComputeResult, Error> {
+) -> Result<(), Error> {
     // Directory layout
     // <request_id> = 123456
     // <client_id> = wyzecam
@@ -124,20 +123,8 @@ pub fn run(
     // Return the requested results.
     warn!("{}", String::from_utf8_lossy(&output.stdout));
     warn!("{}", String::from_utf8_lossy(&output.stderr));
-    let now = Instant::now();
-    let mut res = ComputeResult::default();
-    res.set_stdout(output.stdout);
-    res.set_stderr(output.stderr);
-    // for path in res_files {
-    //     let f = root_path.join(&path);
-    //     match fs::read(&f) {
-    //         Ok(bytes) => { res.mut_files().insert(path, bytes); },
-    //         Err(e) => warn!("error reading output file {:?}: {:?}", f, e),
-    //     }
-    // }
-    info!("=> build result: {} s", now.elapsed().as_secs_f32());
     env::set_current_dir(&previous_dir).unwrap();
-    Ok(res)
+    Ok(())
 }
 
 #[cfg(test)]

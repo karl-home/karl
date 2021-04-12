@@ -10,7 +10,6 @@ extern crate rocket_contrib;
 extern crate serial_test;
 
 mod dashboard;
-pub mod protos;
 pub mod net;
 pub mod runtime;
 pub mod common;
@@ -20,6 +19,6 @@ pub mod hook;
 pub use controller::Controller;
 pub use host::Host;
 
-pub mod protos2 {
+pub mod protos {
 	tonic::include_proto!("request");
 }

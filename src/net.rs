@@ -9,9 +9,9 @@
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use tonic::{Request, Response, Status, Code};
-use crate::protos2::karl_controller_client::KarlControllerClient;
-use crate::protos2::karl_host_client::KarlHostClient;
-use crate::protos2::*;
+use crate::protos::karl_controller_client::KarlControllerClient;
+use crate::protos::karl_host_client::KarlHostClient;
+use crate::protos::*;
 use crate::common::*;
 
 /// Registers a hook.

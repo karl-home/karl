@@ -9,8 +9,7 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 
 use tonic::{Request, Response, Status};
-use crate::protos2::*;
-use crate::protos;
+use crate::protos::*;
 use crate::common::{
     Error, Token, RequestToken,
 };
@@ -231,7 +230,7 @@ impl Host {
     fn handle_compute(
         &self,
         req: ComputeRequest,
-    ) -> Result<protos::ComputeResult, Error> {
+    ) -> Result<(), Error> {
         info!("handling compute (len {}):\n\
             command => {:?} {:?}\n\
             envs => {:?}\n\
@@ -246,7 +245,7 @@ impl Host {
         let binary_path = Path::new(&req.binary_path).to_path_buf();
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
-        let res = crate::runtime::run(
+        let _res = crate::runtime::run(
             binary_path,
             req.args,
             req.envs,
@@ -265,7 +264,7 @@ impl Host {
             self.base_path,
             now.elapsed().as_secs_f32(),
         );
-        Ok(res)
+        Ok(())
     }
 }
 
