@@ -17,6 +17,9 @@ use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
+use tonic::{Request, Response, Status};
+use crate::protos2::*;
+
 use protobuf::{Message, parse_from_bytes, ProtobufEnum};
 use crate::dashboard;
 use crate::packet;
@@ -44,6 +47,23 @@ pub struct Controller {
     clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
     /// Whether to automatically confirm clients and hosts.
     autoconfirm: bool,
+}
+
+#[tonic::async_trait]
+impl karl_controller_server::KarlController for Controller {
+    async fn sensor_register(
+        &self,
+        req: Request<RegisterRequest>,
+    ) -> Result<Response<RegisterResult>, Status> {
+        let req = req.into_inner();
+        let res = self.register_client(
+            req.id,
+            "0.0.0.0".parse().unwrap(),
+            &req.app[..],
+            false,
+        );
+        Ok(Response::new(res))
+    }
 }
 
 impl Controller {
@@ -160,24 +180,7 @@ impl Controller {
                     req.get_envs().to_vec(),
                 )?;
             },
-            MessageType::REGISTER_REQUEST => {
-                let req = parse_from_bytes::<protos::RegisterRequest>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let res = self.register_client(
-                    req.get_id().to_string(),
-                    stream.peer_addr().unwrap().ip(),
-                    req.get_app(),
-                    false,
-                );
-                let res_bytes = res.write_to_bytes().unwrap();
-
-                // Return the result to sender.
-                debug!("writing packet");
-                let now = Instant::now();
-                packet::write(&mut stream, MessageType::REGISTER_RESULT, &res_bytes)?;
-                debug!("=> {} s", now.elapsed().as_secs_f32());
-            },
+            MessageType::REGISTER_REQUEST => {},
             MessageType::NOTIFY_START => {
                 let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
@@ -301,12 +304,12 @@ impl Controller {
     /// - confirmed - Whether the client should be confirmed by default.
     ///   Overriden by autoconfirm.
     fn register_client(
-        &mut self,
+        &self,
         mut name: String,
         client_addr: IpAddr,
         app_bytes: &[u8],
         confirmed: bool,
-    ) -> protos::RegisterResult {
+    ) -> RegisterResult {
         // resolve duplicate client names
         let names = self.clients.lock().unwrap().values()
             .map(|client| client.name.clone()).collect::<HashSet<_>>();
@@ -355,9 +358,9 @@ impl Controller {
         } else {
             unreachable!("impossible to generate duplicate client tokens")
         }
-        let mut res = protos::RegisterResult::default();
-        res.set_client_token(token.0);
-        res
+        RegisterResult {
+            client_token: token.0,
+        }
     }
 }
 

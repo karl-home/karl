@@ -14,33 +14,6 @@ use crate::protos::{self, MessageType};
 use crate::packet;
 use crate::common::*;
 
-/// Register an IoT client with the controller.
-///
-/// If the client wants to register a web app, it needs to include the bytes
-/// of a single Handlebars template file.
-pub fn register_client(
-    controller_addr: &str,
-    id: &str,
-    app_bytes: Option<Vec<u8>>,
-) -> protos::RegisterResult {
-    let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let mut req = protos::RegisterRequest::default();
-    req.set_id(id.to_string());
-    if let Some(app) = app_bytes {
-        req.set_app(app);
-    }
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::REGISTER_REQUEST, &req_bytes).unwrap();
-    let (header, res_bytes) = &packet::read(&mut stream, 1).unwrap()[0];
-    assert_eq!(header.ty, MessageType::REGISTER_RESULT.value());
-    protobuf::parse_from_bytes::<protos::RegisterResult>(&res_bytes)
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap()
-}
-
 /// Registers a hook.
 pub fn register_hook(
     controller_addr: &str,

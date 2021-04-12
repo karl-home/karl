@@ -20,3 +20,7 @@ mod host;
 pub mod hook;
 pub use controller::Controller;
 pub use host::Host;
+
+pub mod protos2 {
+	tonic::include_proto!("request");
+}

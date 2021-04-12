@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package request;
 
+service KarlController {
+  rpc SensorRegister (RegisterRequest) returns (RegisterResult);
+}
+
 enum MessageType {
   RAW_BYTES = 0;
   PING_REQUEST = 1;

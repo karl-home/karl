@@ -3829,8 +3829,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x10\x08\x12\x0e\n\nNOTIFY_END\x10\t\x12\x12\n\x0eHOST_HEARTBEAT\x10\n\
     \x12\x19\n\x15HOST_REGISTER_REQUEST\x10\x0b\x12\x0c\n\x08PUT_DATA\x10\
     \x0c\x12\x0c\n\x08GET_DATA\x10\r\x12\x13\n\x0fGET_DATA_RESULT\x10\x0e\
-    \x12\x0f\n\x0bDELETE_DATA\x10\x0f\x12\x12\n\x0eNETWORK_ACCESS\x10\x10b\
-    \x06proto3\
+    \x12\x0f\n\x0bDELETE_DATA\x10\x0f\x12\x12\n\x0eNETWORK_ACCESS\x10\x102U\
+    \n\x0eKarlController\x12C\n\x0eSensorRegister\x12\x18.request.RegisterRe\
+    quest\x1a\x17.request.RegisterResultb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
