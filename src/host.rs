@@ -9,6 +9,8 @@ use tokio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
+use tonic::{Request, Response, Status};
+use crate::protos2::*;
 use protobuf::{self, Message, ProtobufEnum};
 use crate::{packet, protos, protos::MessageType};
 use crate::common::{
@@ -34,6 +36,45 @@ pub struct Host {
     ///
     /// The time is when the request token was last renewed.
     token: Arc<Mutex<(Option<RequestToken>, Instant)>>,
+}
+
+#[tonic::async_trait]
+impl karl_host_server::KarlHost for Host {
+    async fn start_compute(
+        &self, req: Request<ComputeRequest>,
+    ) -> Result<Response<NotifyStart>, Status> {
+        unimplemented!()
+    }
+
+    async fn network(
+        &self, req: Request<NetworkAccess>,
+    ) -> Result<Response<NetworkAccessResult>, Status> {
+        unimplemented!()
+    }
+
+    async fn get(
+        &self, req: Request<GetData>,
+    ) -> Result<Response<GetDataResult>, Status> {
+        unimplemented!()
+    }
+
+    async fn put(
+        &self, req: Request<PutData>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn delete(
+        &self, req: Request<DeleteData>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn state(
+        &self, req: Request<StateChange>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
 }
 
 /// Unpackage the bytes of the tarred and gzipped request to the base path.

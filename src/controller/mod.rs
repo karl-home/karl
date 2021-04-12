@@ -51,10 +51,61 @@ pub struct Controller {
 
 #[tonic::async_trait]
 impl karl_controller_server::KarlController for Controller {
+    // hosts
+
+    async fn host_register(
+        &self, req: Request<HostRegisterRequest>,
+    ) -> Result<Response<HostRegisterResult>, Status> {
+        unimplemented!()
+    }
+
+    async fn forward_network(
+        &self, req: Request<NetworkAccess>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn forward_get(
+        &self, req: Request<GetData>,
+    ) -> Result<Response<GetDataResult>, Status> {
+        unimplemented!()
+    }
+
+    async fn forward_put(
+        &self, req: Request<PutData>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn forward_delete(
+        &self, req: Request<DeleteData>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn forward_state(
+        &self, req: Request<StateChange>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn finish_compute(
+        &self, req: Request<NotifyEnd>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn heartbeat(
+        &self, req: Request<HostHeartbeat>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    // sensors
+
     async fn sensor_register(
-        &self,
-        req: Request<RegisterRequest>,
-    ) -> Result<Response<RegisterResult>, Status> {
+        &self, req: Request<SensorRegisterRequest>,
+    ) -> Result<Response<SensorRegisterResult>, Status> {
         let req = req.into_inner();
         let res = self.register_client(
             req.id,
@@ -63,6 +114,38 @@ impl karl_controller_server::KarlController for Controller {
             false,
         );
         Ok(Response::new(res))
+    }
+
+    async fn raw_data(
+        &self, req: Request<SensorPushData>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    // users
+
+    async fn audit_file(
+        &self, req: Request<AuditRequest>,
+    ) -> Result<Response<AuditResult>, Status> {
+        unimplemented!()
+    }
+
+    async fn verify_sensor(
+        &self, req: Request<VerifySensorRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn verify_host(
+        &self, req: Request<VerifyHostRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn register_hook(
+        &self, req: Request<RegisterHookRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
     }
 }
 
@@ -169,7 +252,7 @@ impl Controller {
             req_header.ty).ok_or(Error::InvalidPacketType(req_header.ty))?;
         match ty {
             MessageType::REGISTER_HOOK => {
-                let req = parse_from_bytes::<protos::RegisterHook>(&req_bytes)
+                let req = parse_from_bytes::<protos::RegisterHookRequest>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
                 self.register_hook(
@@ -180,7 +263,6 @@ impl Controller {
                     req.get_envs().to_vec(),
                 )?;
             },
-            MessageType::REGISTER_REQUEST => {},
             MessageType::NOTIFY_START => {
                 let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
@@ -309,7 +391,7 @@ impl Controller {
         client_addr: IpAddr,
         app_bytes: &[u8],
         confirmed: bool,
-    ) -> RegisterResult {
+    ) -> SensorRegisterResult {
         // resolve duplicate client names
         let names = self.clients.lock().unwrap().values()
             .map(|client| client.name.clone()).collect::<HashSet<_>>();
@@ -358,7 +440,7 @@ impl Controller {
         } else {
             unreachable!("impossible to generate duplicate client tokens")
         }
-        RegisterResult {
+        SensorRegisterResult {
             client_token: token.0,
         }
     }

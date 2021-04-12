@@ -23,7 +23,7 @@ pub fn register_hook(
     // TODO: handle network errors with connecting, writing, reading.
     // Deserialization may also fail due to the other side.
     let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let mut req = protos::RegisterHook::default();
+    let mut req = protos::RegisterHookRequest::default();
     req.set_client_token(client_token.to_string());
     req.set_global_hook_id(global_hook_id.to_string());
     let req_bytes = req

@@ -6,7 +6,7 @@ use clap::{Arg, App};
 use karl;
 
 use karl::protos2::karl_controller_client::KarlControllerClient;
-use karl::protos2::{RegisterRequest, RegisterResult};
+use karl::protos2::SensorRegisterRequest;
 
 /// Requests computation from the host.
 ///
@@ -16,9 +16,10 @@ async fn send(controller: &str) -> Result<(), Box<dyn std::error::Error>> {
     debug!("registering client");
     let now = Instant::now();
     let mut client = KarlControllerClient::connect("http://127.0.0.1:59582").await?;
-    let request = tonic::Request::new(RegisterRequest {
-        id: "hello-world-client".to_string(),
+    let request = tonic::Request::new(SensorRegisterRequest {
+        global_sensor_id: "hello-world-client".to_string(),
         app: vec![],
+        id: "hello-world-client".to_string(),
     });
     let result = client.sensor_register(request).await?;
     let client_token = result.into_inner().client_token;

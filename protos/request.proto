@@ -1,55 +1,42 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
 package request;
 
+service KarlHost {
+  rpc StartCompute (ComputeRequest) returns (NotifyStart);
+  rpc Network (NetworkAccess) returns (NetworkAccessResult);
+  rpc Get (GetData) returns (GetDataResult);
+  rpc Put (PutData) returns (google.protobuf.Empty);
+  rpc Delete (DeleteData) returns (google.protobuf.Empty);
+  rpc State (StateChange) returns (google.protobuf.Empty);
+}
+
 service KarlController {
-  rpc SensorRegister (RegisterRequest) returns (RegisterResult);
+  // hosts
+  rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
+  rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
+  rpc ForwardGet (GetData) returns (GetDataResult);
+  rpc ForwardPut (PutData) returns (google.protobuf.Empty);
+  rpc ForwardDelete (DeleteData) returns (google.protobuf.Empty);
+  rpc ForwardState (StateChange) returns (google.protobuf.Empty);
+  rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
+  rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
+
+  // sensors
+  rpc SensorRegister (SensorRegisterRequest) returns (SensorRegisterResult);
+  rpc RawData (SensorPushData) returns (google.protobuf.Empty);
+
+  // users
+  rpc AuditFile (AuditRequest) returns (AuditResult);
+  rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);
+  rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);
+  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
 }
 
-enum MessageType {
-  RAW_BYTES = 0;
-  PING_REQUEST = 1;
-  PING_RESULT = 2;
-  COMPUTE_REQUEST = 3;
-  COMPUTE_RESULT = 4;
-  REGISTER_HOOK = 5;
-  REGISTER_REQUEST = 6;
-  REGISTER_RESULT = 7;
-  NOTIFY_START = 8;
-  NOTIFY_END = 9;
-  HOST_HEARTBEAT = 10;
-  HOST_REGISTER_REQUEST = 11;
-  PUT_DATA = 12;
-  GET_DATA = 13;
-  GET_DATA_RESULT = 14;
-  DELETE_DATA = 15;
-  NETWORK_ACCESS = 16;
-}
-
-message PutData {
-  uint32 process_id = 1;
-  string path = 2;
-  bytes data = 3;
-}
-
-message GetData {
-  uint32 process_id = 1;
-  string path = 2;
-}
-
-message DeleteData {
-  uint32 process_id = 1;
-  string path = 2;
-}
-
-message GetDataResult {
-  bytes data = 1;
-}
-
-message NetworkAccess {
-  uint32 process_id = 1;
-  string domain = 2;
-}
+/****************************************************************************
+ * HostService
+ ****************************************************************************/
 
 message FileACL {
   string path = 1;
@@ -58,13 +45,163 @@ message FileACL {
 }
 
 message ComputeRequest {
-  string request_token = 1;
+  string host_token = 1;
   bytes package = 2;
   string binary_path = 3;
   repeated string args = 4;
   repeated string envs = 5;
   repeated FileACL file_perm = 6;
   repeated string network_perm = 7;
+  string request_token = 8;  //remove
+}
+
+message NotifyStart {
+  string process_token = 1;
+  string service_name = 2;  //remove
+  string description = 3;   //remove
+}
+
+message NetworkAccess {
+  string host_token = 1;
+  uint32 process_token = 2;
+  string domain = 3;
+  string protocol = 4;
+  bytes data = 5;
+}
+
+message NetworkAccessResult {
+  bytes data = 1;
+}
+
+message GetData {
+  string host_token = 1;
+  uint32 process_token = 2;
+  string sensor_id = 3;
+  string path = 4;
+}
+
+message GetDataResult {
+  bytes data = 1;
+}
+
+message PutData {
+  string host_token = 1;
+  uint32 process_token = 2;
+  string sensor_id = 3;
+  string path = 4;
+  bytes data = 5;
+}
+
+message DeleteData {
+  string host_token = 1;
+  uint32 process_token = 2;
+  string sensor_id = 3;
+  string path = 4;
+}
+
+message StateChange {
+  string host_token = 1;
+  string process_token = 2;
+  string sensor_id = 3;
+  string key = 4;
+  string value = 5;
+}
+
+/****************************************************************************
+ * ControllerService
+ ****************************************************************************/
+
+// hosts
+
+message HostRegisterRequest {
+  string host_id = 1;
+  string ip = 2;
+  uint32 port = 3;
+  string password = 4;
+  string service_name = 5;  //remove
+}
+
+message HostRegisterResult {
+  string host_token = 1;
+}
+
+message NotifyEnd {
+  string host_token = 1;
+  string process_token = 2;
+  string service_name = 3;  //remove
+  string request_token = 4;  //remove
+}
+
+message HostHeartbeat {
+  string host_token = 1;
+  string service_name = 2;  //remove
+  string request_token = 3;  //remove
+}
+
+// sensors
+
+message SensorRegisterRequest {
+  string global_sensor_id = 1;
+  bytes app = 2;
+  string id = 3;  //remove
+}
+
+message SensorRegisterResult {
+  // string sensor_token = 1;
+  // string sensor_id = 2;
+  string client_token = 3;  //remove
+}
+
+message SensorPushData {
+  string sensor_token = 1;
+  bytes data = 2;
+}
+
+// users
+
+message AuditRequest {
+  string user_token = 1;
+  // TODO
+}
+
+message AuditResult {
+  // TODO
+}
+
+message VerifySensorRequest {
+  string user_token = 1;
+  string sensor_id = 2;
+}
+
+message VerifyHostRequest {
+  string user_token = 1;
+  string host_id = 2;
+}
+
+message RegisterHookRequest {
+  string user_token = 1;
+  string global_hook_id = 2;
+  repeated string envs = 3;
+  repeated FileACL file_perm = 4;
+  repeated string network_perm = 5;
+  string client_token = 6; //remove
+}
+
+/****************************************************************************
+ * DEPRECATED
+ ****************************************************************************/
+
+enum MessageType {
+  RAW_BYTES = 0;
+  PING_REQUEST = 1;
+  PING_RESULT = 2;
+  COMPUTE_REQUEST = 3;
+  COMPUTE_RESULT = 4;
+  REGISTER_HOOK = 5;
+  NOTIFY_START = 8;
+  NOTIFY_END = 9;
+  HOST_HEARTBEAT = 10;
+  HOST_REGISTER_REQUEST = 11;
 }
 
 message ComputeResult {
@@ -77,43 +214,4 @@ message PingRequest {
 }
 
 message PingResult {
-}
-
-message RegisterHook {
-  string client_token = 1;
-  string global_hook_id = 2;
-  repeated string envs = 3;
-  repeated FileACL file_perm = 4;
-  repeated string network_perm = 5;
-}
-
-message RegisterRequest {
-  string id = 1;
-  bytes app = 2;
-}
-
-message RegisterResult {
-  string client_token = 1;
-}
-
-message NotifyStart {
-  string service_name = 1;
-  string description = 2;
-}
-
-message NotifyEnd {
-  string service_name = 1;
-  string request_token = 2;
-}
-
-message HostHeartbeat {
-  string service_name = 1;
-  string request_token = 2;
-}
-
-message HostRegisterRequest {
-  string service_name = 1;
-  string ip = 2;
-  uint32 port = 3;
-  string password = 4;
 }
