@@ -1,5 +1,6 @@
 //! Custom karl-related errors.
 use std::io;
+use tonic::{Code, Status};
 
 #[derive(Debug)]
 pub enum Error {
@@ -61,5 +62,14 @@ impl From<io::Error> for Error {
 impl From<String> for Error {
     fn from(error: String) -> Self {
         Error::UnknownError(error)
+    }
+}
+
+impl Error {
+    pub fn into_status(self) -> Status {
+        match self {
+        Error::InvalidHostMessage(s) => Status::new(Code::Unauthenticated, s),
+        e => Status::new(Code::Unknown, format!("{:?}", e)),
+        }
     }
 }

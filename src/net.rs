@@ -8,7 +8,7 @@
 //! If the request to a host is unsuccessful, the client must query the
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
-use std::net::{UdpSocket, TcpStream};
+use std::net::TcpStream;
 use protobuf::{self, Message, ProtobufEnum};
 use crate::protos::{self, MessageType};
 use crate::packet;
@@ -111,21 +111,4 @@ pub fn heartbeat(controller_addr: &str, service_id: u32, token: Option<RequestTo
         .map_err(|e| Error::SerializationError(format!("{:?}", e)))
         .unwrap();
     packet::write(&mut stream, MessageType::HOST_HEARTBEAT, &req_bytes).unwrap();
-}
-
-/// Register a host with the controller.
-pub fn register_host(controller_addr: &str, service_id: u32, port: u16, password: &str) {
-    let mut stream = TcpStream::connect(controller_addr).unwrap();
-    let mut req = protos::HostRegisterRequest::default();
-    req.set_service_name(format!("KarlService-{}", service_id));
-    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-    socket.connect("8.8.8.8:80").unwrap();
-    req.set_ip(socket.local_addr().unwrap().ip().to_string());
-    req.set_port(port as _);
-    req.set_password(password.to_string());
-    let req_bytes = req
-        .write_to_bytes()
-        .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-        .unwrap();
-    packet::write(&mut stream, MessageType::HOST_REGISTER_REQUEST, &req_bytes).unwrap();
 }

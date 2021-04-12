@@ -5935,7 +5935,6 @@ pub enum MessageType {
     NOTIFY_START = 8,
     NOTIFY_END = 9,
     HOST_HEARTBEAT = 10,
-    HOST_REGISTER_REQUEST = 11,
 }
 
 impl ::protobuf::ProtobufEnum for MessageType {
@@ -5954,7 +5953,6 @@ impl ::protobuf::ProtobufEnum for MessageType {
             8 => ::std::option::Option::Some(MessageType::NOTIFY_START),
             9 => ::std::option::Option::Some(MessageType::NOTIFY_END),
             10 => ::std::option::Option::Some(MessageType::HOST_HEARTBEAT),
-            11 => ::std::option::Option::Some(MessageType::HOST_REGISTER_REQUEST),
             _ => ::std::option::Option::None
         }
     }
@@ -5970,7 +5968,6 @@ impl ::protobuf::ProtobufEnum for MessageType {
             MessageType::NOTIFY_START,
             MessageType::NOTIFY_END,
             MessageType::HOST_HEARTBEAT,
-            MessageType::HOST_REGISTER_REQUEST,
         ];
         values
     }
@@ -6064,35 +6061,35 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x06stderr\x127\n\x05files\x18\x03\x20\x03(\x0b2!.request.ComputeResult.\
     FilesEntryR\x05files\x1a8\n\nFilesEntry\x12\x10\n\x03key\x18\x01\x20\x01\
     (\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\x0cR\x05value:\x028\x01\
-    \"\r\n\x0bPingRequest\"\x0c\n\nPingResult*\xcc\x01\n\x0bMessageType\x12\
+    \"\r\n\x0bPingRequest\"\x0c\n\nPingResult*\xb1\x01\n\x0bMessageType\x12\
     \r\n\tRAW_BYTES\x10\0\x12\x10\n\x0cPING_REQUEST\x10\x01\x12\x0f\n\x0bPIN\
     G_RESULT\x10\x02\x12\x13\n\x0fCOMPUTE_REQUEST\x10\x03\x12\x12\n\x0eCOMPU\
     TE_RESULT\x10\x04\x12\x11\n\rREGISTER_HOOK\x10\x05\x12\x10\n\x0cNOTIFY_S\
     TART\x10\x08\x12\x0e\n\nNOTIFY_END\x10\t\x12\x12\n\x0eHOST_HEARTBEAT\x10\
-    \n\x12\x19\n\x15HOST_REGISTER_REQUEST\x10\x0b2\xda\x02\n\x08KarlHost\x12\
-    =\n\x0cStartCompute\x12\x17.request.ComputeRequest\x1a\x14.request.Notif\
-    yStart\x12?\n\x07Network\x12\x16.request.NetworkAccess\x1a\x1c.request.N\
-    etworkAccessResult\x12/\n\x03Get\x12\x10.request.GetData\x1a\x16.request\
-    .GetDataResult\x12/\n\x03Put\x12\x10.request.PutData\x1a\x16.google.prot\
-    obuf.Empty\x125\n\x06Delete\x12\x13.request.DeleteData\x1a\x16.google.pr\
-    otobuf.Empty\x125\n\x05State\x12\x14.request.StateChange\x1a\x16.google.\
-    protobuf.Empty2\x98\x07\n\x0eKarlController\x12I\n\x0cHostRegister\x12\
-    \x1c.request.HostRegisterRequest\x1a\x1b.request.HostRegisterResult\x12@\
-    \n\x0eForwardNetwork\x12\x16.request.NetworkAccess\x1a\x16.google.protob\
-    uf.Empty\x126\n\nForwardGet\x12\x10.request.GetData\x1a\x16.request.GetD\
-    ataResult\x126\n\nForwardPut\x12\x10.request.PutData\x1a\x16.google.prot\
-    obuf.Empty\x12<\n\rForwardDelete\x12\x13.request.DeleteData\x1a\x16.goog\
-    le.protobuf.Empty\x12<\n\x0cForwardState\x12\x14.request.StateChange\x1a\
-    \x16.google.protobuf.Empty\x12;\n\rFinishCompute\x12\x12.request.NotifyE\
-    nd\x1a\x16.google.protobuf.Empty\x12;\n\tHeartbeat\x12\x16.request.HostH\
-    eartbeat\x1a\x16.google.protobuf.Empty\x12O\n\x0eSensorRegister\x12\x1e.\
-    request.SensorRegisterRequest\x1a\x1d.request.SensorRegisterResult\x12:\
-    \n\x07RawData\x12\x17.request.SensorPushData\x1a\x16.google.protobuf.Emp\
-    ty\x128\n\tAuditFile\x12\x15.request.AuditRequest\x1a\x14.request.AuditR\
-    esult\x12D\n\x0cVerifySensor\x12\x1c.request.VerifySensorRequest\x1a\x16\
-    .google.protobuf.Empty\x12@\n\nVerifyHost\x12\x1a.request.VerifyHostRequ\
-    est\x1a\x16.google.protobuf.Empty\x12D\n\x0cRegisterHook\x12\x1c.request\
-    .RegisterHookRequest\x1a\x16.google.protobuf.Emptyb\x06proto3\
+    \n2\xda\x02\n\x08KarlHost\x12=\n\x0cStartCompute\x12\x17.request.Compute\
+    Request\x1a\x14.request.NotifyStart\x12?\n\x07Network\x12\x16.request.Ne\
+    tworkAccess\x1a\x1c.request.NetworkAccessResult\x12/\n\x03Get\x12\x10.re\
+    quest.GetData\x1a\x16.request.GetDataResult\x12/\n\x03Put\x12\x10.reques\
+    t.PutData\x1a\x16.google.protobuf.Empty\x125\n\x06Delete\x12\x13.request\
+    .DeleteData\x1a\x16.google.protobuf.Empty\x125\n\x05State\x12\x14.reques\
+    t.StateChange\x1a\x16.google.protobuf.Empty2\x98\x07\n\x0eKarlController\
+    \x12I\n\x0cHostRegister\x12\x1c.request.HostRegisterRequest\x1a\x1b.requ\
+    est.HostRegisterResult\x12@\n\x0eForwardNetwork\x12\x16.request.NetworkA\
+    ccess\x1a\x16.google.protobuf.Empty\x126\n\nForwardGet\x12\x10.request.G\
+    etData\x1a\x16.request.GetDataResult\x126\n\nForwardPut\x12\x10.request.\
+    PutData\x1a\x16.google.protobuf.Empty\x12<\n\rForwardDelete\x12\x13.requ\
+    est.DeleteData\x1a\x16.google.protobuf.Empty\x12<\n\x0cForwardState\x12\
+    \x14.request.StateChange\x1a\x16.google.protobuf.Empty\x12;\n\rFinishCom\
+    pute\x12\x12.request.NotifyEnd\x1a\x16.google.protobuf.Empty\x12;\n\tHea\
+    rtbeat\x12\x16.request.HostHeartbeat\x1a\x16.google.protobuf.Empty\x12O\
+    \n\x0eSensorRegister\x12\x1e.request.SensorRegisterRequest\x1a\x1d.reque\
+    st.SensorRegisterResult\x12:\n\x07RawData\x12\x17.request.SensorPushData\
+    \x1a\x16.google.protobuf.Empty\x128\n\tAuditFile\x12\x15.request.AuditRe\
+    quest\x1a\x14.request.AuditResult\x12D\n\x0cVerifySensor\x12\x1c.request\
+    .VerifySensorRequest\x1a\x16.google.protobuf.Empty\x12@\n\nVerifyHost\
+    \x12\x1a.request.VerifyHostRequest\x1a\x16.google.protobuf.Empty\x12D\n\
+    \x0cRegisterHook\x12\x1c.request.RegisterHookRequest\x1a\x16.google.prot\
+    obuf.Emptyb\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

@@ -56,7 +56,18 @@ impl karl_controller_server::KarlController for Controller {
     async fn host_register(
         &self, req: Request<HostRegisterRequest>,
     ) -> Result<Response<HostRegisterResult>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        let mut scheduler = self.scheduler.lock().unwrap();
+        if !scheduler.add_host(
+            &req.service_name,
+            format!("{}:{}", req.ip, req.port).parse().unwrap(),
+            self.autoconfirm,
+            &req.password,
+        ) {
+            warn!("failed to register {} ({:?})", &req.service_name, req.ip);
+        }
+        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
+        Ok(Response::new(HostRegisterResult::default()))
     }
 
     async fn forward_network(
@@ -267,44 +278,25 @@ impl Controller {
                 let req = parse_from_bytes::<protos::NotifyStart>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let ip = stream.peer_addr().unwrap().ip();
                 let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name, &ip)?;
+                scheduler.verify_host_name(&req.service_name)?;
                 scheduler.notify_start(req.service_name, req.description);
             },
             MessageType::NOTIFY_END => {
                 let req = parse_from_bytes::<protos::NotifyEnd>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let ip = stream.peer_addr().unwrap().ip();
                 let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name, &ip)?;
+                scheduler.verify_host_name(&req.service_name)?;
                 scheduler.notify_end(req.service_name, Token(req.request_token));
             },
             MessageType::HOST_HEARTBEAT => {
                 let req = parse_from_bytes::<protos::HostHeartbeat>(&req_bytes)
                     .map_err(|e| Error::SerializationError(format!("{:?}", e)))
                     .unwrap();
-                let ip = stream.peer_addr().unwrap().ip();
                 let mut scheduler = self.scheduler.lock().unwrap();
-                scheduler.verify_host_name(&req.service_name, &ip)?;
+                scheduler.verify_host_name(&req.service_name)?;
                 scheduler.heartbeat(req.service_name, &req.request_token);
-            },
-            MessageType::HOST_REGISTER_REQUEST => {
-                let req = parse_from_bytes::<protos::HostRegisterRequest>(&req_bytes)
-                    .map_err(|e| Error::SerializationError(format!("{:?}", e)))
-                    .unwrap();
-                let ip = stream.peer_addr().unwrap().ip();
-                let mut scheduler = self.scheduler.lock().unwrap();
-                if !scheduler.add_host(
-                    &req.service_name,
-                    format!("{}:{}", req.ip, req.port).parse().unwrap(),
-                    self.autoconfirm,
-                    req.get_password(),
-                ) {
-                    warn!("failed to register {} ({:?})", &req.service_name, ip);
-                }
-                scheduler.verify_host_name(&req.service_name, &ip)?;
             },
             MessageType::PING_REQUEST => {
                 parse_from_bytes::<protos::PingRequest>(&req_bytes)
@@ -483,7 +475,7 @@ mod test {
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
-        let token = Token(client.get_client_token().to_string());
+        let token = Token(client.client_token.to_string());
         let bad_token1 = Token("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string());
         let bad_token2 = Token("badtoken".to_string());
         let request_token = "requesttoken";
@@ -513,7 +505,7 @@ mod test {
 
         // Register an unconfirmed client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
-        let token = Token(client.get_client_token().to_string());
+        let token = Token(client.client_token.to_string());
         assert_eq!(c.clients.lock().unwrap().len(), 1);
         assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
         assert!(!register_hook_test(&mut c, &token).is_ok(),
@@ -527,7 +519,7 @@ mod test {
 
     #[test]
     fn test_register_client() {
-        let (karl_path, mut c) = init_test();
+        let (karl_path, c) = init_test();
         let storage_path = karl_path.path().join("storage").join("hello");
         let app_path = karl_path.path().join("www").join("hello.hbs");
 
@@ -561,7 +553,7 @@ mod test {
 
     #[test]
     fn test_register_duplicate_clients() {
-        let (karl_path, mut c) = init_test();
+        let (karl_path, c) = init_test();
         let storage_base = karl_path.path().join("storage");
         let app_base = karl_path.path().join("www");
 
@@ -591,7 +583,7 @@ mod test {
 
     #[test]
     fn test_register_format_names() {
-        let (_karl_path, mut c) = init_test();
+        let (_karl_path, c) = init_test();
 
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
@@ -612,7 +604,7 @@ mod test {
 
     #[test]
     fn test_register_client_result() {
-        let (_karl_path, mut c) = init_test();
+        let (_karl_path, c) = init_test();
         let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![], true);
         let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![], true);
         let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![], true);
@@ -627,8 +619,8 @@ mod test {
     fn test_autoconfirm_client() {
         let dir1 = TempDir::new("karl").unwrap();
         let dir2 = TempDir::new("karl").unwrap();
-        let mut c1 = Controller::new(dir1.path().to_path_buf(), PASSWORD, false);
-        let mut c2 = Controller::new(dir2.path().to_path_buf(), PASSWORD, true);
+        let c1 = Controller::new(dir1.path().to_path_buf(), PASSWORD, false);
+        let c2 = Controller::new(dir2.path().to_path_buf(), PASSWORD, true);
 
         let name: String = "client_name".to_string();
         let addr: IpAddr = "1.2.3.4".parse().unwrap();

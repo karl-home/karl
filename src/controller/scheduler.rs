@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{SocketAddr, IpAddr};
+use std::net::SocketAddr;
 use std::time::Instant;
 
 use crate::controller::types::*;
@@ -143,26 +143,10 @@ impl HostScheduler {
     ///
     /// The `host_id` is the name of the host provided in messages
     /// of the following types: HostHeartbeat, NotifyStart, NotifyEnd.
-    /// The IP address is the address of the incoming TCP stream.
     ///
-    /// The addresses _may_ not be the same as the ones retrieved from DNS-SD.
-    /// It may be that multiple IP addresses resolve to the same host. For this
-    /// reason, we allow requests from localhost, assuming the user can secure
-    /// the host that runs the controller... Also assumes TCP connections
-    /// can't spoof the IP address of the peer address, and that the host
-    /// machines are similarly not compromised. If one of the host messages
-    /// makes it past these simple layers of defense, the worst that happens
-    /// should be just request tokens are kind of messed up and clients can't
-    /// make requests.
-    ///
-    /// Returns: Ok if the IP addresses are the same, and an error if the IP
-    /// addresses are different or a host with the name does not exist.
+    /// Returns: An error if a host with the name does not exist, or OK.
     #[allow(unused_variables)]
-    pub fn verify_host_name(
-        &self,
-        host_id: &str,
-        stream_ip: &IpAddr,
-    ) -> Result<(), Error> {
+    pub fn verify_host_name(&self, host_id: &str) -> Result<(), Error> {
         let ip = self.unique_hosts.iter()
             .map(|(_, host)| host)
             .filter(|host| &host.id == host_id)
@@ -176,17 +160,6 @@ impl HostScheduler {
             return Err(Error::InvalidHostMessage(format!(
                 "found multiple hosts with id => {}", host_id)));
         }
-
-        // let allowed_ips = vec![
-        //     ip[0],
-        //     "127.0.0.1".parse().unwrap(),
-        //     "0.0.0.0".parse().unwrap(),
-        // ];
-        // if !allowed_ips.contains(stream_ip) {
-        //     return Err(Error::InvalidHostMessage(format!(
-        //         "expected ip {:?} for host {}, received => {:?}",
-        //         ip[0], id, stream_ip)));
-        // }
         Ok(())
     }
 
@@ -275,6 +248,7 @@ impl HostScheduler {
 mod test {
     use super::*;
     use std::thread;
+    use std::net::IpAddr;
     use std::time::Duration;
 
     const PASSWORD: &str = "password";
@@ -677,11 +651,7 @@ mod test {
         let ip: IpAddr = addr.ip();
         assert!(s.add_host("host1", addr, true, PASSWORD));
 
-        assert!(s.verify_host_name("host2", &ip).is_err(), "invalid host name");
-        assert!(s.verify_host_name("host1", &ip).is_ok(), "valid name and ip");
-        let localhost1: IpAddr = "127.0.0.1".parse().unwrap();
-        let localhost2: IpAddr = "0.0.0.0".parse().unwrap();
-        assert!(s.verify_host_name("host1", &localhost1).is_ok(), "localhost also ok");
-        assert!(s.verify_host_name("host1", &localhost2).is_ok(), "localhost also ok");
+        assert!(s.verify_host_name("host2").is_err(), "invalid host name");
+        assert!(s.verify_host_name("host1").is_ok(), "valid host name");
     }
 }

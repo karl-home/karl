@@ -201,7 +201,6 @@ enum MessageType {
   NOTIFY_START = 8;
   NOTIFY_END = 9;
   HOST_HEARTBEAT = 10;
-  HOST_REGISTER_REQUEST = 11;
 }
 
 message ComputeResult {

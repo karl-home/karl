@@ -37,11 +37,11 @@ async fn main() {
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let controller = format!(
-        "{}:{}",
+        "http://{}:{}",
         matches.value_of("controller-ip").unwrap(),
         matches.value_of("controller-port").unwrap(),
     );
     let password = matches.value_of("password").unwrap();
     let mut listener = Host::new(karl_path, port, &controller);
-    listener.start(password).unwrap();
+    listener.start(password).await.unwrap();
 }

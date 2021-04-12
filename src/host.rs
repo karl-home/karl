@@ -9,7 +9,8 @@ use tokio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, Code};
+use crate::protos2::karl_controller_client::KarlControllerClient;
 use crate::protos2::*;
 use protobuf::{self, Message, ProtobufEnum};
 use crate::{packet, protos, protos::MessageType};
@@ -28,6 +29,7 @@ pub struct Host {
     /// Computation request base, likely ~/.karl/<id>
     /// Computation root likely at ~/.karl/<id>/root/
     base_path: PathBuf,
+    ip: String,
     port: u16,
     /// Controller address.
     controller: String,
@@ -107,10 +109,13 @@ impl Host {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         let base_path = karl_path.join(id.to_string());
+        let ip = std::net::UdpSocket::bind("0.0.0.0:0").unwrap()
+            .local_addr().unwrap().ip().to_string();
         Self {
             id,
             karl_path,
             base_path,
+            ip,
             port,
             controller: controller.to_string(),
             token: Arc::new(Mutex::new((Some(Token::gen()), Instant::now()))),
@@ -130,7 +135,7 @@ impl Host {
     ///
     /// Parameters:
     /// - password - The password to register with the controller.
-    pub fn start(&mut self, password: &str) -> Result<(), Error> {
+    pub async fn start(&mut self, password: &str) -> Result<(), Status> {
         // Create the <KARL_PATH> if it does not already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
         // Set the current working directory to the <KARL_PATH>.
@@ -140,7 +145,16 @@ impl Host {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))?;
         self.port = listener.local_addr()?.port();
         info!("ID {} listening on port {}", self.id, self.port);
-        crate::net::register_host(&self.controller, self.id, self.port, password);
+        let mut client = KarlControllerClient::connect(self.controller.clone())
+            .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+        let request = tonic::Request::new(HostRegisterRequest {
+            host_id: self.id.to_string(),
+            ip: self.ip.clone(),
+            port: self.port as _,
+            password: password.to_string(),
+            service_name: self.id.to_string(),
+        });
+        let _result = client.host_register(request).await?;
 
         let token_lock = self.token.clone();
         let controller_addr = self.controller.clone();
