@@ -170,15 +170,15 @@ mod test {
             envs.clone(),
         );
         let r = hook.to_compute_request().unwrap();
-        assert_eq!(r.get_package(), package);
-        assert_eq!(r.get_binary_path(), binary_path);
-        assert_eq!(r.get_args(), args);
+        assert_eq!(r.package, package);
+        assert_eq!(r.binary_path, binary_path);
+        assert_eq!(r.args, args);
         let expected_envs: Vec<_> =
             envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-        assert_eq!(r.get_envs(), expected_envs);
-        assert_eq!(r.get_network_perm(), network_perm);
-        assert_eq!(r.get_file_perm().len(), 1);
-        assert_eq!(FileACL::from(&r.get_file_perm()[0]), file_perm[0]);
+        assert_eq!(r.envs, expected_envs);
+        assert_eq!(r.network_perm, network_perm);
+        assert_eq!(r.file_perm.len(), 1);
+        assert_eq!(FileACL::from(&r.file_perm[0]), file_perm[0]);
     }
 
     #[test]

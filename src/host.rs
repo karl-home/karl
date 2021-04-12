@@ -275,11 +275,7 @@ mod test {
 
     fn init_host() -> (TempDir, Host) {
         let karl_path = TempDir::new("karl").unwrap();
-        let host = Host::new(
-            karl_path.path().to_path_buf(),
-            8080,
-            "1.2.3.4:8000",
-        );
+        let host = Host::new(karl_path.path().to_path_buf(), "1.2.3.4:8000");
         (karl_path, host)
     }
 

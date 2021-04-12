@@ -6,8 +6,6 @@ extern crate log;
 #[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
-#[cfg(test)]
-extern crate serial_test;
 
 mod dashboard;
 pub mod net;

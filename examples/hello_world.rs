@@ -5,8 +5,8 @@ use std::time::Instant;
 use clap::{Arg, App};
 use karl;
 
-use karl::protos2::karl_controller_client::KarlControllerClient;
-use karl::protos2::SensorRegisterRequest;
+use karl::protos::karl_controller_client::KarlControllerClient;
+use karl::protos::SensorRegisterRequest;
 
 /// Requests computation from the host.
 ///
