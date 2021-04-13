@@ -106,7 +106,7 @@ fn confirm_client(
                 .create(true)
                 .open(&path)
                 .expect(&format!("unable to open clients file: {:?}", &path));
-            let res = writeln!(file, "{}:{}={}", client.name, client.addr, token.0);
+            let res = writeln!(file, "{}:{}={}", client.name, client.addr, token);
             if let Err(e) = res {
                 error!("error serializing client {:?}: {:?}", client, e);
             }

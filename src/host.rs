@@ -1,8 +1,6 @@
 use std::fs;
-use std::thread;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::sync::{Arc, Mutex};
 
 use tokio;
 use flate2::read::GzDecoder;
@@ -10,16 +8,16 @@ use tar::Archive;
 
 use tonic::{Request, Response, Status};
 use crate::protos::*;
-use crate::common::{
-    Error, Token, RequestToken,
-};
+use crate::common::*;
 
 /// Frequency at which the host must send messages to the controller, in seconds.
 pub const HEARTBEAT_INTERVAL: u64 = 10;
 
 pub struct Host {
-    /// Node/service ID
+    /// Host ID (unique among hosts)
     id: u32,
+    /// Secret host token, assigned after registering with controller
+    host_token: Option<HostToken>,
     /// Karl path, likely ~/.karl
     karl_path: PathBuf,
     /// Computation request base, likely ~/.karl/<id>
@@ -27,11 +25,6 @@ pub struct Host {
     base_path: PathBuf,
     /// Controller address.
     controller: String,
-    /// Request token, or none if the host is processing a ComputeRequest.
-    /// The host will only accept a ComputeRequest if it includes the token.
-    ///
-    /// The time is when the request token was last renewed.
-    token: Arc<Mutex<(Option<RequestToken>, Instant)>>,
 }
 
 #[tonic::async_trait]
@@ -41,21 +34,10 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
 
-        // Verify that the compute request includes a valid request token.
-        // Notify the controller of the start and end of the request, if
-        // the request token is valid and the host processes compute.
-        self.use_request_token(&Token(req.request_token.clone()))
-            .map_err(|e| e.into_status())?;
-        crate::net::notify_start(&self.controller, self.id, req.request_token.clone()).await?;
+        // Notify the controller of the start and end of the request.
+        crate::net::notify_start(&self.controller, self.id).await?;
         let _res = self.handle_compute(req);
-
-        // Notify end and create a new token.
-        let token = {
-            let mut token = self.token.lock().unwrap();
-            *token = (Some(Token::gen()), Instant::now());
-            token.0.clone().unwrap()
-        };
-        crate::net::notify_end(&self.controller, self.id, token).await?;
+        crate::net::notify_end(&self.controller, self.id).await?;
 
         Ok(Response::new(()))
     }
@@ -122,18 +104,15 @@ impl Host {
         let base_path = karl_path.join(id.to_string());
         Self {
             id,
+            host_token: None,
             karl_path,
             base_path,
             controller: controller.to_string(),
-            token: Arc::new(Mutex::new((Some(Token::gen()), Instant::now()))),
         }
     }
 
     /// Spawns a background process that sends heartbeats to the controller
-    /// at the HEARTBEAT_INTERVAL and processes incoming connections for
-    /// the following messages:
-    /// - PingRequest
-    /// - ComputeRequest
+    /// at the HEARTBEAT_INTERVAL.
     ///
     /// The constructor creates a directory at the <KARL_PATH> if it does
     /// not already exist. The working directory for any computation is at
@@ -141,6 +120,7 @@ impl Host {
     /// directory must be at <KARL_PATH>.
     ///
     /// Parameters:
+    /// - port - The port to listen on.
     /// - password - The password to register with the controller.
     pub async fn start(&mut self, port: u16, password: &str) -> Result<(), Status> {
         // Create the <KARL_PATH> if it does not already exist.
@@ -149,78 +129,24 @@ impl Host {
         std::env::set_current_dir(&self.karl_path).unwrap();
         debug!("create karl_path {:?}", &self.karl_path);
 
-        let token_lock = self.token.clone();
         let controller_addr = self.controller.clone();
-        let host_id = self.id.clone();
+        let host_token = crate::net::register_host(
+            &self.controller, self.id, port, password).await?.into_inner().host_token;
         tokio::spawn(async move {
             // Every HEARTBEAT_INTERVAL seconds, this process wakes up
             // sends a heartbeat message to the controller.
-            //
-            // The host renews the request token with every heartbeat except
-            // in the following two cirucmstance:
-            // 1) The last message sent was a NotifyStart, and thus the host
-            //    is actively processing a request.
-            // 2) It has been less than HEARTBEAT_INTERVAL-1 seconds since
-            //    renewing the token, which should only occur if the last
-            //    message sent was a NotifyEnd.
-            //
-            // Note request tokens are also sent with NotifyEnd messages.
-            //
-            // Note that the host may generate a new request token in the time
-            // that the controller allocates a host token and the client sends
-            // a ComputeRequest. In that case, the client must retry the
-            // HostRequest with the controller (equivalent to client timeout).
-            // This mechanism protects the host from clients that reserve
-            // hosts with the controller and fails to make a ComputeRequest.
             loop {
-                let token_to_send = {
-                    let mut token = token_lock.lock().unwrap();
-                    let active_request = token.0.is_none();
-                    let recent_renewal = token.1.elapsed().as_secs_f32() < (HEARTBEAT_INTERVAL-1) as f32;
-                    if !active_request && !recent_renewal {
-                        // Renew the token if not processing a request or if it
-                        // has been less than HEARTBEAT_INTERVAL-1 seconds since
-                        // renewing the token.
-                        let token_to_send = Token::gen();
-                        debug!("heartbeat {:?}", &token_to_send);
-                        *token = (Some(token_to_send.clone()), Instant::now());
-                        Some(token_to_send)
-                    } else {
-                        None
-                    }
+                tokio::time::sleep(Duration::from_secs(HEARTBEAT_INTERVAL)).await;
+                debug!("heartbeat {}", &host_token);
+                let res = crate::net::heartbeat(
+                    &controller_addr,
+                    host_token.clone(),
+                ).await;
+                if let Err(e) = res {
+                    warn!("error sending heartbeat: {}", e);
                 };
-                crate::net::heartbeat(&controller_addr, host_id, token_to_send).await.unwrap();
-                thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL));
             }
         });
-
-        crate::net::register_host(&self.controller, self.id, port, password).await?;
-        info!("ID {} listening on port {}", self.id, port);
-        Ok(())
-    }
-
-    /// Validate and use the request token.
-    ///
-    /// If the token is valid, "uses" the token by invalidating it for
-    /// future requests, indicating that the host has an active request.
-    /// If not, returns Error::InvalidRequestToken.
-    fn use_request_token(&self, token: &RequestToken) -> Result<(), Error> {
-        let mut real_token = self.token.lock().unwrap();
-        if let Some(real_token) = &real_token.0 {
-            if token != real_token {
-                warn!("active token {:?} != client's token {:?}", token, real_token);
-                return Err(Error::InvalidRequestToken("tokens do not match".to_string()));
-            }
-        } else {
-            warn!("no active request token, either the host has not sent its \
-                initial token to the controller and a malicious client has \
-                found the host anyway, or there is a bug regenerating the \
-                token after processing a request.");
-            return Err(Error::InvalidRequestToken("no active token".to_string()));
-        }
-
-        // Invalidate the token for future requests and notify start.
-        *real_token = (None, Instant::now());
         Ok(())
     }
 
@@ -265,59 +191,5 @@ impl Host {
             now.elapsed().as_secs_f32(),
         );
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tempdir::TempDir;
-
-    fn init_host() -> (TempDir, Host) {
-        let karl_path = TempDir::new("karl").unwrap();
-        let host = Host::new(karl_path.path().to_path_buf(), "1.2.3.4:8000");
-        (karl_path, host)
-    }
-
-    /// Helper function to get token from host.
-    fn get_token(host: &Host) -> Option<RequestToken> {
-        host.token.lock().unwrap().0.clone()
-    }
-
-    /// Helper function to set token in host.
-    fn set_token(host: &mut Host, token: &Token) {
-        host.token.lock().unwrap().0 = Some(token.clone());
-    }
-
-    #[test]
-    fn no_active_token_fails() {
-        let (_karl_path, mut h) = init_host();
-        let token = Token("abc".to_string());
-        assert!(get_token(&h).is_some());
-        h.token.lock().unwrap().0 = None;
-        assert!(get_token(&h).is_none());
-        assert!(h.use_request_token(&token).is_err());
-    }
-
-    #[test]
-    fn non_matching_token_fails() {
-        let (_karl_path, mut h) = init_host();
-        let token1 = Token("abc".to_string());
-        let token2 = Token("def".to_string());
-        set_token(&mut h, &token1);
-        assert!(get_token(&h).is_some());
-        assert!(h.use_request_token(&token2).is_err(), "non matching token fails");
-        assert!(h.use_request_token(&token1).is_ok(), "matching token succeeds");
-    }
-
-    #[test]
-    fn matching_token_invalidates_old_token() {
-        let (_karl_path, mut h) = init_host();
-        let token = Token("abc".to_string());
-        set_token(&mut h, &token);
-        assert!(get_token(&h).is_some());
-        assert!(h.use_request_token(&token).is_ok(), "token succeeds the first time");
-        assert!(get_token(&h).is_none());
-        assert!(h.use_request_token(&token).is_err(), "token fails the second time");
     }
 }

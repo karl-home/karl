@@ -12,8 +12,8 @@ pub struct HookRunner {
     pub tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-    /// Request tokens for each spawned process. Cleared on NotifyEnd.
-    request_tokens: Arc<Mutex<HashMap<RequestToken, (ProcessID, HookID)>>>,
+    /// Process tokens for each spawned process. Cleared on NotifyEnd.
+    process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
     /// Scheduler for finding hosts
     scheduler: Arc<Mutex<HostScheduler>>,
 }
@@ -29,7 +29,7 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
-            request_tokens: Arc::new(Mutex::new(HashMap::new())),
+            process_tokens: Arc::new(Mutex::new(HashMap::new())),
             scheduler,
         }
     }
@@ -41,13 +41,13 @@ impl HookRunner {
         let (tx, rx) = mpsc::channel::<HookID>(buffer);
         self.tx = Some(tx);
         let hooks = self.hooks.clone();
-        let request_tokens = self.request_tokens.clone();
+        let process_tokens = self.process_tokens.clone();
         let scheduler = self.scheduler.clone();
         tokio::spawn(async move {
             Self::start_queue_manager(
                 rx,
                 hooks,
-                request_tokens,
+                process_tokens,
                 scheduler,
                 mock_send_compute,
             ).await;
@@ -117,14 +117,14 @@ impl HookRunner {
     async fn start_queue_manager(
         mut rx: mpsc::Receiver<HookID>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-        request_tokens: Arc<Mutex<HashMap<RequestToken, (ProcessID, HookID)>>>,
+        process_tokens: Arc<Mutex<HashMap<RequestToken, (ProcessID, HookID)>>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
         loop {
             // Generate a compute request based on the queued hook.
             let hook_id: HookID = rx.recv().await.unwrap();
-            let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
+            let request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
                 match hook.to_compute_request() {
                     Ok(req) => req,
                     Err(e) => {
@@ -144,22 +144,21 @@ impl HookRunner {
                 time::sleep(Duration::from_secs(1)).await;
             };
             let host_addr = format!("{}:{}", host.ip, host.port);
-            let request_token = host.request_token;
-            request.request_token = request_token.0.clone();
-
-            // Update internal data structures.
-            // In particular, the process's request token for authentication.
-            let process_id = gen_process_id();
-            request_tokens.lock().unwrap().insert(
-                request_token,
-                (process_id, hook_id),
-            );
 
             // Send the request.
             // TODO: check if the result has no error!
             if !mock_send_compute {
                 crate::net::send_compute(&host_addr, request).await.unwrap();
             }
+
+            // Update internal data structures.
+            // In particular, the process's request token for authentication.
+            let process_id = gen_process_id();
+            let process_token = process_id.to_string(); // TODO?
+            process_tokens.lock().unwrap().insert(
+                process_token,
+                (process_id, hook_id),
+            );
         }
     }
 }
@@ -176,8 +175,8 @@ mod test {
         for i in 0..nhosts {
             let name = format!("host{}", i);
             let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
-            scheduler.add_host(&name, addr, true, PASSWORD);
-            scheduler.heartbeat(name.clone(), &name);
+            let token = scheduler.add_host(name, addr, true, PASSWORD).unwrap();
+            scheduler.heartbeat(token);
         }
         Arc::new(Mutex::new(scheduler))
     }
@@ -258,7 +257,7 @@ mod test {
         let scheduler = init_scheduler(2);
         let mut runner = HookRunner::new(scheduler);
         runner.start(true);
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 0,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 0,
             "there are no request tokens initially");
         HookRunner::register_hook(
             "hello-world".to_string(), // interval: 5s
@@ -269,10 +268,10 @@ mod test {
             runner.tx.unwrap().clone(),
         ).unwrap();
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 1,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 1,
             "one request is queued");
         time::sleep(Duration::from_secs(5)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 2,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "after 5 seconds (the interval), two requests are queued");
     }
 
@@ -290,7 +289,7 @@ mod test {
             runner.tx.unwrap().clone(),
         ).unwrap();
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 0,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 0,
             "watched file does not queue process automatically");
     }
 
@@ -310,19 +309,19 @@ mod test {
         ).unwrap();
         HookRunner::queue_hook(hook_id.clone(), tx.clone()).await;
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 1,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 1,
             "queuing existing hook id creates a new request token");
         HookRunner::queue_hook("goodbye".to_string(), tx.clone()).await;
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 1,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 1,
             "queuing nonexistent hook id doesn't do anything");
         HookRunner::queue_hook(hook_id.clone(), tx.clone()).await;
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 2,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "queuing existing hook id still works");
         HookRunner::queue_hook(hook_id.clone(), tx.clone()).await;
         time::sleep(Duration::from_secs(1)).await;
-        assert_eq!(runner.request_tokens.lock().unwrap().len(), 2,
+        assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "queuing existing hook id ran out of hosts");
     }
 }

@@ -17,11 +17,11 @@ use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, Code};
 use crate::protos::*;
 use crate::dashboard;
 use crate::hook::FileACL;
-use crate::common::{Error, Token, ClientToken};
+use crate::common::*;
 
 /// Controller used for discovering available Karl services and coordinating
 /// client requests among available services.
@@ -55,8 +55,7 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
-        scheduler.notify_start(req.service_name, req.description);
+        scheduler.notify_start(req.service_name);
         trace!("start_compute => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
@@ -67,17 +66,18 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         let mut scheduler = self.scheduler.lock().unwrap();
-        if !scheduler.add_host(
-            &req.service_name,
+        if let Some(host_token) = scheduler.add_host(
+            req.host_id.clone(),
             format!("{}:{}", req.ip, req.port).parse().unwrap(),
             self.autoconfirm,
             &req.password,
         ) {
-            warn!("failed to register {} ({:?})", &req.service_name, req.ip);
+            trace!("host_register => {} s", now.elapsed().as_secs_f32());
+            Ok(Response::new(HostRegisterResult { host_token }))
+        } else {
+            warn!("failed to register {} ({:?})", &req.host_id, req.ip);
+            Err(Status::new(Code::InvalidArgument, "incorrect password or duplicate host ID"))
         }
-        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
-        trace!("host_register => {} s", now.elapsed().as_secs_f32());
-        Ok(Response::new(HostRegisterResult::default()))
     }
 
     async fn forward_network(
@@ -116,8 +116,7 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
-        scheduler.notify_end(req.service_name, Token(req.request_token));
+        scheduler.notify_end(req.service_name);
         Ok(Response::new(()))
     }
 
@@ -125,10 +124,8 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<HostHeartbeat>,
     ) -> Result<Response<()>, Status> {
         let now = Instant::now();
-        let req = req.into_inner();
         let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.verify_host_name(&req.service_name).map_err(|e| e.into_status())?;
-        scheduler.heartbeat(req.service_name, &req.request_token);
+        scheduler.heartbeat(req.into_inner().host_token);
         trace!("heartbeat => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
@@ -182,7 +179,7 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         self.register_hook(
-            &Token(req.client_token.to_string()),
+            &req.client_token.to_string(),
             req.global_hook_id.to_string(),
             req.network_perm.to_vec(),
             req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
@@ -243,7 +240,7 @@ impl Controller {
                 let j = line.find("=").expect("malformed clients.txt");
                 assert!(i < j, "malformed clients.txt");
                 clients.insert(
-                    Token(line[(j+1)..].to_string()),
+                    line[(j+1)..].to_string(),
                     Client {
                         confirmed: true,
                         name: line[..i].to_string(),
@@ -376,14 +373,14 @@ impl Controller {
 
         // register the client itself
         let mut clients = self.clients.lock().unwrap();
-        let token = ClientToken::gen();
+        let token = Token::gen();
         if clients.insert(token.clone(), client.clone()).is_none() {
             info!("registered client {:?}", client);
         } else {
             unreachable!("impossible to generate duplicate client tokens")
         }
         SensorRegisterResult {
-            client_token: token.0,
+            client_token: token,
         }
     }
 }
@@ -405,16 +402,18 @@ mod test {
     }
 
     /// Add a host named "host<i>" with socket addr "0.0.0.0:808<i>".
-    fn add_host_test(c: &mut Controller, i: usize) {
+    fn add_host_test(c: &mut Controller, i: usize) -> HostToken {
         let name = format!("host{}", i);
         let addr: SocketAddr = format!("0.0.0.0:808{}", i).parse().unwrap();
-        assert!(c.scheduler.lock().unwrap().add_host(&name, addr, true, PASSWORD));
+        let host_token = c.scheduler.lock().unwrap().add_host(name, addr, true, PASSWORD);
+        assert!(host_token.is_some());
+        host_token.unwrap()
     }
 
     /// Wrapper around register_hook to avoid rewriting parameters
     fn register_hook_test(
         c: &mut Controller,
-        token: &Token,
+        token: &ClientToken,
     ) -> Result<(), Error> {
         c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![])
     }
@@ -425,19 +424,18 @@ mod test {
 
         // Register a client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
-        let token = Token(client.client_token.to_string());
-        let bad_token1 = Token("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string());
-        let bad_token2 = Token("badtoken".to_string());
-        let request_token = "requesttoken";
+        let token = client.client_token.to_string();
+        let bad_token1 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string();
+        let bad_token2 = "badtoken".to_string();
 
         // Add a host.
         c.runner.start(true);
-        add_host_test(&mut c, 1);
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
+        let host_token = add_host_test(&mut c, 1);
+        c.scheduler.lock().unwrap().heartbeat(host_token.clone());
         assert!(register_hook_test(&mut c, &token).is_ok());
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
+        c.scheduler.lock().unwrap().heartbeat(host_token.clone());
         assert!(register_hook_test(&mut c, &token).is_ok());
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
+        c.scheduler.lock().unwrap().heartbeat(host_token.clone());
         assert!(register_hook_test(&mut c, &bad_token1).is_err());
         assert!(register_hook_test(&mut c, &bad_token2).is_err());
         assert!(register_hook_test(&mut c, &token).is_ok());
@@ -448,14 +446,13 @@ mod test {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
-        let request_token = "requesttoken";
         c.runner.start(true);
-        add_host_test(&mut c, 1);
-        c.scheduler.lock().unwrap().heartbeat("host1".to_string(), request_token);
+        let host_token = add_host_test(&mut c, 1);
+        c.scheduler.lock().unwrap().heartbeat(host_token);
 
         // Register an unconfirmed client
         let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
-        let token = Token(client.client_token.to_string());
+        let token = client.client_token.to_string();
         assert_eq!(c.clients.lock().unwrap().len(), 1);
         assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
         assert!(!register_hook_test(&mut c, &token).is_ok(),

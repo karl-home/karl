@@ -49,7 +49,7 @@ pub async fn send_compute(
  *****************************************************************************/
 /// Notify controller about compute request start.
 pub async fn notify_start(
-    controller_addr: &str, service_id: u32, description: String,
+    controller_addr: &str, service_id: u32,
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
@@ -57,7 +57,7 @@ pub async fn notify_start(
     let request = Request::new(NotifyStart {
         process_token: "TEMPORARY".to_string(),
         service_name,
-        description,
+        description: "TEMPORARY".to_string(),
     });
     debug!("notify start");
     client.start_compute(request).await
@@ -65,7 +65,7 @@ pub async fn notify_start(
 
 /// Notify controller about compute request end.
 pub async fn notify_end(
-    controller_addr: &str, service_id: u32, token: RequestToken,
+    controller_addr: &str, service_id: u32,
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
@@ -74,7 +74,7 @@ pub async fn notify_end(
         host_token: "TEMPORARY".to_string(),
         process_token: "TEMPORARY".to_string(),
         service_name,
-        request_token: token.0,
+        request_token: "TEMPORARY".to_string(),
     });
     debug!("notify_end");
     client.finish_compute(request).await
@@ -82,34 +82,31 @@ pub async fn notify_end(
 
 /// Send a heartbeat to the controller.
 pub async fn heartbeat(
-    controller_addr: &str, service_id: u32, token: Option<RequestToken>,
+    controller_addr: &str, host_token: HostToken,
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let service_name = format!("KarlService-{}", service_id);
-    let request = Request::new(HostHeartbeat {
-        host_token: "TEMPORARY".to_string(),
-        service_name,
-        request_token: token.unwrap_or(Token("".to_string())).0,
-    });
-    client.heartbeat(request).await
+    let request = HostHeartbeat { host_token };
+    client.heartbeat(Request::new(request)).await
 }
 
 /// Register a host with the controller.
 pub async fn register_host(
-    controller_addr: &str, service_id: u32, port: u16, password: &str,
+    controller_addr: &str, host_id: u32, port: u16, password: &str,
 ) -> Result<Response<HostRegisterResult>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let service_name = format!("KarlService-{}", service_id);
-    let ip = std::net::UdpSocket::bind("0.0.0.0:0").unwrap()
-        .local_addr().unwrap().ip().to_string();
-    let request = Request::new(HostRegisterRequest {
-        host_id: service_name.clone(),
+    let ip = {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket.connect("8.8.8.8:80").unwrap();
+        socket.local_addr().unwrap().ip().to_string()
+    };
+    let req = HostRegisterRequest {
+        host_id: host_id.to_string(),
         ip,
         port: port as _,
         password: password.to_string(),
-        service_name: service_name,
-    });
-    client.host_register(request).await
+    };
+    info!("Registering host {} at {}:{}", req.host_id, req.ip, req.port);
+    client.host_register(Request::new(req)).await
 }
