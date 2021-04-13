@@ -1,17 +1,28 @@
 use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
 
 use tokio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, Code};
 use crate::protos::*;
 use crate::common::*;
+use crate::hook::FileACL;
 
 /// Frequency at which the host must send messages to the controller, in seconds.
 pub const HEARTBEAT_INTERVAL: u64 = 10;
+
+/// Permissions of an active process
+struct ProcessPerms {
+    /// Network permissions
+    network_perms: Vec<String>,
+    /// File permissions
+    file_perms: Vec<FileACL>,
+}
 
 pub struct Host {
     /// Host ID (unique among hosts)
@@ -25,21 +36,54 @@ pub struct Host {
     base_path: PathBuf,
     /// Controller address.
     controller: String,
+    /// Active process tokens.
+    process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
 }
 
 #[tonic::async_trait]
 impl karl_host_server::KarlHost for Host {
     async fn start_compute(
         &self, req: Request<ComputeRequest>,
-    ) -> Result<Response<()>, Status> {
+    ) -> Result<Response<NotifyStart>, Status> {
         let req = req.into_inner();
+        let process_token = Token::gen();
+        let perms = ProcessPerms {
+            network_perms: req.network_perm.clone(),
+            file_perms: req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
+        };
 
-        // Notify the controller of the start and end of the request.
-        crate::net::notify_start(&self.controller, self.id).await?;
-        let _res = self.handle_compute(req);
-        crate::net::notify_end(&self.controller, self.id).await?;
+        // Mark an active process
+        let mut process_tokens = self.process_tokens.lock().unwrap();
+        assert!(!process_tokens.contains_key(&process_token));
+        process_tokens.insert(process_token.clone(), perms);
+        info!("starting process {}", &process_token);
 
-        Ok(Response::new(()))
+        // Handle the process asynchronously
+        {
+            let binary_path = Path::new(&req.binary_path).to_path_buf();
+            let karl_path = self.karl_path.clone();
+            let base_path = self.base_path.clone();
+            let controller = self.controller.clone();
+            let process_tokens = self.process_tokens.clone();
+            let host_token = self.host_token.clone().ok_or(
+                Status::new(Code::Unavailable, "host is not registered with controller"))?;
+            let id = self.id;
+            let process_token = process_token.clone();
+            tokio::spawn(async move {
+                Host::handle_compute(
+                    karl_path,
+                    base_path,
+                    req.package,
+                    binary_path,
+                    req.args,
+                    req.envs,
+                ).unwrap();
+                process_tokens.lock().unwrap().remove(&process_token);
+                crate::net::notify_end(&controller, host_token, process_token).await.unwrap();
+            });
+        }
+
+        Ok(Response::new(NotifyStart { process_token }))
     }
 
     async fn network(
@@ -77,9 +121,9 @@ impl karl_host_server::KarlHost for Host {
 /// This is the input root.
 ///
 /// Creates the root path directory if it does not already exist.
-fn unpack_request(req: &ComputeRequest, root: &Path) -> Result<(), Error> {
+fn unpack_request(package: &[u8], root: &Path) -> Result<(), Error> {
     let now = Instant::now();
-    let tar = GzDecoder::new(&req.package[..]);
+    let tar = GzDecoder::new(package);
     let mut archive = Archive::new(tar);
     fs::create_dir_all(root).unwrap();
     archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
@@ -108,6 +152,7 @@ impl Host {
             karl_path,
             base_path,
             controller: controller.to_string(),
+            process_tokens: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -132,6 +177,7 @@ impl Host {
         let controller_addr = self.controller.clone();
         let host_token = crate::net::register_host(
             &self.controller, self.id, port, password).await?.into_inner().host_token;
+        self.host_token = Some(host_token.clone());
         tokio::spawn(async move {
             // Every HEARTBEAT_INTERVAL seconds, this process wakes up
             // sends a heartbeat message to the controller.
@@ -154,40 +200,40 @@ impl Host {
     ///
     /// The client must be verified by the caller.
     fn handle_compute(
-        &self,
-        req: ComputeRequest,
+        karl_path: PathBuf,
+        base_path: PathBuf,
+        package: Vec<u8>,
+        binary_path: PathBuf,
+        args: Vec<String>,
+        envs: Vec<String>,
     ) -> Result<(), Error> {
-        info!("handling compute (len {}):\n\
-            command => {:?} {:?}\n\
-            envs => {:?}\n\
-            file_perm => {:?}\n\
-            network_perm => {:?}",
-            req.package.len(), req.binary_path, req.args,
-            req.envs, req.file_perm, req.network_perm);
+        info!("handling compute (len {}): command => {:?} {:?} envs => {:?}",
+            package.len(), binary_path, args, envs);
         let now = Instant::now();
 
-        let root_path = self.base_path.join("root");
-        unpack_request(&req, &root_path)?;
-        let binary_path = Path::new(&req.binary_path).to_path_buf();
+        use rand::Rng;
+        let random_path: u32 = rand::thread_rng().gen();
+        let root_path = base_path.join(random_path.to_string());
+        unpack_request(&package[..], &root_path)?;
         info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
 
         let _res = crate::runtime::run(
             binary_path,
-            req.args,
-            req.envs,
-            &self.karl_path,
-            &self.base_path,
+            args,
+            envs,
+            &karl_path,
+            &root_path,
         )?;
 
         // Reset the root for the next computation.
-        std::env::set_current_dir(&self.karl_path).unwrap();
-        if let Err(e) = std::fs::remove_dir_all(&self.base_path) {
+        std::env::set_current_dir(&karl_path).unwrap();
+        if let Err(e) = std::fs::remove_dir_all(&root_path) {
             error!("error resetting root: {:?}", e);
         }
         let now = Instant::now();
         info!(
             "reset directory at {:?} => {} s",
-            self.base_path,
+            root_path,
             now.elapsed().as_secs_f32(),
         );
         Ok(())

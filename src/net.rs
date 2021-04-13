@@ -22,21 +22,36 @@ pub async fn register_hook(
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = Request::new(RegisterHookRequest {
+    let request = RegisterHookRequest {
         token: sensor_token.to_string(),
         global_hook_id: global_hook_id.to_string(),
         envs: vec![],
         file_perm: vec![],
         network_perm: vec![],
-    });
-    client.register_hook(request).await
+    };
+    client.register_hook(Request::new(request)).await
+}
+
+/// Registers a sensor.
+pub async fn register_sensor(
+    controller_addr: &str,
+    global_sensor_id: &str,
+    app: Vec<u8>,
+) -> Result<Response<SensorRegisterResult>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = SensorRegisterRequest {
+        global_sensor_id: global_sensor_id.to_string(),
+        app,
+    };
+    client.sensor_register(Request::new(request)).await
 }
 
 /// Sends a compute request to the given host and returns the result.
 pub async fn send_compute(
     host: &str,
     req: ComputeRequest,
-) -> Result<Response<()>, Status> {
+) -> Result<Response<NotifyStart>, Status> {
     let mut client = KarlHostClient::connect(host.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
     let request = Request::new(req);
@@ -46,37 +61,18 @@ pub async fn send_compute(
 /*****************************************************************************
  * Service API
  *****************************************************************************/
-/// Notify controller about compute request start.
-pub async fn notify_start(
-    controller_addr: &str, service_id: u32,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let service_name = format!("KarlService-{}", service_id);
-    let request = Request::new(NotifyStart {
-        process_token: "TEMPORARY".to_string(),
-        service_name,
-        description: "TEMPORARY".to_string(),
-    });
-    debug!("notify start");
-    client.start_compute(request).await
-}
-
 /// Notify controller about compute request end.
 pub async fn notify_end(
-    controller_addr: &str, service_id: u32,
+    controller_addr: &str, host_token: HostToken, process_token: ProcessToken,
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let service_name = format!("KarlService-{}", service_id);
-    let request = Request::new(NotifyEnd {
-        host_token: "TEMPORARY".to_string(),
-        process_token: "TEMPORARY".to_string(),
-        service_name,
-        request_token: "TEMPORARY".to_string(),
-    });
-    debug!("notify_end");
-    client.finish_compute(request).await
+    let request = NotifyEnd {
+        host_token,
+        process_token,
+    };
+    debug!("notify_end host_token={}, process_token={}", request.host_token, request.process_token);
+    client.finish_compute(Request::new(request)).await
 }
 
 /// Send a heartbeat to the controller.

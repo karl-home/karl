@@ -4,7 +4,7 @@ import "google/protobuf/empty.proto";
 package request;
 
 service KarlHost {
-  rpc StartCompute (ComputeRequest) returns (google.protobuf.Empty);    // TODO
+  rpc StartCompute (ComputeRequest) returns (NotifyStart);
   rpc Network (NetworkAccess) returns (NetworkAccessResult);            // TODO
   rpc Get (GetData) returns (GetDataResult);                            // TODO
   rpc Put (PutData) returns (google.protobuf.Empty);                    // TODO
@@ -14,14 +14,13 @@ service KarlHost {
 
 service KarlController {
   // hosts
-  rpc StartCompute (NotifyStart) returns (google.protobuf.Empty);       // TODO
   rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
   rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);   // TODO
   rpc ForwardGet (GetData) returns (GetDataResult);                     // TODO
   rpc ForwardPut (PutData) returns (google.protobuf.Empty);             // TODO
   rpc ForwardDelete (DeleteData) returns (google.protobuf.Empty);       // TODO
   rpc ForwardState (StateChange) returns (google.protobuf.Empty);       // TODO
-  rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);        // TODO
+  rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
 
   // sensors
@@ -32,7 +31,7 @@ service KarlController {
   rpc AuditFile (AuditRequest) returns (AuditResult);                         // TODO
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
-  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);     // TODO
+  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -53,13 +52,10 @@ message ComputeRequest {
   repeated string envs = 5;
   repeated FileACL file_perm = 6;
   repeated string network_perm = 7;
-  string request_token = 8;  //remove
 }
 
 message NotifyStart {
   string process_token = 1;
-  string service_name = 2;  //remove
-  string description = 3;   //remove
 }
 
 message NetworkAccess {
@@ -128,8 +124,6 @@ message HostRegisterResult {
 message NotifyEnd {
   string host_token = 1;
   string process_token = 2;
-  string service_name = 3;  //remove
-  string request_token = 4;  //remove
 }
 
 message HostHeartbeat {

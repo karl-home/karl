@@ -83,7 +83,7 @@ pub fn run(
     args: Vec<String>,
     envs: Vec<String>,
     _karl_path: &Path,
-    base_path: &Path,
+    root_path: &Path,
 ) -> Result<(), Error> {
     // Directory layout
     // <request_id> = 123456
@@ -93,8 +93,7 @@ pub fn run(
     //   storage/
     //     wyzecam/     # `storage_path`
     //   123456/*       # request_id `base_path`
-    //     work/        # `work_path`
-    //     root/*       # computation root = `root_path`
+    //     234567/*     # computation root = `root_path`
     //       detect.py
     //       img.tmp
     //       storage/   # mounted .karl/storage/wyzecam (`storage_path`)
@@ -102,8 +101,6 @@ pub fn run(
     // * indicates the directory must exist ahead of time
 
     let previous_dir = fs::canonicalize(".").unwrap();
-    assert!(base_path.is_dir());
-    let root_path = base_path.join("root");
     assert!(root_path.is_dir());
     env::set_current_dir(&root_path).unwrap();
 

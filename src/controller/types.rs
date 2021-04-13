@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use std::net::{SocketAddr, IpAddr};
 use std::time::Instant;
 use serde::{Serialize, ser::{Serializer, SerializeStruct}};
-use crate::common::RequestToken;
+use crate::common::{RequestToken, ProcessToken};
 
 /// Self-assigned string ID uniquely identifying a host.
 pub type HostID = String;
@@ -35,6 +36,8 @@ pub struct HostMetadata {
     pub active_request: Option<Request>,
     /// Last request.
     pub last_request: Option<Request>,
+    /// All active requests.
+    pub active_requests: HashSet<ProcessToken>,
     /// Request token. If there is no token, the host has yet to contact the
     /// controller, or the controller has already allocated the token to a
     /// client.
@@ -86,6 +89,7 @@ impl Serialize for Host {
         state.serialize_field("addr", &self.addr)?;
         state.serialize_field("active_request", &self.md.active_request)?;
         state.serialize_field("last_request", &self.md.last_request)?;
+        state.serialize_field("active_requests", &self.md.active_requests)?;
         state.serialize_field("token", &self.md.token)?;
         state.serialize_field("last_msg", &self.md.last_msg.elapsed().as_secs_f32())?;
         state.serialize_field("total", &self.md.total)?;
@@ -98,6 +102,7 @@ impl Default for HostMetadata {
         Self {
             active_request: None,
             last_request: None,
+            active_requests: HashSet::new(),
             token: None,
             last_msg: Instant::now(),
             total: 0,

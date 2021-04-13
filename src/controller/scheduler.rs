@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use tonic::{Status, Code};
 use crate::controller::types::*;
 use crate::common::*;
 
@@ -19,6 +20,8 @@ pub struct HostScheduler {
 
 /// Data structure so the controller knows how to contact the host.
 pub struct HostResult {
+    /// Host token.
+    pub host_token: HostToken,
     /// Host IP.
     pub ip: String,
     /// Host port.
@@ -133,6 +136,7 @@ impl HostScheduler {
             }
             debug!("find_host picked => {:?}", host.addr);
             return Some(HostResult {
+                host_token: host_token.clone(),
                 ip: host.addr.ip().to_string(),
                 port: host.addr.port(),
             });
@@ -145,19 +149,20 @@ impl HostScheduler {
     /// Finds the host with the given host ID and sets the active
     /// request to the given description. Logs an error message if the host
     /// cannot be found, or an already active request is overwritten.
-    pub fn notify_start(&mut self, _token: HostToken) {
-        /*
-        info!("notify start name={:?} description={:?}", id, description);
-        if let Some(host) = self.unique_hosts.get_mut(&id) {
+    pub fn notify_start(
+        &mut self, host_token: HostToken, process_token: ProcessToken
+    ) {
+        if let Some(host) = self.unique_hosts.get_mut(&host_token) {
             if let Some(req) = &host.md.active_request {
                 error!("overriding active request: {:?}", req)
             }
             host.md.last_msg = Instant::now();
-            host.md.active_request = Some(Request::new(description));
+            host.md.active_request = Some(Request::new(process_token.clone()));
+            host.md.active_requests.insert(process_token);
+            info!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
         } else {
             error!("missing host");
         }
-        */
     }
 
     /// Notify the scheduler that a service is ending a request.
@@ -166,30 +171,20 @@ impl HostScheduler {
     /// to be the previously active request, updating the end time. Logs an
     /// error message if the host cannot be found, or if the host does not
     /// have an active request.
-    ///
-    /// Also updates the request token.
-    pub fn notify_end(&mut self, _token: HostToken) {
-        /*
-        info!("notify end name={:?} token={:?}", id, token);
-        if let Some(host) = self.unique_hosts.get_mut(&id) {
-            if host.md.token.is_some() {
-                error!("either the host sent a heartbeat during an \
-                    active request or the host handled a request \
-                    without us actually allocating the host. careful!")
-            }
-            host.md.token = Some(token);
-            if let Some(mut req) = host.md.active_request.take() {
-                req.end = Some(Instant::now());
-                host.md.last_msg = Instant::now();
-                host.md.last_request = Some(req);
-                host.md.total += 1;
-            } else {
-                error!("no active request, null notify end");
-            }
+    pub fn notify_end(
+        &mut self, host_token: HostToken, process_token: ProcessToken
+    ) -> Result<(), Status> {
+        info!("notify end host={:?} process={:?}", host_token, process_token);
+        if let Some(host) = self.unique_hosts.get_mut(&host_token) {
+            host.md.last_msg = Instant::now();
+            host.md.active_request = None;
+            host.md.active_requests.remove(&process_token);
+            info!("notify end host_id={} total={}", host.id, host.md.active_requests.len());
+            Ok(())
         } else {
             error!("missing host");
+            Err(Status::new(Code::Unauthenticated, "invalid host token"))
         }
-        */
     }
 
     /// Handle a host heartbeat. Validates the host token belongs to a host,

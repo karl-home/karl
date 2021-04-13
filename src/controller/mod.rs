@@ -49,17 +49,6 @@ pub struct Controller {
 impl karl_controller_server::KarlController for Controller {
     // hosts
 
-    async fn start_compute(
-        &self, req: Request<NotifyStart>,
-    ) -> Result<Response<()>, Status> {
-        let now = Instant::now();
-        let req = req.into_inner();
-        let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.notify_start(req.service_name);
-        trace!("start_compute => {} s", now.elapsed().as_secs_f32());
-        Ok(Response::new(()))
-    }
-
     async fn host_register(
         &self, req: Request<HostRegisterRequest>,
     ) -> Result<Response<HostRegisterResult>, Status> {
@@ -115,8 +104,13 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         let now = Instant::now();
         let req = req.into_inner();
-        let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.notify_end(req.service_name);
+        HookRunner::notify_end(
+            req.host_token,
+            req.process_token,
+            self.runner.process_tokens.clone(),
+            self.scheduler.clone(),
+        )?;
+        trace!("notify_end => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
 
@@ -280,14 +274,14 @@ impl Controller {
         envs: Vec<String>,
     ) -> Result<(), Error> {
         // Validate the client token.
-        if let Some(client) = self.sensors.lock().unwrap().get(token) {
-            if !client.confirmed {
-                println!("register_hook unconfirmed client token {:?}", token);
-                return Err(Error::AuthError("invalid client token".to_string()));
+        if let Some(sensor) = self.sensors.lock().unwrap().get(token) {
+            if !sensor.confirmed {
+                println!("register_hook unconfirmed sensor token {:?}", token);
+                return Err(Error::AuthError("invalid sensor token".to_string()));
             }
         } else {
-            println!("register_hook invalid client token {:?}", token);
-            return Err(Error::AuthError("invalid client token".to_string()));
+            println!("register_hook invalid sensor token {:?}", token);
+            return Err(Error::AuthError("invalid sensor token".to_string()));
         }
 
         // Register the hook.

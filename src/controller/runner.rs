@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
+use tonic::Status;
 use crate::controller::HostScheduler;
 use crate::controller::types::*;
 use crate::hook::{Hook, FileACL, DomainName, HookSchedule};
@@ -13,7 +14,7 @@ pub struct HookRunner {
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     /// Process tokens for each spawned process. Cleared on NotifyEnd.
-    process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
+    pub(crate) process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
     /// Scheduler for finding hosts
     scheduler: Arc<Mutex<HostScheduler>>,
 }
@@ -114,17 +115,29 @@ impl HookRunner {
         tx.send(hook_id).await.unwrap();
     }
 
+    /// Notify the end of a process.
+    pub fn notify_end(
+        host_token: HostToken,
+        process_token: ProcessToken,
+        process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
+        scheduler: Arc<Mutex<HostScheduler>>,
+    ) -> Result<(), Status> {
+        scheduler.lock().unwrap().notify_end(host_token, process_token.clone())?;
+        process_tokens.lock().unwrap().remove(&process_token);
+        Ok(())
+    }
+
     async fn start_queue_manager(
         mut rx: mpsc::Receiver<HookID>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-        process_tokens: Arc<Mutex<HashMap<RequestToken, (ProcessID, HookID)>>>,
+        process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
         loop {
             // Generate a compute request based on the queued hook.
             let hook_id: HookID = rx.recv().await.unwrap();
-            let request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
+            let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
                 match hook.to_compute_request() {
                     Ok(req) => req,
                     Err(e) => {
@@ -143,18 +156,28 @@ impl HookRunner {
                 }
                 time::sleep(Duration::from_secs(1)).await;
             };
-            let host_addr = format!("{}:{}", host.ip, host.port);
+            let host_addr = format!("http://{}:{}", host.ip, host.port);
+            request.host_token = host.host_token.clone();
 
             // Send the request.
-            // TODO: check if the result has no error!
-            if !mock_send_compute {
-                crate::net::send_compute(&host_addr, request).await.unwrap();
-            }
+            let process_token = if !mock_send_compute {
+                match crate::net::send_compute(&host_addr, request).await {
+                    Ok(result) => result.into_inner().process_token,
+                    Err(e) => {
+                        error!("error spawning hook {}: {:?}", hook_id, e);
+                        continue;
+                    },
+                }
+            } else {
+                warn!("generated process token for testing");
+                Token::gen()
+            };
 
             // Update internal data structures.
             // In particular, the process's request token for authentication.
             let process_id = gen_process_id();
-            let process_token = process_id.to_string(); // TODO?
+            info!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
+            scheduler.lock().unwrap().notify_start(host.host_token, process_token.clone());
             process_tokens.lock().unwrap().insert(
                 process_token,
                 (process_id, hook_id),
