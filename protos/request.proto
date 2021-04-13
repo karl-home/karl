@@ -25,7 +25,7 @@ service KarlController {
 
   // sensors
   rpc SensorRegister (SensorRegisterRequest) returns (SensorRegisterResult);
-  rpc RawData (SensorPushData) returns (google.protobuf.Empty);               // TODO
+  rpc PushRawData (SensorPushData) returns (google.protobuf.Empty);
 
   // users
   rpc AuditFile (AuditRequest) returns (AuditResult);                         // TODO

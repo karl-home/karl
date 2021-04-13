@@ -17,6 +17,7 @@ use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
+use chrono;
 use tonic::{Request, Response, Status, Code};
 use crate::protos::*;
 use crate::dashboard;
@@ -141,10 +142,27 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(res))
     }
 
-    async fn raw_data(
+    async fn push_raw_data(
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        let sensors = self.sensors.lock().unwrap();
+        if let Some(sensor) = sensors.get(&req.sensor_token) {
+            debug!("push_raw_data sensor_id={} (len {})", sensor.id, req.data.len());
+            let path = self.karl_path.join("raw").join(&sensor.id);
+            assert!(path.is_dir());
+            loop {
+                let dt = chrono::prelude::Local::now().format("%+").to_string();
+                let path = path.join(dt);
+                if path.exists() {
+                    continue;
+                }
+                fs::write(path, req.data)?;
+                break Ok(Response::new(()));
+            }
+        } else {
+            return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
+        }
     }
 
     // users
@@ -285,7 +303,7 @@ impl Controller {
         }
 
         // Register the hook.
-        HookRunner::register_hook(
+        let hook_id = HookRunner::register_hook(
             global_hook_id,
             network_perm,
             file_perm,
@@ -293,6 +311,8 @@ impl Controller {
             self.runner.hooks.clone(),
             self.runner.tx.as_ref().unwrap().clone(),
         )?;
+        let work_path = self.data_sink.lock().unwrap().path.join(&hook_id);
+        fs::create_dir_all(&work_path)?;
         Ok(())
     }
 
@@ -362,7 +382,7 @@ impl Controller {
         }
 
         // create a storage directory
-        let storage_path = self.karl_path.join("storage").join(&sensor.id);
+        let storage_path = self.karl_path.join("raw").join(&sensor.id);
         fs::create_dir_all(storage_path).unwrap();
 
         // register the sensor itself

@@ -7,7 +7,7 @@ use crate::controller::types::*;
 ///
 /// Operations to the data sink must be authenticated in the above layer.
 pub struct DataSink {
-    path: PathBuf,
+    pub path: PathBuf,
 }
 
 impl DataSink {

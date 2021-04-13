@@ -58,6 +58,20 @@ pub async fn send_compute(
     client.start_compute(request).await
 }
 
+/// Push raw data from a sensor.
+pub async fn push_raw_data(
+    controller_addr: &str, sensor_token: SensorToken, data: Vec<u8>,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = SensorPushData {
+        sensor_token,
+        data,
+    };
+    debug!("push_raw_data (len {})", request.data.len());
+    client.push_raw_data(Request::new(request)).await
+}
+
 /*****************************************************************************
  * Service API
  *****************************************************************************/
