@@ -19,16 +19,15 @@ async fn send(controller: &str) -> Result<(), Box<dyn std::error::Error>> {
     let request = tonic::Request::new(SensorRegisterRequest {
         global_sensor_id: "hello-world-client".to_string(),
         app: vec![],
-        id: "hello-world-client".to_string(),
     });
-    let result = client.sensor_register(request).await?;
-    let client_token = result.into_inner().client_token;
-    info!("client_token = {:?}", client_token);
+    let result = client.sensor_register(request).await?.into_inner();
+    info!("sensor_token = {:?}", result.sensor_token);
+    info!("sensor_id = {:?}", result.sensor_id);
     debug!("=> {} s", now.elapsed().as_secs_f32());
 
     // debug!("registering hook");
     // let now = Instant::now();
-    // karl::net::register_hook(controller, client_token, "hello-world");
+    // karl::net::register_hook(controller, sensor_token, "hello-world");
     // debug!("=> {} s", now.elapsed().as_secs_f32());
     Ok(())
 }

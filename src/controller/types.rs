@@ -50,10 +50,10 @@ pub struct HostMetadata {
 pub struct Client {
     /// Whether the user has confirmed this client.
     pub confirmed: bool,
-    /// The self-given lowercase alphanumeric and underscore name of the client,
+    /// The self-given lowercase alphanumeric and underscore ID of the client,
     /// with _1, _2, etc. appended when duplicates are registered, like handling
     /// duplicates in the filesystem.
-    pub name: String,
+    pub id: SensorID,
     /// IP address for proxy requests.
     pub addr: IpAddr,
 }

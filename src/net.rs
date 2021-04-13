@@ -17,18 +17,17 @@ use crate::common::*;
 /// Registers a hook.
 pub async fn register_hook(
     controller_addr: &str,
-    client_token: &str,
+    sensor_token: &str,
     global_hook_id: &str,
 ) -> Result<Response<()>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
     let request = Request::new(RegisterHookRequest {
-        user_token: "TEMPORARY".to_string(),
+        token: sensor_token.to_string(),
         global_hook_id: global_hook_id.to_string(),
         envs: vec![],
         file_perm: vec![],
         network_perm: vec![],
-        client_token: client_token.to_string(),
     });
     client.register_hook(request).await
 }

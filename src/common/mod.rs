@@ -15,8 +15,8 @@ const TOKEN_LEN: usize = 32;
 const TOKEN_CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 /// 32-character unique alphanumeric identifier.
 pub struct Token {}
-/// Client token.
-pub type ClientToken = String;
+/// Sensor token.
+pub type SensorToken = String;
 /// Request token.
 pub type RequestToken = String;
 /// Host token.

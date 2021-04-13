@@ -37,11 +37,11 @@ pub struct Controller {
     audit_log: Arc<Mutex<AuditLog>>,
     /// Map from client token to client.
     ///
-    /// Unique identifier for the client, known only by the controller
-    /// and the client itself. Generated on registration. All host
-    /// requests from the client to the controller must include this token.
-    clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
-    /// Whether to automatically confirm clients and hosts.
+    /// Unique identifier for the sensor, known only by the controller
+    /// and the sensor itself. Generated on registration. All host
+    /// requests from the sensor to the controller must include this token.
+    sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
+    /// Whether to automatically confirm sensors and hosts.
     autoconfirm: bool,
 }
 
@@ -137,9 +137,9 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<SensorRegisterResult>, Status> {
         let now = Instant::now();
         let req = req.into_inner();
-        let res = self.register_client(
-            req.id,
-            "0.0.0.0".parse().unwrap(),
+        let res = self.sensor_register(
+            req.global_sensor_id,
+            "0.0.0.0".parse().unwrap(), // TODO?
             &req.app[..],
             false,
         );
@@ -179,7 +179,7 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         self.register_hook(
-            &req.client_token.to_string(),
+            &req.token.to_string(),
             req.global_hook_id.to_string(),
             req.network_perm.to_vec(),
             req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
@@ -194,7 +194,7 @@ impl Controller {
     /// Create a new controller.
     ///
     /// Call `start()` after constructing the controller to ensure it is
-    /// listening for hosts and client requests.
+    /// listening for hosts and sensor requests.
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
         let scheduler = Arc::new(Mutex::new(HostScheduler::new(password)));
         Controller {
@@ -203,12 +203,12 @@ impl Controller {
             data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
             runner: HookRunner::new(scheduler),
             audit_log: Arc::new(Mutex::new(AuditLog::new())),
-            clients: Arc::new(Mutex::new(HashMap::new())),
+            sensors: Arc::new(Mutex::new(HashMap::new())),
             autoconfirm,
         }
     }
 
-    /// Initializes clients based on the `<KARL_PATH>/clients.txt` file and
+    /// Initializes sensors based on the `<KARL_PATH>/clients.txt` file and
     /// starts the web dashboard.
     pub async fn start(
         &mut self,
@@ -217,11 +217,11 @@ impl Controller {
         // Make the karl path if it doesn't already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
 
-        // Initialize clients in the clients file at `<KARL_PATH>/clients.txt`.
-        // Expect client serialization format based on `dashboard/mod.rs`:
+        // Initialize sensors in the sensors file at `<KARL_PATH>/clients.txt`.
+        // Expect sensor serialization format based on `dashboard/mod.rs`:
         // `<CLIENT_NAME>:<CLIENT_ADDR>=<CLIENT_TOKEN>`
         {
-            let mut clients = self.clients.lock().unwrap();
+            let mut clients = self.sensors.lock().unwrap();
             let path = self.karl_path.join("clients.txt");
             debug!("initializing clients at {:?}", &path);
             let mut buffer = String::new();
@@ -243,7 +243,7 @@ impl Controller {
                     line[(j+1)..].to_string(),
                     Client {
                         confirmed: true,
-                        name: line[..i].to_string(),
+                        id: line[..i].to_string(),
                         addr: line[(i+1)..j].parse().unwrap(),
                     }
                 );
@@ -254,7 +254,7 @@ impl Controller {
         dashboard::start(
             self.karl_path.clone(),
             self.scheduler.clone(),
-            self.clients.clone(),
+            self.sensors.clone(),
         );
         // Start the hook runner.
         self.runner.start(false);
@@ -273,14 +273,14 @@ impl Controller {
     /// AuthError if not a valid client token.
     fn register_hook(
         &self,
-        token: &ClientToken,
+        token: &SensorToken,
         global_hook_id: String,
         network_perm: Vec<String>,
         file_perm: Vec<FileACL>,
         envs: Vec<String>,
     ) -> Result<(), Error> {
         // Validate the client token.
-        if let Some(client) = self.clients.lock().unwrap().get(token) {
+        if let Some(client) = self.sensors.lock().unwrap().get(token) {
             if !client.confirmed {
                 println!("register_hook unconfirmed client token {:?}", token);
                 return Err(Error::AuthError("invalid client token".to_string()));
@@ -304,83 +304,84 @@ impl Controller {
 
     /// Register a client.
     ///
-    /// Stores the client-generated name and controller-generated token
+    /// Stores the client-generated ID and controller-generated token
     /// along with socket information about the client. Registers the app
     /// (a Handlebars template) at `<KARL_PATH>/www/<CLIENT_ID>.hbs`. Creates
     /// an empty storage directory at `<KARL_PATH>/storage/<CLIENT_ID>/`,
     /// if it doesn't already exist.
     ///
-    /// All characters in the client name must be lowercase alphabet a-z,
-    /// digits 0-9, or underscores. Lowercases the client name, and removes
+    /// All characters in the client ID must be lowercase alphabet a-z,
+    /// digits 0-9, or underscores. Lowercases the client ID, and removes
     /// other noncomplying characters. For example, "a @#Ld_e" becomes "alde".
-    /// Resolves duplicate client names by appending an underscore and a number.
+    /// Resolves duplicate client IDs by appending an underscore and a number.
     /// e.g. camera -> camera_1 -> camera_2.
     ///
     /// Parameters:
-    /// - name - The self-given name of the client.
-    /// - client_addr - The peer address of the TCP connection registering
+    /// - id - The self-given ID of the client.
+    /// - addr - The peer address of the TCP connection registering
     ///   the client.
     /// - app_bytes - The bytes of the Handlebars template, or an empty
     ///   vector if there is no registered app.
     /// - confirmed - Whether the client should be confirmed by default.
     ///   Overriden by autoconfirm.
-    fn register_client(
+    fn sensor_register(
         &self,
-        mut name: String,
-        client_addr: IpAddr,
+        mut id: String,
+        addr: IpAddr,
         app_bytes: &[u8],
         confirmed: bool,
     ) -> SensorRegisterResult {
-        // resolve duplicate client names
-        let names = self.clients.lock().unwrap().values()
-            .map(|client| client.name.clone()).collect::<HashSet<_>>();
-        name = name.trim().to_lowercase();
-        name = name
+        // resolve duplicate sensor ids
+        let ids = self.sensors.lock().unwrap().values()
+            .map(|sensor| sensor.id.clone()).collect::<HashSet<_>>();
+        id = id.trim().to_lowercase();
+        id = id
             .chars()
             .filter(|ch| ch.is_alphanumeric() || ch == &'_')
             .collect();
-        if names.contains(&name) {
+        if ids.contains(&id) {
             let mut i = 1;
             loop {
-                let new_name = format!("{}_{}", name, i);
-                if !names.contains(&new_name) {
-                    name = new_name;
+                let new_id = format!("{}_{}", id, i);
+                if !ids.contains(&new_id) {
+                    id = new_id;
                     break;
                 }
                 i += 1;
             }
         }
 
-        // generate a client with a unique name and token
-        let client = Client {
+        // generate a sensor with a unique id and token
+        let sensor = Client {
             confirmed: confirmed || self.autoconfirm,
-            name,
-            addr: client_addr,
+            id: id.clone(),
+            addr,
         };
 
-        // register the client's webapp
+        // register the sensor's webapp
         if !app_bytes.is_empty() {
             let parent = self.karl_path.join("www");
-            let path = parent.join(format!("{}.hbs", &client.name));
+            let path = parent.join(format!("{}.hbs", &sensor.id));
             fs::create_dir_all(parent).unwrap();
             fs::write(&path, app_bytes).unwrap();
             info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
         }
 
         // create a storage directory
-        let storage_path = self.karl_path.join("storage").join(&client.name);
+        let storage_path = self.karl_path.join("storage").join(&sensor.id);
         fs::create_dir_all(storage_path).unwrap();
 
-        // register the client itself
-        let mut clients = self.clients.lock().unwrap();
+        // register the sensor itself
+        let mut sensors = self.sensors.lock().unwrap();
         let token = Token::gen();
-        if clients.insert(token.clone(), client.clone()).is_none() {
-            info!("registered client {:?}", client);
+        if sensors.insert(token.clone(), sensor.clone()).is_none() {
+            info!("registered sensor {} {} {}", sensor.id, token, sensor.addr);
         } else {
-            unreachable!("impossible to generate duplicate client tokens")
+            unreachable!("impossible to generate duplicate sensor tokens")
         }
         SensorRegisterResult {
-            client_token: token,
+            sensor_token: token,
+            sensor_id: id,
         }
     }
 }
@@ -413,18 +414,18 @@ mod test {
     /// Wrapper around register_hook to avoid rewriting parameters
     fn register_hook_test(
         c: &mut Controller,
-        token: &ClientToken,
+        token: &SensorToken,
     ) -> Result<(), Error> {
         c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![])
     }
 
     #[tokio::test]
-    async fn test_register_hook_invalid_client_token() {
+    async fn test_register_hook_invalid_sensor_token() {
         let (_karl_path, mut c) = init_test();
 
         // Register a client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
-        let token = client.client_token.to_string();
+        let client = c.sensor_register("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], true);
+        let token = client.sensor_token.to_string();
         let bad_token1 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab".to_string();
         let bad_token2 = "badtoken".to_string();
 
@@ -442,7 +443,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_register_hook_unconfirmed_client_token() {
+    async fn test_register_hook_unconfirmed_sensor_token() {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
@@ -451,40 +452,40 @@ mod test {
         c.scheduler.lock().unwrap().heartbeat(host_token);
 
         // Register an unconfirmed client
-        let client = c.register_client("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
-        let token = client.client_token.to_string();
-        assert_eq!(c.clients.lock().unwrap().len(), 1);
-        assert!(!c.clients.lock().unwrap().get(&token).unwrap().confirmed);
+        let client = c.sensor_register("name".to_string(), "0.0.0.0".parse().unwrap(), &vec![], false);
+        let token = client.sensor_token.to_string();
+        assert_eq!(c.sensors.lock().unwrap().len(), 1);
+        assert!(!c.sensors.lock().unwrap().get(&token).unwrap().confirmed);
         assert!(!register_hook_test(&mut c, &token).is_ok(),
             "found host with unconfirmed token");
 
         // Confirm the client and find a host.
-        c.clients.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
+        c.sensors.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
         assert!(register_hook_test(&mut c, &token).is_ok(),
             "failed to find host with confirmed token");
     }
 
     #[test]
-    fn test_register_client() {
+    fn test_sensor_register() {
         let (karl_path, c) = init_test();
         let storage_path = karl_path.path().join("storage").join("hello");
         let app_path = karl_path.path().join("www").join("hello.hbs");
 
         // Check initial conditions.
-        assert!(c.clients.lock().unwrap().is_empty());
+        assert!(c.sensors.lock().unwrap().is_empty());
         assert!(!storage_path.exists());
         assert!(!app_path.exists());
 
         // Register a client with an app.
-        let name = "hello";
+        let id = "hello";
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         let app = vec![10, 10, 10, 10];
-        c.register_client(name.to_string(), client_ip, &app, true);
-        assert_eq!(c.clients.lock().unwrap().len(), 1, "registered client");
+        c.sensor_register(id.to_string(), client_ip, &app, true);
+        assert_eq!(c.sensors.lock().unwrap().len(), 1, "registered client");
 
         // Check the client was registered correcftly.
-        let client = c.clients.lock().unwrap().values().next().unwrap().clone();
-        assert_eq!(client.name, name);
+        let client = c.sensors.lock().unwrap().values().next().unwrap().clone();
+        assert_eq!(client.id, id);
         assert_eq!(client.addr, client_ip);
         assert!(storage_path.is_dir(), "storage dir was not created");
         assert!(app_path.is_file(), "app was not created and renamed");
@@ -492,8 +493,8 @@ mod test {
         // Register a client without an app.
         // Storage directory should be created, but app file should not.
         let app: Vec<u8> = vec![];
-        c.register_client("world".to_string(), client_ip, &app, true);
-        assert_eq!(c.clients.lock().unwrap().len(), 2);
+        c.sensor_register("world".to_string(), client_ip, &app, true);
+        assert_eq!(c.sensors.lock().unwrap().len(), 2);
         assert!(karl_path.path().join("storage").join("world").is_dir());
         assert!(!karl_path.path().join("www").join("world.hbs").exists());
     }
@@ -505,19 +506,19 @@ mod test {
         let app_base = karl_path.path().join("www");
 
         // Register a client with an app.
-        let name = "hello";
+        let id = "hello";
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
         let app = vec![10, 10, 10, 10];
-        c.register_client(name.to_string(), client_ip.clone(), &app, true);
-        c.register_client(name.to_string(), client_ip.clone(), &app, true);
-        c.register_client(name.to_string(), client_ip.clone(), &app, true);
+        c.sensor_register(id.to_string(), client_ip.clone(), &app, true);
+        c.sensor_register(id.to_string(), client_ip.clone(), &app, true);
+        c.sensor_register(id.to_string(), client_ip.clone(), &app, true);
 
-        // Check the clients have different names.
-        let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names.len(), 3);
-        assert!(names.contains(&"hello".to_string()));
-        assert!(names.contains(&"hello_1".to_string()));
-        assert!(names.contains(&"hello_2".to_string()));
+        // Check the clients have different ids.
+        let ids = c.sensors.lock().unwrap().values().map(|client| client.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains(&"hello".to_string()));
+        assert!(ids.contains(&"hello_1".to_string()));
+        assert!(ids.contains(&"hello_2".to_string()));
 
         // Check the clients all have registered storage and app paths.
         assert!(storage_base.join("hello").is_dir());
@@ -529,37 +530,37 @@ mod test {
     }
 
     #[test]
-    fn test_register_format_names() {
+    fn test_register_format_ids() {
         let (_karl_path, c) = init_test();
 
         let client_ip: IpAddr = "127.0.0.1".parse().unwrap();
-        c.register_client("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
-        c.register_client("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![], true);
-        c.register_client("uPpErCaSe".to_string(), client_ip.clone(), &vec![], true);
-        c.register_client("iNv@l1d_ch@r$".to_string(), client_ip.clone(), &vec![], true);
-        c.register_client("\tEVERYth!ng   \n\r".to_string(), client_ip.clone(), &vec![], true);
+        c.sensor_register("   leadingwhitespace".to_string(), client_ip.clone(), &vec![], true);
+        c.sensor_register("trailingwhitespace \t".to_string(), client_ip.clone(), &vec![], true);
+        c.sensor_register("uPpErCaSe".to_string(), client_ip.clone(), &vec![], true);
+        c.sensor_register("iNv@l1d_ch@r$".to_string(), client_ip.clone(), &vec![], true);
+        c.sensor_register("\tEVERYth!ng   \n\r".to_string(), client_ip.clone(), &vec![], true);
 
-        // Check the names were formatted correctly (trimmed and lowercase).
-        let names = c.clients.lock().unwrap().values().map(|client| client.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names.len(), 5);
-        assert!(names.contains(&"leadingwhitespace".to_string()));
-        assert!(names.contains(&"trailingwhitespace".to_string()));
-        assert!(names.contains(&"uppercase".to_string()));
-        assert!(names.contains(&"invl1d_chr".to_string()));
-        assert!(names.contains(&"everythng".to_string()));
+        // Check the ids were formatted correctly (trimmed and lowercase).
+        let ids = c.sensors.lock().unwrap().values().map(|client| client.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids.len(), 5);
+        assert!(ids.contains(&"leadingwhitespace".to_string()));
+        assert!(ids.contains(&"trailingwhitespace".to_string()));
+        assert!(ids.contains(&"uppercase".to_string()));
+        assert!(ids.contains(&"invl1d_chr".to_string()));
+        assert!(ids.contains(&"everythng".to_string()));
     }
 
     #[test]
-    fn test_register_client_result() {
+    fn test_sensor_register_result() {
         let (_karl_path, c) = init_test();
-        let res1 = c.register_client("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![], true);
-        let res2 = c.register_client("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![], true);
-        let res3 = c.register_client("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![], true);
+        let res1 = c.sensor_register("c1".to_string(), "1.0.0.0".parse().unwrap(), &vec![], true);
+        let res2 = c.sensor_register("c2".to_string(), "2.0.0.0".parse().unwrap(), &vec![], true);
+        let res3 = c.sensor_register("c3".to_string(), "3.0.0.0".parse().unwrap(), &vec![], true);
 
         // Tokens are unique
-        assert!(res1.client_token != res2.client_token);
-        assert!(res1.client_token != res3.client_token);
-        assert!(res2.client_token != res3.client_token);
+        assert!(res1.sensor_token != res2.sensor_token);
+        assert!(res1.sensor_token != res3.sensor_token);
+        assert!(res2.sensor_token != res3.sensor_token);
     }
 
     #[test]
@@ -569,12 +570,12 @@ mod test {
         let c1 = Controller::new(dir1.path().to_path_buf(), PASSWORD, false);
         let c2 = Controller::new(dir2.path().to_path_buf(), PASSWORD, true);
 
-        let name: String = "client_name".to_string();
+        let id: String = "client_id".to_string();
         let addr: IpAddr = "1.2.3.4".parse().unwrap();
-        c1.register_client(name.clone(), addr.clone(), &vec![], false);
-        c2.register_client(name.clone(), addr.clone(), &vec![], false);
-        let client1 = c1.clients.lock().unwrap().values().next().unwrap().confirmed;
-        let client2 = c2.clients.lock().unwrap().values().next().unwrap().confirmed;
+        c1.sensor_register(id.clone(), addr.clone(), &vec![], false);
+        c2.sensor_register(id.clone(), addr.clone(), &vec![], false);
+        let client1 = c1.sensors.lock().unwrap().values().next().unwrap().confirmed;
+        let client2 = c2.sensors.lock().unwrap().values().next().unwrap().confirmed;
         assert!(!client1);
         assert!(client2);
     }

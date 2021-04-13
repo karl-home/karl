@@ -4,35 +4,35 @@ import "google/protobuf/empty.proto";
 package request;
 
 service KarlHost {
-  rpc StartCompute (ComputeRequest) returns (google.protobuf.Empty);
-  rpc Network (NetworkAccess) returns (NetworkAccessResult);
-  rpc Get (GetData) returns (GetDataResult);
-  rpc Put (PutData) returns (google.protobuf.Empty);
-  rpc Delete (DeleteData) returns (google.protobuf.Empty);
-  rpc State (StateChange) returns (google.protobuf.Empty);
+  rpc StartCompute (ComputeRequest) returns (google.protobuf.Empty);    // TODO
+  rpc Network (NetworkAccess) returns (NetworkAccessResult);            // TODO
+  rpc Get (GetData) returns (GetDataResult);                            // TODO
+  rpc Put (PutData) returns (google.protobuf.Empty);                    // TODO
+  rpc Delete (DeleteData) returns (google.protobuf.Empty);              // TODO
+  rpc State (StateChange) returns (google.protobuf.Empty);              // TODO
 }
 
 service KarlController {
   // hosts
-  rpc StartCompute (NotifyStart) returns (google.protobuf.Empty);
+  rpc StartCompute (NotifyStart) returns (google.protobuf.Empty);       // TODO
   rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
-  rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
-  rpc ForwardGet (GetData) returns (GetDataResult);
-  rpc ForwardPut (PutData) returns (google.protobuf.Empty);
-  rpc ForwardDelete (DeleteData) returns (google.protobuf.Empty);
-  rpc ForwardState (StateChange) returns (google.protobuf.Empty);
-  rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
+  rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);   // TODO
+  rpc ForwardGet (GetData) returns (GetDataResult);                     // TODO
+  rpc ForwardPut (PutData) returns (google.protobuf.Empty);             // TODO
+  rpc ForwardDelete (DeleteData) returns (google.protobuf.Empty);       // TODO
+  rpc ForwardState (StateChange) returns (google.protobuf.Empty);       // TODO
+  rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);        // TODO
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
 
   // sensors
   rpc SensorRegister (SensorRegisterRequest) returns (SensorRegisterResult);
-  rpc RawData (SensorPushData) returns (google.protobuf.Empty);
+  rpc RawData (SensorPushData) returns (google.protobuf.Empty);               // TODO
 
   // users
-  rpc AuditFile (AuditRequest) returns (AuditResult);
-  rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);
-  rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);
-  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
+  rpc AuditFile (AuditRequest) returns (AuditResult);                         // TODO
+  rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
+  rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
+  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);     // TODO
 }
 
 /****************************************************************************
@@ -141,13 +141,11 @@ message HostHeartbeat {
 message SensorRegisterRequest {
   string global_sensor_id = 1;
   bytes app = 2;
-  string id = 3;  //remove
 }
 
 message SensorRegisterResult {
-  // string sensor_token = 1;
-  // string sensor_id = 2;
-  string client_token = 3;  //remove
+  string sensor_token = 1;
+  string sensor_id = 2;
 }
 
 message SensorPushData {
@@ -177,10 +175,9 @@ message VerifyHostRequest {
 }
 
 message RegisterHookRequest {
-  string user_token = 1;
+  string token = 1;
   string global_hook_id = 2;
   repeated string envs = 3;
   repeated FileACL file_perm = 4;
   repeated string network_perm = 5;
-  string client_token = 6; //remove
 }

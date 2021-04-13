@@ -14,7 +14,7 @@ use rocket::{self, http::Cookies, State};
 use rocket_contrib::templates::Template;
 use serde::Serialize;
 
-use crate::common::ClientToken;
+use crate::common::SensorToken;
 use crate::controller::{HostScheduler, types::{Host, Client}};
 use helper::*;
 use cookie::SessionState;
@@ -24,14 +24,14 @@ struct MainContext {
     title: &'static str,
     base_domain: String,
     hosts: Vec<Host>,
-    clients: Vec<Client>,
+    sensors: Vec<Client>,
 }
 
 /// Returns the client app if the page is a subdomain of the base domain,
 /// otherwise returns the main controller dashboard.
 ///
-/// The main dashboard visualizes the hosts and clients, and provides an
-/// interface for the user to manually verify hosts and clients. Provides
+/// The main dashboard visualizes the hosts and sensors, and provides an
+/// interface for the user to manually verify hosts and sensors. Provides
 /// links to client apps. Basic HTTP authentication with NGINX. Client
 /// subdomains are granted a cookie with an expiration date to access
 /// proxy/ and storage/ resources behind that subdomain. Those resources
@@ -43,7 +43,7 @@ fn index(
     karl_path: State<PathBuf>,
     cookies: Cookies,
     hosts: State<Arc<Mutex<HostScheduler>>>,
-    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
     sessions: State<Arc<Mutex<SessionState>>>,
 ) -> Option<Template> {
     match to_client_id(&host_header, base_domain.to_string()) {
@@ -52,7 +52,7 @@ fn index(
             title: "Hello",
             base_domain: base_domain.to_string(),
             hosts: hosts.lock().unwrap().hosts(),
-            clients: clients.lock().unwrap().values().map(
+            sensors: sensors.lock().unwrap().values().map(
                 |client| client.clone()).collect(),
         })),
     }
@@ -78,25 +78,25 @@ fn confirm_host(
 ///
 /// The endpoint additionally writes the client to `<KARL_PATH>/clients.txt`
 /// so the client will automatically re-register if the controller restarts.
-#[post("/confirm/client/<client_name>")]
+#[post("/confirm/client/<client_id>")]
 fn confirm_client(
     host_header: HostHeader,
     karl_path: State<PathBuf>,
     base_domain: State<String>,
-    client_name: String,
-    clients: State<Arc<Mutex<HashMap<ClientToken, Client>>>>,
+    client_id: String,
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
 ) {
     if to_client_id(&host_header, base_domain.to_string()).is_some() {
         // Confirm must be to the base domain only.
         return;
     }
-    let mut clients = clients.lock().unwrap();
-    for (token, client) in clients.iter_mut() {
-        if client.name != client_name {
+    let mut sensors = sensors.lock().unwrap();
+    for (token, client) in sensors.iter_mut() {
+        if client.id != client_id {
             continue;
         }
         if client.confirmed {
-            warn!("attempted to confirm already confirmed client: {:?}", client_name);
+            warn!("attempted to confirm already confirmed client: {:?}", client_id);
             return;
         } else {
             // Create the client file if it does not already exist.
@@ -105,23 +105,23 @@ fn confirm_client(
                 .append(true)
                 .create(true)
                 .open(&path)
-                .expect(&format!("unable to open clients file: {:?}", &path));
-            let res = writeln!(file, "{}:{}={}", client.name, client.addr, token);
+                .expect(&format!("unable to open sensors file: {:?}", &path));
+            let res = writeln!(file, "{}:{}={}", client.id, client.addr, token);
             if let Err(e) = res {
                 error!("error serializing client {:?}: {:?}", client, e);
             }
-            info!("confirmed client {:?}", client_name);
+            info!("confirmed client {:?}", client_id);
             client.confirmed = true;
             return;
         }
     }
-    warn!("attempted to confirm nonexistent client: {:?}", client_name);
+    warn!("attempted to confirm nonexistent client: {:?}", client_id);
 }
 
 pub fn start(
     karl_path: PathBuf,
     hosts: Arc<Mutex<HostScheduler>>,
-    clients: Arc<Mutex<HashMap<ClientToken, Client>>>,
+    sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
 ) {
     let base_domain = "karl.zapto.org".to_string();
     let sessions = Arc::new(Mutex::new(SessionState::new()));
@@ -130,7 +130,7 @@ pub fn start(
         .manage(karl_path)
         .manage(base_domain)
         .manage(hosts)
-        .manage(clients)
+        .manage(sensors)
         .manage(sessions)
         .mount("/", routes![index, confirm_host, confirm_client])
         .mount("/", routes![client::storage, client::proxy_get])

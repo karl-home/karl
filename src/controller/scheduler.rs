@@ -225,7 +225,6 @@ impl HostScheduler {
 mod test {
     use super::*;
     use std::thread;
-    use std::net::IpAddr;
     use std::time::Duration;
 
     const PASSWORD: &str = "password";
