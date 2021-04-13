@@ -15,18 +15,20 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     debug!("bin: {:?}", bin);
     debug!("envs: {:?}", envs);
     debug!("args: {:?}", args);
-    let mut cmd = Command::new(bin);
+
+    let mut cmd = Command::new("firejail");
+    cmd.arg("--noprofile");
+    cmd.arg("--net=none");
+    cmd.arg("--private=.");
+    for env in envs {
+        cmd.arg(format!("--env={}", env));
+    }
+    cmd.arg(bin);
     for arg in args {
         cmd.arg(arg);
     }
     cmd.env_clear();
-    for envvar in envs {
-        let mut envvar = envvar.split("=");
-        let key = envvar.next().unwrap();
-        let val = envvar.next().unwrap();
-        assert!(envvar.next().is_none());
-        cmd.env(key, val);
-    }
+    debug!("{:?}", cmd);
     cmd.output().expect("failed to run process")
 }
 
