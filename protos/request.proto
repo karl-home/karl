@@ -8,7 +8,6 @@ service KarlHost {
   rpc Network (NetworkAccess) returns (NetworkAccessResult);            // TODO
   rpc Get (GetData) returns (GetDataResult);                            // TODO
   rpc Put (PutData) returns (google.protobuf.Empty);                    // TODO
-  rpc Delete (DeleteData) returns (google.protobuf.Empty);              // TODO
   rpc State (StateChange) returns (google.protobuf.Empty);              // TODO
 }
 
@@ -18,7 +17,6 @@ service KarlController {
   rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);   // TODO
   rpc ForwardGet (GetData) returns (GetDataResult);                     // TODO
   rpc ForwardPut (PutData) returns (google.protobuf.Empty);             // TODO
-  rpc ForwardDelete (DeleteData) returns (google.protobuf.Empty);       // TODO
   rpc ForwardState (StateChange) returns (google.protobuf.Empty);       // TODO
   rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
@@ -82,7 +80,7 @@ message NetworkAccessResult {
 message GetData {
   string host_token = 1;
   string process_token = 2;
-  string sensor_id = 3;
+  bool dir = 3;
   string path = 4;
 }
 
@@ -93,16 +91,10 @@ message GetDataResult {
 message PutData {
   string host_token = 1;
   string process_token = 2;
-  string sensor_id = 3;
+  bool dir = 3;
   string path = 4;
   bytes data = 5;
-}
-
-message DeleteData {
-  string host_token = 1;
-  string process_token = 2;
-  string sensor_id = 3;
-  string path = 4;
+  bool recursive = 6;
 }
 
 message StateChange {

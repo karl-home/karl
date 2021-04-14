@@ -261,30 +261,6 @@ impl karl_host_server::KarlHost for Host {
             .forward_put(Request::new(req)).await
     }
 
-    async fn delete(
-        &self, req: Request<DeleteData>,
-    ) -> Result<Response<()>, Status> {
-        // Validate the process is valid and has permissions to write the file.
-        // No serializability guarantees from other requests from the same process.
-        // Sanitizes the path.
-        let mut req = req.into_inner();
-        req.path = sanitize_path(&req.path);
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_write_file(Path::new(&req.path)) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-            }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
-        }
-
-        // Forward the file access to the controller and return the result
-        req.host_token = self.host_token.clone().ok_or(
-            Status::new(Code::Unavailable, "host is not registered with controller"))?;
-        KarlControllerClient::connect(self.controller.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_delete(Request::new(req)).await
-    }
-
     async fn state(
         &self, req: Request<StateChange>,
     ) -> Result<Response<()>, Status> {

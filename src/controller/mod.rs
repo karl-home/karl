@@ -10,9 +10,9 @@ pub use runner::HookRunner;
 use types::*;
 
 use std::collections::{HashSet, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 use std::fs;
 use std::io::Read;
@@ -31,7 +31,7 @@ pub struct Controller {
     /// Data structure for adding and allocating hosts
     scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
-    data_sink: Arc<Mutex<DataSink>>,
+    data_sink: Arc<RwLock<DataSink>>,
     /// Data structure for queueing and spawning processes from hooks.
     runner: HookRunner,
     /// Audit log indexed by process ID and path accessed.
@@ -73,30 +73,52 @@ impl karl_controller_server::KarlController for Controller {
     async fn forward_network(
         &self, req: Request<NetworkAccess>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        // TODO: validate host token
+        // TODO: update audit log
+        Ok(Response::new(()))
     }
 
     async fn forward_get(
         &self, req: Request<GetData>,
     ) -> Result<Response<GetDataResult>, Status> {
-        unimplemented!()
+        // TODO: validate host token
+        // TODO: update audit log
+        let req = req.into_inner();
+        let lock = self.data_sink.read().unwrap();
+        let data = lock.get_data(
+            Path::new(&req.path).to_path_buf(),
+            req.dir,
+        ).map_err(|e| e.into_status())?;
+        drop(lock);
+        Ok(Response::new(GetDataResult { data }))
     }
 
     async fn forward_put(
         &self, req: Request<PutData>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
-    }
-
-    async fn forward_delete(
-        &self, req: Request<DeleteData>,
-    ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        // TODO: validate host token
+        // TODO: update audit log
+        let req = req.into_inner();
+        let data = if req.dir {
+            None
+        } else {
+            Some(req.data)
+        };
+        let lock = self.data_sink.write().unwrap();
+        lock.put_data(
+            Path::new(&req.path).to_path_buf(),
+            data,
+            req.recursive,
+        ).map_err(|e| e.into_status())?;
+        drop(lock);
+        Ok(Response::new(()))
     }
 
     async fn forward_state(
         &self, req: Request<StateChange>,
     ) -> Result<Response<()>, Status> {
+        // TODO: validate host token
+        // TODO: update audit log
         unimplemented!()
     }
 
@@ -210,7 +232,7 @@ impl Controller {
         Controller {
             karl_path,
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
-            data_sink: Arc::new(Mutex::new(data_sink)),
+            data_sink: Arc::new(RwLock::new(data_sink)),
             runner: HookRunner::new(),
             audit_log: Arc::new(Mutex::new(audit_log)),
             sensors: Arc::new(Mutex::new(HashMap::new())),
@@ -306,8 +328,7 @@ impl Controller {
         }
 
         // Register the hook.
-        let work_path = self.data_sink.lock().unwrap().data_path.join(&global_hook_id);
-        let hook_id = HookRunner::register_hook(
+        HookRunner::register_hook(
             global_hook_id,
             state_perm,
             network_perm,
@@ -316,7 +337,6 @@ impl Controller {
             self.runner.hooks.clone(),
             self.runner.tx.as_ref().unwrap().clone(),
         )?;
-        fs::create_dir_all(&work_path)?;
         Ok(())
     }
 

@@ -117,23 +117,6 @@ impl DataSink {
             Ok(fs::read(path)?)
         }
     }
-
-    /// Deletes data at the given path.
-    ///
-    /// Parameters:
-    /// - `path`: The sanitized path to the data.
-    /// - `recursive`: If the path is a directory, whether to delete the
-    ///    directory and its internal contents.
-    ///
-    /// Errors if deleting a path that does not exist. Errors if deleting
-    /// a directory when recursive is false.
-    pub fn delete_data(
-        &self,
-        path: PathBuf,
-        recursive: bool,
-    ) -> Result<(), Error> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -157,7 +140,7 @@ mod test {
 
     #[test]
     fn test_put_directory_simple() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let path = Path::new("raw/camera").to_path_buf();
         let expected_path = sink.data_path.join(&path);
         assert!(!expected_path.exists());
@@ -168,7 +151,7 @@ mod test {
 
     #[test]
     fn test_put_directory_recursive() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let path = Path::new("raw/camera/1234").to_path_buf();
         let expected_path = sink.data_path.join(&path);
         assert!(!sink.data_path.join("raw/camera/1234").exists());
@@ -183,7 +166,7 @@ mod test {
 
     #[test]
     fn test_put_file_simple() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let path = Path::new("raw/camera").to_path_buf();
         let expected_path = sink.data_path.join(&path);
         assert!(!expected_path.exists());
@@ -194,7 +177,7 @@ mod test {
 
     #[test]
     fn test_put_file_recursive() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let path = Path::new("raw/camera/1234").to_path_buf();
         let expected_path = sink.data_path.join(&path);
         assert!(!sink.data_path.join("raw/camera/1234").exists());
@@ -209,7 +192,7 @@ mod test {
 
     #[test]
     fn test_get_return_type() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let dir_path = Path::new("raw/camera").to_path_buf();
         let file_path = Path::new("raw/camera/file").to_path_buf();
         let file_bytes: Vec<u8> = vec![10, 20, 30, 40];
@@ -227,7 +210,7 @@ mod test {
 
     #[test]
     fn test_get_deserialize_empty_dir() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let path = Path::new("raw/camera").to_path_buf();
         assert!(sink.put_data(path.clone(), None, false).is_ok());
         assert!(sink.data_path.join(&path).is_dir());
@@ -245,7 +228,7 @@ mod test {
 
     #[test]
     fn test_get_deserialize_nonempty_dir() {
-        let (dir, sink) = init_test();
+        let (_dir, sink) = init_test();
         let a = Path::new("raw/camera/a").to_path_buf();
         let b = Path::new("raw/camera/b").to_path_buf();
         let c = Path::new("raw/camera/c").to_path_buf();

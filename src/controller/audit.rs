@@ -8,7 +8,6 @@ use crate::common::*;
 pub enum LogEntryType {
     Put { path: String },
     Get { path: String },
-    Delete { path: String },
     Network { domain: String },
 }
 
@@ -83,7 +82,6 @@ impl AuditLog {
         let mut next_path = match &entry_ty {
             LogEntryType::Put { path } => Some(Path::new(path)),
             LogEntryType::Get { path } => Some(Path::new(path)),
-            LogEntryType::Delete { path } => Some(Path::new(path)),
             LogEntryType::Network { .. } => None,
         };
         while let Some(path) = next_path {
