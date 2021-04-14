@@ -59,6 +59,7 @@ impl HookRunner {
     ///
     /// Parameters:
     /// - global_hook_id - The ID of the hook from the global hook repository.
+    /// - state_perm - Requested state change permissions.
     /// - network_perm - Requested network permissions.
     /// - file_perm - Requested file permissions.
     /// - envs - Requested environment variables / configuration `<KEY>=<VALUE>`.
@@ -68,6 +69,7 @@ impl HookRunner {
     /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
         global_hook_id: StringID,
+        state_perm: Vec<SensorID>,
         network_perm: Vec<DomainName>,
         file_perm: Vec<FileACL>,
         envs: Vec<String>,
@@ -75,6 +77,7 @@ impl HookRunner {
         tx: mpsc::Sender<HookID>,
     ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?
+            .set_state_perm(state_perm)
             .set_network_perm(network_perm)
             .set_file_perm(file_perm);
         if !envs.is_empty() {
@@ -224,6 +227,7 @@ mod test {
             vec![],
             vec![],
             vec![],
+            vec![],
             runner.hooks.clone(),
             runner.tx.unwrap().clone(),
         ).is_ok());
@@ -240,6 +244,7 @@ mod test {
             vec![],
             vec![],
             vec![],
+            vec![],
             runner.hooks.clone(),
             runner.tx.unwrap().clone(),
         ).is_err());
@@ -250,11 +255,13 @@ mod test {
         let scheduler = init_scheduler(0);
         let mut runner = HookRunner::new(scheduler);
         runner.start(true);
+        let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
         let file_perm = vec![FileACL::new("main", true, true)];
         let envs = vec!["KEY=VALUE".to_string()];
         let hook_id = HookRunner::register_hook(
             "hello-world".to_string(),
+            state_perm.clone(),
             network_perm.clone(),
             file_perm.clone(),
             envs.clone(),
@@ -267,6 +274,7 @@ mod test {
         assert_eq!(hook.global_hook_id, "hello-world".to_string());
         assert!(hook_id != hook.global_hook_id,
             "hook ID differs from the global hook ID");
+        assert_eq!(hook.state_perm, state_perm);
         assert_eq!(hook.network_perm, network_perm);
         assert_eq!(hook.file_perm, file_perm);
         assert!(!hook.package.is_empty());
@@ -284,6 +292,7 @@ mod test {
             "there are no request tokens initially");
         HookRunner::register_hook(
             "hello-world".to_string(), // interval: 5s
+            vec![],
             vec![],
             vec![],
             vec![],
@@ -308,6 +317,7 @@ mod test {
             vec![],
             vec![],
             vec![],
+            vec![],
             runner.hooks.clone(),
             runner.tx.unwrap().clone(),
         ).unwrap();
@@ -324,6 +334,7 @@ mod test {
         let tx = runner.tx.unwrap().clone();
         let hook_id = HookRunner::register_hook(
             "hello-world-watch".to_string(), // interval: 5s
+            vec![],
             vec![],
             vec![],
             vec![],

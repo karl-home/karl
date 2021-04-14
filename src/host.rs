@@ -19,6 +19,8 @@ pub const HEARTBEAT_INTERVAL: u64 = 10;
 
 /// Permissions of an active process
 struct ProcessPerms {
+    /// State change permissions
+    state_perms: HashSet<SensorID>,
     /// Network permissions
     network_perms: HashSet<String>,
     /// File read permissions
@@ -29,6 +31,7 @@ struct ProcessPerms {
 
 impl ProcessPerms {
     pub fn new(req: &ComputeRequest) -> Self {
+        let state_perms: HashSet<_> = req.state_perm.clone().into_iter().collect();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         let read_perms: HashSet<_> = req.file_perm.iter()
             .filter(|acl| acl.read)
@@ -38,7 +41,11 @@ impl ProcessPerms {
             .filter(|acl| acl.write)
             .map(|acl| Path::new(&acl.path).to_path_buf())
             .collect();
-        Self { network_perms, read_perms, write_perms }
+        Self { state_perms, network_perms, read_perms, write_perms }
+    }
+
+    pub fn can_change_state(&self, sensor_id: &SensorID) -> bool {
+        self.state_perms.contains(sensor_id)
     }
 
     pub fn can_access_domain(&self, domain: &str) -> bool {
@@ -271,7 +278,23 @@ impl karl_host_server::KarlHost for Host {
     async fn state(
         &self, req: Request<StateChange>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        // Validate the process is valid and has permissions to change state.
+        // No serializability guarantees from other requests from the same process.
+        let mut req = req.into_inner();
+        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+            if !perms.can_change_state(&req.sensor_id) {
+                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+            }
+        } else {
+            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+        }
+
+        // Forward the file access to the controller and return the result
+        req.host_token = self.host_token.clone().ok_or(
+            Status::new(Code::Unavailable, "host is not registered with controller"))?;
+        KarlControllerClient::connect(self.controller.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .forward_state(Request::new(req)).await
     }
 }
 

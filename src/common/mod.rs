@@ -5,6 +5,7 @@ use rand::Rng;
 
 pub use error::Error;
 pub use builder::TarBuilder;
+pub use crate::controller::types::*;
 
 /// String ID.
 pub type StringID = String;

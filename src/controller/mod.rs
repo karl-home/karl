@@ -193,6 +193,7 @@ impl karl_controller_server::KarlController for Controller {
         self.register_hook(
             &req.token.to_string(),
             req.global_hook_id.to_string(),
+            req.state_perm.to_vec(),
             req.network_perm.to_vec(),
             req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
             req.envs.to_vec(),
@@ -287,6 +288,7 @@ impl Controller {
         &self,
         token: &SensorToken,
         global_hook_id: String,
+        state_perm: Vec<SensorID>,
         network_perm: Vec<String>,
         file_perm: Vec<FileACL>,
         envs: Vec<String>,
@@ -305,6 +307,7 @@ impl Controller {
         // Register the hook.
         let hook_id = HookRunner::register_hook(
             global_hook_id,
+            state_perm,
             network_perm,
             file_perm,
             envs,
@@ -430,7 +433,7 @@ mod test {
         c: &mut Controller,
         token: &SensorToken,
     ) -> Result<(), Error> {
-        c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![])
+        c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![], vec![])
     }
 
     #[tokio::test]

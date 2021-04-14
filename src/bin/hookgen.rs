@@ -23,6 +23,18 @@ fn read_line() -> String {
     line
 }
 
+fn read_state_perm() -> Vec<String> {
+    let mut state_perm = vec![];
+    loop {
+        let line = read_line();
+        if line.is_empty() {
+            break;
+        }
+        state_perm.push(line);
+    }
+    state_perm
+}
+
 fn read_network_perm() -> Vec<String> {
     let mut network_perm = vec![];
     let re = Regex::new(r"https://[a-z0-9]+(\.[a-z0-9]+)+").unwrap();
@@ -153,6 +165,8 @@ fn main() {
             break HookSchedule::WatchFile(Path::new(&path).to_path_buf());
         }
     };
+    println!("Permitted sensor IDs to change state (one per line):");
+    let state_perm = read_state_perm();
     println!("Permitted network domains (one per line):");
     let network_perm = read_network_perm();
     println!("Permitted file ACLs (one per line):");
@@ -163,6 +177,7 @@ fn main() {
     let hook = Hook::new(
         global_hook_id,
         schedule,
+        state_perm,
         network_perm,
         file_perm,
         package,
@@ -177,6 +192,7 @@ fn main() {
     println!("args: {:?}", hook.args);
     println!("envs: {:?}", hook.envs);
     println!("schedule: {:?}", hook.schedule);
+    println!("state_perm: {:?}", hook.state_perm);
     println!("network_perm: {:?}", hook.network_perm);
     println!("file_perm: {:?}", hook.file_perm);
 

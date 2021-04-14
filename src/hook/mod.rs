@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use bincode;
 use serde::{Serialize, Deserialize};
 use tokio::time::Duration;
-use crate::common::{StringID, Error};
+use crate::common::*;
 use crate::protos;
 
 pub const HOOK_STORE_PATH: &str = "hooks";
@@ -28,6 +28,7 @@ pub struct Hook {
     confirmed: bool,
     pub global_hook_id: StringID,
     pub schedule: HookSchedule,
+    pub state_perm: Vec<SensorID>,
     pub network_perm: Vec<DomainName>,
     pub file_perm: Vec<FileACL>,
     pub package: Vec<u8>,
@@ -70,6 +71,7 @@ impl Hook {
     pub fn new(
         global_hook_id: StringID,
         schedule: HookSchedule,
+        state_perm: Vec<SensorID>,
         network_perm: Vec<DomainName>,
         file_perm: Vec<FileACL>,
         package: Vec<u8>,
@@ -82,6 +84,7 @@ impl Hook {
             confirmed: false,
             global_hook_id,
             schedule,
+            state_perm,
             network_perm,
             file_perm,
             package,
@@ -103,6 +106,11 @@ impl Hook {
 
     pub fn set_network_perm(mut self, network_perm: Vec<DomainName>) -> Self {
         self.network_perm = network_perm;
+        self
+    }
+
+    pub fn set_state_perm(mut self, state_perm: Vec<SensorID>) -> Self {
+        self.state_perm = state_perm;
         self
     }
 
@@ -141,6 +149,7 @@ impl Hook {
         req.args = hook.args.into_iter().collect();
         req.envs = hook.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
         req.file_perm = hook.file_perm.into_iter().map(|acl| acl.into()).collect();
+        req.state_perm = hook.state_perm.into_iter().collect();
         req.network_perm = hook.network_perm.into_iter().collect();
         Ok(req)
     }
@@ -156,12 +165,14 @@ mod test {
         let binary_path = "binary_path";
         let args = vec!["arg1".to_string(), "arg2".to_string()];
         let envs = vec![("KEY".to_string(), "VALUE".to_string())];
+        let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
         let file_perm = vec![FileACL::new("main", true, true)];
 
         let hook = Hook::new(
             "hook_id".to_string(),
             HookSchedule::Interval(Duration::from_secs(10)),
+            state_perm.clone(),
             network_perm.clone(),
             file_perm.clone(),
             package.clone(),
@@ -176,6 +187,7 @@ mod test {
         let expected_envs: Vec<_> =
             envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
         assert_eq!(r.envs, expected_envs);
+        assert_eq!(r.state_perm, state_perm);
         assert_eq!(r.network_perm, network_perm);
         assert_eq!(r.file_perm.len(), 1);
         assert_eq!(FileACL::from(&r.file_perm[0]), file_perm[0]);

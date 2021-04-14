@@ -28,6 +28,7 @@ pub async fn register_hook(
         envs: vec![],
         file_perm: vec![],
         network_perm: vec![],
+        state_perm: vec![],
     };
     client.register_hook(Request::new(request)).await
 }
