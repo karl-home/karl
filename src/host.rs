@@ -37,9 +37,12 @@ impl ProcessPerms {
             .filter(|acl| acl.read)
             .map(|acl| Path::new(&sanitize_path(&acl.path)).to_path_buf())
             .collect();
+        // Processes cannot write to raw/
         let write_perms: HashSet<_> = req.file_perm.iter()
             .filter(|acl| acl.write)
-            .map(|acl| Path::new(&sanitize_path(&acl.path)).to_path_buf())
+            .map(|acl| sanitize_path(&acl.path))
+            .filter(|path| !(path == "raw" || path.starts_with("raw/")))
+            .map(|path| Path::new(&path).to_path_buf())
             .collect();
         Self { state_perms, network_perms, read_perms, write_perms }
     }

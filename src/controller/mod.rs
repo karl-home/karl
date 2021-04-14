@@ -206,7 +206,7 @@ impl Controller {
     /// listening for hosts and sensor requests.
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
         let data_sink = DataSink::new(karl_path.clone());
-        let audit_log = AuditLog::new(data_sink.path.clone());
+        let audit_log = AuditLog::new(data_sink.data_path.clone());
         Controller {
             karl_path,
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
@@ -306,6 +306,7 @@ impl Controller {
         }
 
         // Register the hook.
+        let work_path = self.data_sink.lock().unwrap().data_path.join(&global_hook_id);
         let hook_id = HookRunner::register_hook(
             global_hook_id,
             state_perm,
@@ -315,7 +316,6 @@ impl Controller {
             self.runner.hooks.clone(),
             self.runner.tx.as_ref().unwrap().clone(),
         )?;
-        let work_path = self.data_sink.lock().unwrap().path.join(&hook_id);
         fs::create_dir_all(&work_path)?;
         Ok(())
     }
