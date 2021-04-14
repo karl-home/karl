@@ -58,21 +58,29 @@ message NotifyStart {
   string process_token = 1;
 }
 
+message KeyValuePair {
+  bytes key = 1;
+  bytes value = 2;
+}
+
 message NetworkAccess {
   string host_token = 1;
-  uint32 process_token = 2;
+  string process_token = 2;
   string domain = 3;
-  string protocol = 4;
-  bytes data = 5;
+  string method = 4;
+  repeated KeyValuePair headers = 5;
+  bytes body = 6;
 }
 
 message NetworkAccessResult {
-  bytes data = 1;
+  uint32 status_code = 1;
+  repeated KeyValuePair headers = 2;
+  bytes data = 3;
 }
 
 message GetData {
   string host_token = 1;
-  uint32 process_token = 2;
+  string process_token = 2;
   string sensor_id = 3;
   string path = 4;
 }
@@ -83,7 +91,7 @@ message GetDataResult {
 
 message PutData {
   string host_token = 1;
-  uint32 process_token = 2;
+  string process_token = 2;
   string sensor_id = 3;
   string path = 4;
   bytes data = 5;
@@ -91,7 +99,7 @@ message PutData {
 
 message DeleteData {
   string host_token = 1;
-  uint32 process_token = 2;
+  string process_token = 2;
   string sensor_id = 3;
   string path = 4;
 }
