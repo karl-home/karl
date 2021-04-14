@@ -22,7 +22,7 @@ pub struct LogEntry {
 
 /// Audit log.
 pub struct AuditLog {
-    karl_path: PathBuf,
+    data_path: PathBuf,
     /// Currently active processes, updated as they start and finish
     active_processes: HashMap<ProcessToken, ProcessID>,
     /// Map from process IDs to their corresponding hook IDs, permanent
@@ -46,9 +46,9 @@ impl LogEntry {
 }
 
 impl AuditLog {
-    pub fn new(karl_path: PathBuf) -> Self {
+    pub fn new(data_path: PathBuf) -> Self {
         Self {
-            karl_path,
+            data_path,
             active_processes: HashMap::new(),
             process_hooks: HashMap::new(),
             process_entries: HashMap::new(),

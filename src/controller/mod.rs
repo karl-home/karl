@@ -205,13 +205,14 @@ impl Controller {
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and sensor requests.
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
-        let scheduler = Arc::new(Mutex::new(HostScheduler::new(password)));
+        let data_sink = DataSink::new(karl_path.clone());
+        let audit_log = AuditLog::new(data_sink.path.clone());
         Controller {
-            karl_path: karl_path.clone(),
-            scheduler: scheduler.clone(),
-            data_sink: Arc::new(Mutex::new(DataSink::new(karl_path.clone()))),
-            runner: HookRunner::new(scheduler),
-            audit_log: Arc::new(Mutex::new(AuditLog::new(karl_path))),
+            karl_path,
+            scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
+            data_sink: Arc::new(Mutex::new(data_sink)),
+            runner: HookRunner::new(),
+            audit_log: Arc::new(Mutex::new(audit_log)),
             sensors: Arc::new(Mutex::new(HashMap::new())),
             autoconfirm,
         }
@@ -266,7 +267,11 @@ impl Controller {
             self.sensors.clone(),
         );
         // Start the hook runner.
-        self.runner.start(self.audit_log.clone(), false);
+        self.runner.start(
+            self.audit_log.clone(),
+            self.scheduler.clone(),
+            false,
+        );
 
         info!("Karl controller listening on port {}", port);
         Ok(())
@@ -443,7 +448,7 @@ mod test {
         let bad_token2 = "badtoken".to_string();
 
         // Add a host.
-        c.runner.start(true);
+        c.runner.start(c.audit_log.clone(), c.scheduler.clone(), true);
         let host_token = add_host_test(&mut c, 1);
         c.scheduler.lock().unwrap().heartbeat(host_token.clone());
         assert!(register_hook_test(&mut c, &token).is_ok());
@@ -460,7 +465,7 @@ mod test {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
-        c.runner.start(true);
+        c.runner.start(c.audit_log.clone(), c.scheduler.clone(), true);
         let host_token = add_host_test(&mut c, 1);
         c.scheduler.lock().unwrap().heartbeat(host_token);
 

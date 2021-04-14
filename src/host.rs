@@ -35,11 +35,11 @@ impl ProcessPerms {
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         let read_perms: HashSet<_> = req.file_perm.iter()
             .filter(|acl| acl.read)
-            .map(|acl| Path::new(&acl.path).to_path_buf())
+            .map(|acl| Path::new(&sanitize_path(&acl.path)).to_path_buf())
             .collect();
         let write_perms: HashSet<_> = req.file_perm.iter()
             .filter(|acl| acl.write)
-            .map(|acl| Path::new(&acl.path).to_path_buf())
+            .map(|acl| Path::new(&sanitize_path(&acl.path)).to_path_buf())
             .collect();
         Self { state_perms, network_perms, read_perms, write_perms }
     }
@@ -138,6 +138,7 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<NetworkAccessResult>, Status> {
         // Validate the process is valid and has permissions to access the network.
         // No serializability guarantees from other requests from the same process.
+        // Sanitizes the path.
         let mut req = req.into_inner();
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_access_domain(&req.domain) {
@@ -214,7 +215,9 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<GetDataResult>, Status> {
         // Validate the process is valid and has permissions to read the file.
         // No serializability guarantees from other requests from the same process.
+        // Sanitizes the path.
         let mut req = req.into_inner();
+        req.path = sanitize_path(&req.path);
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_read_file(Path::new(&req.path)) {
                 return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
@@ -236,7 +239,9 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<()>, Status> {
         // Validate the process is valid and has permissions to write the file.
         // No serializability guarantees from other requests from the same process.
+        // Sanitizes the path.
         let mut req = req.into_inner();
+        req.path = sanitize_path(&req.path);
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_write_file(Path::new(&req.path)) {
                 return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
@@ -258,7 +263,9 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<()>, Status> {
         // Validate the process is valid and has permissions to write the file.
         // No serializability guarantees from other requests from the same process.
+        // Sanitizes the path.
         let mut req = req.into_inner();
+        req.path = sanitize_path(&req.path);
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_write_file(Path::new(&req.path)) {
                 return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
@@ -280,6 +287,7 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<()>, Status> {
         // Validate the process is valid and has permissions to change state.
         // No serializability guarantees from other requests from the same process.
+        // Sanitizes the path.
         let mut req = req.into_inner();
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_change_state(&req.sensor_id) {
@@ -310,6 +318,26 @@ fn unpack_request(package: &[u8], root: &Path) -> Result<(), Error> {
     archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
     info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
     Ok(())
+}
+
+/// Sanitize a path.
+///
+/// Transforms into a relative path regardless of host filesystem and removes
+/// dots and trailing slashes e.g. ./raw/../camera/ --> raw/camera
+///
+/// Actual path is /home/user/.karl_controller/data/raw/camera.
+fn sanitize_path(path: &str) -> String {
+    let mut new_path = Path::new("").to_path_buf();
+    let components = Path::new(path)
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(path) => Some(Path::new(path)),
+            _ => None,
+        });
+    for component in components {
+        new_path = new_path.join(component);
+    }
+    new_path.into_os_string().into_string().unwrap()
 }
 
 impl Drop for Host {
@@ -418,5 +446,20 @@ impl Host {
             now.elapsed().as_secs_f32(),
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_path() {
+        assert_eq!(&sanitize_path("raw/cam"), "raw/cam");
+        assert_eq!(&sanitize_path("/raw/cam"), "raw/cam");
+        assert_eq!(&sanitize_path("./raw/cam"), "raw/cam");
+        assert_eq!(&sanitize_path("../raw/cam"), "raw/cam");
+        assert_eq!(&sanitize_path("raw/../cam"), "raw/cam");
+        assert_eq!(&sanitize_path("./raw/../cam/"), "raw/cam");
     }
 }

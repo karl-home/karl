@@ -251,9 +251,6 @@ mod test {
         assert_eq!(host.index, 0);
         assert_eq!(host.id, id);
         assert_eq!(host.addr, addr);
-        assert!(host.md.active_request.is_none());
-        assert!(host.md.last_request.is_none());
-        assert!(host.md.token.is_none());
         assert_eq!(host.md.total, 0);
         assert!(!host.confirmed);
     }

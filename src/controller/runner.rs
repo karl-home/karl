@@ -12,8 +12,6 @@ pub struct HookRunner {
     pub tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-    /// Scheduler for finding hosts
-    scheduler: Arc<Mutex<HostScheduler>>,
 }
 
 fn gen_process_id() -> ProcessID {
@@ -23,11 +21,10 @@ fn gen_process_id() -> ProcessID {
 
 impl HookRunner {
     /// Create a new HookRunner.
-    pub fn new(scheduler: Arc<Mutex<HostScheduler>>) -> Self {
+    pub fn new() -> Self {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
-            scheduler,
         }
     }
 
@@ -36,13 +33,13 @@ impl HookRunner {
     pub fn start(
         &mut self,
         audit_log: Arc<Mutex<AuditLog>>,
+        scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
         let buffer = 100;  // TODO: tune
         let (tx, rx) = mpsc::channel::<HookID>(buffer);
         self.tx = Some(tx);
         let hooks = self.hooks.clone();
-        let scheduler = self.scheduler.clone();
         tokio::spawn(async move {
             Self::start_queue_manager(
                 rx,
@@ -181,6 +178,11 @@ mod test {
     use std::net::SocketAddr;
     const PASSWORD: &str = "password";
 
+    fn init_audit_log() -> Arc<Mutex<AuditLog>> {
+        let data_path = Path::new("/home/data").to_path_buf();
+        Arc::new(Mutex::new(AuditLog::new(data_path)))
+    }
+
     fn init_scheduler(nhosts: usize) -> Arc<Mutex<HostScheduler>> {
         let mut scheduler = HostScheduler::new(PASSWORD);
         for i in 0..nhosts {
@@ -194,18 +196,20 @@ mod test {
 
     #[tokio::test]
     async fn test_start_creates_a_mpsc_channel() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(1);
-        let mut runner = HookRunner::new(scheduler);
+        let mut runner = HookRunner::new();
         assert!(runner.tx.is_none());
-        runner.start(true);
+        runner.start(audit_log, scheduler, true);
         assert!(runner.tx.is_some());
     }
 
     #[tokio::test]
     async fn test_register_hook_adds_a_hook() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(0);
-        let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        let mut runner = HookRunner::new();
+        runner.start(audit_log, scheduler, true);
         assert!(runner.hooks.lock().unwrap().is_empty());
         assert!(HookRunner::register_hook(
             "hello-world".to_string(),
@@ -221,9 +225,10 @@ mod test {
 
     #[tokio::test]
     async fn test_register_nonexistent_hook_errors() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(0);
-        let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        let mut runner = HookRunner::new();
+        runner.start(audit_log, scheduler, true);
         assert!(HookRunner::register_hook(
             "goodbye".to_string(),
             vec![],
@@ -238,9 +243,10 @@ mod test {
     /*
     #[tokio::test]
     async fn test_register_hook_propagates_fields() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(0);
-        let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        let mut runner = HookRunner::new();
+        runner.start(audit_log, scheduler, true);
         let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
         let file_perm = vec![FileACL::new("main", true, true)];
@@ -271,9 +277,10 @@ mod test {
 
     #[tokio::test]
     async fn test_queue_manager_pulls_interval_hooks() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(2);
-        let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        let mut runner = HookRunner::new();
+        runner.start(audit_log, scheduler, true);
         assert_eq!(runner.process_tokens.lock().unwrap().len(), 0,
             "there are no request tokens initially");
         HookRunner::register_hook(
@@ -295,9 +302,10 @@ mod test {
 
     #[tokio::test]
     async fn test_register_watch_file_hook() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(2);
         let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        runner.start(audit_log, scheduler, true);
         HookRunner::register_hook(
             "hello-world-watch".to_string(), // interval: 5s
             vec![],
@@ -314,9 +322,10 @@ mod test {
 
     #[tokio::test]
     async fn test_queue_manager_pulls_hook_ids_from_queue() {
+        let audit_log = init_audit_log();
         let scheduler = init_scheduler(2);
         let mut runner = HookRunner::new(scheduler);
-        runner.start(true);
+        runner.start(audit_log, scheduler, true);
         let tx = runner.tx.unwrap().clone();
         let hook_id = HookRunner::register_hook(
             "hello-world-watch".to_string(), // interval: 5s
