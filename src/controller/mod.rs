@@ -17,7 +17,6 @@ use std::time::Instant;
 use std::fs;
 use std::io::Read;
 
-use chrono;
 use tonic::{Request, Response, Status, Code};
 use crate::protos::*;
 use crate::dashboard;
@@ -156,6 +155,9 @@ impl karl_controller_server::KarlController for Controller {
             &req.app[..],
             false,
         );
+        self.data_sink.write().unwrap()
+            .new_sensor(res.sensor_id.clone())
+            .map_err(|e| e.into_status())?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
     }
@@ -165,22 +167,14 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
         let sensors = self.sensors.lock().unwrap();
-        if let Some(sensor) = sensors.get(&req.sensor_token) {
-            debug!("push_raw_data sensor_id={} (len {})", sensor.id, req.data.len());
-            let path = self.karl_path.join("raw").join(&sensor.id);
-            assert!(path.is_dir());
-            loop {
-                let dt = chrono::prelude::Local::now().format("%+").to_string();
-                let path = path.join(dt);
-                if path.exists() {
-                    continue;
-                }
-                fs::write(path, req.data)?;
-                break Ok(Response::new(()));
-            }
+        let sensor_id = if let Some(sensor) = sensors.get(&req.sensor_token) {
+            sensor.id.clone()
         } else {
             return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
-        }
+        };
+        let lock = self.data_sink.write().unwrap();
+        lock.push_sensor_data(sensor_id, req.data).map_err(|e| e.into_status())?;
+        Ok(Response::new(()))
     }
 
     // users

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use chrono;
 use serde::{Serialize, Deserialize};
 use crate::common::Error;
 use crate::controller::types::*;
@@ -43,6 +44,30 @@ impl DataSink {
         fs::create_dir_all(self.state_path.join(&sensor_id))?;
         fs::create_dir_all(self.data_path.join("raw").join(&sensor_id))?;
         Ok(())
+    }
+
+    /// Push sensor data.
+    ///
+    /// Parameters:
+    /// - `sensor_id`: the sensor ID.
+    /// - `data`: the data.
+    pub fn push_sensor_data(
+        &self,
+        sensor_id: SensorID,
+        data: Vec<u8>,
+    ) -> Result<(), Error> {
+        debug!("push_raw_data sensor_id={} (len {})", sensor_id, data.len());
+        let path = self.data_path.join("raw").join(&sensor_id);
+        assert!(path.is_dir());
+        loop {
+            let dt = chrono::prelude::Local::now().format("%+").to_string();
+            let path = path.join(dt);
+            if path.exists() {
+                continue;
+            }
+            fs::write(path, data)?;
+            break Ok(());
+        }
     }
 
     /// Write data to the given path.

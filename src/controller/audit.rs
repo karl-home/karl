@@ -30,8 +30,6 @@ pub struct AuditLog {
     process_entries: HashMap<ProcessID, Vec<LogEntry>>,
     /// Log entries indexed by file path
     file_entries: HashMap<PathBuf, Vec<LogEntry>>,
-    /// Origin of raw sensor files
-    file_origins: HashMap<PathBuf, SensorID>,
 }
 
 impl LogEntry {
@@ -52,7 +50,6 @@ impl AuditLog {
             process_hooks: HashMap::new(),
             process_entries: HashMap::new(),
             file_entries: HashMap::new(),
-            file_origins: HashMap::new(),
         }
     }
 
@@ -69,12 +66,6 @@ impl AuditLog {
 
     pub fn notify_end(&mut self, process_token: ProcessToken) {
         assert!(self.active_processes.remove(&process_token).is_some());
-    }
-
-    pub fn push_sensor_data(&mut self, path: &Path, sensor_id: SensorID) {
-        debug!("push_sensor_data {} {:?}", sensor_id, path);
-        assert!(!self.file_origins.contains_key(path));
-        self.file_origins.insert(path.to_path_buf(), sensor_id);
     }
 
     pub fn push_log(&mut self, process_id: ProcessID, entry_ty: LogEntryType) {
