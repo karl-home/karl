@@ -127,7 +127,7 @@ impl HostScheduler {
             host_i = (host_i + 1) % self.hosts.len();
             let host_token = &self.hosts[host_i];
             let host = self.unique_hosts.get_mut(host_token).unwrap();
-            if host.md.active_request.is_some() || !host.is_confirmed() {
+            if !host.is_confirmed() {
                 continue;
             }
             let elapsed = host.md.last_msg.elapsed().as_secs();
@@ -153,11 +153,7 @@ impl HostScheduler {
         &mut self, host_token: HostToken, process_token: ProcessToken
     ) {
         if let Some(host) = self.unique_hosts.get_mut(&host_token) {
-            if let Some(req) = &host.md.active_request {
-                error!("overriding active request: {:?}", req)
-            }
             host.md.last_msg = Instant::now();
-            host.md.active_request = Some(Request::new(process_token.clone()));
             host.md.active_requests.insert(process_token);
             info!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
         } else {
@@ -177,8 +173,8 @@ impl HostScheduler {
         info!("notify end host={:?} process={:?}", host_token, process_token);
         if let Some(host) = self.unique_hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
-            host.md.active_request = None;
             host.md.active_requests.remove(&process_token);
+            host.md.total += 1;
             info!("notify end host_id={} total={}", host.id, host.md.active_requests.len());
             Ok(())
         } else {

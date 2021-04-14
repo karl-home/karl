@@ -2,8 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
-use tonic::Status;
-use crate::controller::HostScheduler;
+use crate::controller::{AuditLog, HostScheduler};
 use crate::controller::types::*;
 use crate::hook::{Hook, FileACL, DomainName, HookSchedule};
 use crate::common::*;
@@ -13,8 +12,6 @@ pub struct HookRunner {
     pub tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-    /// Process tokens for each spawned process. Cleared on NotifyEnd.
-    pub(crate) process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
     /// Scheduler for finding hosts
     scheduler: Arc<Mutex<HostScheduler>>,
 }
@@ -30,25 +27,27 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
-            process_tokens: Arc::new(Mutex::new(HashMap::new())),
             scheduler,
         }
     }
 
     /// Spawns queue manager to monitor the delay queue for when hooks
     /// are read to be scheduled. Add hooks to the queue via `queue_hook()`.
-    pub fn start(&mut self, mock_send_compute: bool) {
+    pub fn start(
+        &mut self,
+        audit_log: Arc<Mutex<AuditLog>>,
+        mock_send_compute: bool,
+    ) {
         let buffer = 100;  // TODO: tune
         let (tx, rx) = mpsc::channel::<HookID>(buffer);
         self.tx = Some(tx);
         let hooks = self.hooks.clone();
-        let process_tokens = self.process_tokens.clone();
         let scheduler = self.scheduler.clone();
         tokio::spawn(async move {
             Self::start_queue_manager(
                 rx,
                 hooks,
-                process_tokens,
+                audit_log,
                 scheduler,
                 mock_send_compute,
             ).await;
@@ -118,22 +117,10 @@ impl HookRunner {
         tx.send(hook_id).await.unwrap();
     }
 
-    /// Notify the end of a process.
-    pub fn notify_end(
-        host_token: HostToken,
-        process_token: ProcessToken,
-        process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
-        scheduler: Arc<Mutex<HostScheduler>>,
-    ) -> Result<(), Status> {
-        scheduler.lock().unwrap().notify_end(host_token, process_token.clone())?;
-        process_tokens.lock().unwrap().remove(&process_token);
-        Ok(())
-    }
-
     async fn start_queue_manager(
         mut rx: mpsc::Receiver<HookID>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-        process_tokens: Arc<Mutex<HashMap<ProcessToken, (ProcessID, HookID)>>>,
+        audit_log: Arc<Mutex<AuditLog>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
@@ -153,6 +140,7 @@ impl HookRunner {
             };
 
             // Find an available host and prepare the request.
+            let process_id = gen_process_id();
             let host = loop {
                 if let Some(host) = scheduler.lock().unwrap().find_host() {
                     break host;
@@ -177,14 +165,11 @@ impl HookRunner {
             };
 
             // Update internal data structures.
-            // In particular, the process's request token for authentication.
-            let process_id = gen_process_id();
+            // In particular, mark which host is doing the computation.
+            // Then log the process start.
             info!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
             scheduler.lock().unwrap().notify_start(host.host_token, process_token.clone());
-            process_tokens.lock().unwrap().insert(
-                process_token,
-                (process_id, hook_id),
-            );
+            audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
         }
     }
 }
@@ -250,6 +235,7 @@ mod test {
         ).is_err());
     }
 
+    /*
     #[tokio::test]
     async fn test_register_hook_propagates_fields() {
         let scheduler = init_scheduler(0);
@@ -358,4 +344,5 @@ mod test {
         assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "queuing existing hook id ran out of hosts");
     }
+    */
 }

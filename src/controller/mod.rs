@@ -105,12 +105,8 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         let now = Instant::now();
         let req = req.into_inner();
-        HookRunner::notify_end(
-            req.host_token,
-            req.process_token,
-            self.runner.process_tokens.clone(),
-            self.scheduler.clone(),
-        )?;
+        self.scheduler.lock().unwrap().notify_end(req.host_token, req.process_token.clone())?;
+        self.audit_log.lock().unwrap().notify_end(req.process_token);
         trace!("notify_end => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
@@ -213,9 +209,9 @@ impl Controller {
         Controller {
             karl_path: karl_path.clone(),
             scheduler: scheduler.clone(),
-            data_sink: Arc::new(Mutex::new(DataSink::new(karl_path))),
+            data_sink: Arc::new(Mutex::new(DataSink::new(karl_path.clone()))),
             runner: HookRunner::new(scheduler),
-            audit_log: Arc::new(Mutex::new(AuditLog::new())),
+            audit_log: Arc::new(Mutex::new(AuditLog::new(karl_path))),
             sensors: Arc::new(Mutex::new(HashMap::new())),
             autoconfirm,
         }
@@ -270,7 +266,7 @@ impl Controller {
             self.sensors.clone(),
         );
         // Start the hook runner.
-        self.runner.start(false);
+        self.runner.start(self.audit_log.clone(), false);
 
         info!("Karl controller listening on port {}", port);
         Ok(())

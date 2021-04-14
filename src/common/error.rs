@@ -40,8 +40,6 @@ pub enum Error {
     StorageError(String),
     /// Error processing proxy request.
     ProxyError(String),
-    /// InvalidRequestToken.
-    InvalidRequestToken(String),
     /// Unable to verify that a NotifyStart, NotifyEnd, or HostHeartbeat
     /// message came from a real host.
     InvalidHostMessage(String),

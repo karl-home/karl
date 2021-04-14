@@ -18,8 +18,6 @@ const TOKEN_CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 pub struct Token {}
 /// Sensor token.
 pub type SensorToken = String;
-/// Request token.
-pub type RequestToken = String;
 /// Host token.
 pub type HostToken = String;
 /// Process token.

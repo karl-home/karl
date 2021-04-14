@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 use std::path::{Path, PathBuf};
-use crate::controller::types::*;
+use crate::common::*;
 
 #[derive(Debug, Clone)]
 pub enum LogEntryType {
@@ -22,12 +22,17 @@ pub struct LogEntry {
 
 /// Audit log.
 pub struct AuditLog {
-    order: Vec<ProcessID>,
+    karl_path: PathBuf,
+    /// Currently active processes, updated as they start and finish
+    active_processes: HashMap<ProcessToken, ProcessID>,
+    /// Map from process IDs to their corresponding hook IDs, permanent
     process_hooks: HashMap<ProcessID, HookID>,
+    /// Log entries indexed by process ID
     process_entries: HashMap<ProcessID, Vec<LogEntry>>,
-    /// Raw sensor files only.
-    file_creators: HashMap<PathBuf, SensorID>,
+    /// Log entries indexed by file path
     file_entries: HashMap<PathBuf, Vec<LogEntry>>,
+    /// Origin of raw sensor files
+    file_origins: HashMap<PathBuf, SensorID>,
 }
 
 impl LogEntry {
@@ -41,42 +46,51 @@ impl LogEntry {
 }
 
 impl AuditLog {
-    pub fn new() -> Self {
+    pub fn new(karl_path: PathBuf) -> Self {
         Self {
-            order: Vec::new(),
+            karl_path,
+            active_processes: HashMap::new(),
             process_hooks: HashMap::new(),
             process_entries: HashMap::new(),
-            file_creators: HashMap::new(),
             file_entries: HashMap::new(),
+            file_origins: HashMap::new(),
         }
     }
 
-    pub fn start_process(&mut self, process_id: ProcessID, hook_id: HookID) {
-        assert!(!self.process_entries.contains_key(&process_id));
-        assert!(!self.process_hooks.contains_key(&process_id));
-        self.order.push(process_id);
-        self.process_entries.insert(process_id, Vec::new());
-        self.process_hooks.insert(process_id, hook_id);
+    pub fn notify_start(
+        &mut self,
+        process_token: ProcessToken,
+        process_id: ProcessID,
+        hook_id: HookID,
+    ) {
+        assert!(self.active_processes.insert(process_token, process_id).is_none());
+        assert!(self.process_entries.insert(process_id, Vec::new()).is_none());
+        assert!(self.process_hooks.insert(process_id, hook_id).is_none());
     }
 
-    pub fn create_file(&mut self, path: &Path, sensor_id: SensorID) {
-        assert!(!self.file_creators.contains_key(path));
-        self.file_creators.insert(path.to_path_buf(), sensor_id);
+    pub fn notify_end(&mut self, process_token: ProcessToken) {
+        assert!(self.active_processes.remove(&process_token).is_some());
+    }
+
+    pub fn push_sensor_data(&mut self, path: &Path, sensor_id: SensorID) {
+        debug!("push_sensor_data {} {:?}", sensor_id, path);
+        assert!(!self.file_origins.contains_key(path));
+        self.file_origins.insert(path.to_path_buf(), sensor_id);
     }
 
     pub fn push_log(&mut self, process_id: ProcessID, entry_ty: LogEntryType) {
         let entry = LogEntry::new(process_id, entry_ty.clone());
-        let path = match &entry_ty {
-            LogEntryType::Put { path } => Some(path),
-            LogEntryType::Get { path } => Some(path),
-            LogEntryType::Delete { path } => Some(path),
+        let mut next_path = match &entry_ty {
+            LogEntryType::Put { path } => Some(Path::new(path)),
+            LogEntryType::Get { path } => Some(Path::new(path)),
+            LogEntryType::Delete { path } => Some(Path::new(path)),
             LogEntryType::Network { .. } => None,
         };
-        if let Some(path) = path {
-            // TODO: and all the parent directories
+        while let Some(path) = next_path {
             self.file_entries
-                .get_mut(Path::new(path)).unwrap()
+                .get_mut(path).unwrap()
                 .push(entry.clone());
+            next_path = path.parent();
         }
         self.process_entries
             .get_mut(&process_id).unwrap()
