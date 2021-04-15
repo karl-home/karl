@@ -87,6 +87,7 @@ impl DataSink {
         recursive: bool,
     ) -> Result<(), Error> {
         let path = self.data_path.join(path);
+        debug!("put {:?} dir={} recursive={}", path, bytes.is_none(), recursive);
         if let Some(bytes) = bytes {
             if recursive {
                 fs::create_dir_all(path.parent().unwrap())?;
@@ -119,6 +120,7 @@ impl DataSink {
         dir: bool,
     ) -> Result<Vec<u8>, Error> {
         let path = self.data_path.join(path);
+        debug!("get {:?} dir={}", path, dir);
         if dir != path.is_dir() {
             return Err(Error::UnknownError("incorrect dir flag".to_string()));
         }

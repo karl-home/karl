@@ -24,6 +24,7 @@ service KarlController {
   // sensors
   rpc SensorRegister (SensorRegisterRequest) returns (SensorRegisterResult);
   rpc PushRawData (SensorPushData) returns (google.protobuf.Empty);
+  rpc StateChanges (StateChangeInit) returns (stream StateChangePair);
 
   // users
   rpc AuditFile (AuditRequest) returns (AuditResult);                         // TODO
@@ -95,6 +96,16 @@ message PutData {
   string path = 4;
   bytes data = 5;
   bool recursive = 6;
+}
+
+message StateChangeInit {
+  string sensor_token = 1;
+  repeated string keys = 2;
+}
+
+message StateChangePair {
+  string key = 1;
+  string value = 2;
 }
 
 message StateChange {

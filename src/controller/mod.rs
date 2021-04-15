@@ -18,6 +18,8 @@ use std::fs;
 use std::io::Read;
 
 use tonic::{Request, Response, Status, Code};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
 use crate::dashboard;
 use crate::hook::FileACL;
@@ -41,6 +43,9 @@ pub struct Controller {
     /// and the sensor itself. Generated on registration. All host
     /// requests from the sensor to the controller must include this token.
     sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
+    /// Sender channels to forward state changes to the sender's
+    /// streaming connection.
+    state: Arc<RwLock<HashMap<SensorID, mpsc::Sender<StateChangePair>>>>,
     /// Whether to automatically confirm sensors and hosts.
     autoconfirm: bool,
 }
@@ -120,7 +125,18 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         // TODO: update audit log
-        unimplemented!()
+        let req = req.into_inner();
+        let tx = if let Some(tx) = self.state.read().unwrap().get(&req.sensor_id) {
+            tx.clone()
+        } else {
+            return Err(Status::new(Code::NotFound, "sensor not listening"));
+        };
+        let pair = StateChangePair {
+            key: req.key,
+            value: req.value,
+        };
+        tx.send(pair).await.unwrap();
+        Ok(Response::new(()))
     }
 
     async fn finish_compute(
@@ -183,6 +199,32 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(()))
     }
 
+    type StateChangesStream = ReceiverStream<Result<StateChangePair, Status>>;
+
+    async fn state_changes(
+        &self, req: Request<StateChangeInit>,
+    ) -> Result<Response<Self::StateChangesStream>, Status> {
+        let req = req.into_inner();
+        let sensor_id = {
+            if let Some(sensor) = self.sensors.lock().unwrap().get(&req.sensor_token) {
+                sensor.id.clone()
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid token"));
+            }
+        };
+
+        let (internal_tx, mut internal_rx) = mpsc::channel::<StateChangePair>(10);
+        let (tx, rx) = mpsc::channel::<Result<StateChangePair, Status>>(10);
+        self.state.write().unwrap().insert(sensor_id, internal_tx);
+        tokio::spawn(async move {
+            while let Some(pair) = internal_rx.recv().await {
+                tx.send(Ok(pair)).await.unwrap();
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
     // users
 
     async fn audit_file(
@@ -236,6 +278,7 @@ impl Controller {
             runner: HookRunner::new(),
             audit_log: Arc::new(Mutex::new(audit_log)),
             sensors: Arc::new(Mutex::new(HashMap::new())),
+            state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,
         }
     }
@@ -402,10 +445,6 @@ impl Controller {
             fs::write(&path, app_bytes).unwrap();
             info!("registered app ({} bytes) at {:?}", app_bytes.len(), path);
         }
-
-        // create a storage directory
-        let storage_path = self.karl_path.join("raw").join(&sensor.id);
-        fs::create_dir_all(storage_path).unwrap();
 
         // register the sensor itself
         let mut sensors = self.sensors.lock().unwrap();
