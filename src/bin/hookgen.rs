@@ -162,7 +162,7 @@ fn main() {
         } else if line == "w".to_string() {
             println!("File path (spawned when this file is modified):");
             let path = read_nonempty_line();
-            break HookSchedule::WatchFile(Path::new(&path).to_path_buf());
+            break HookSchedule::WatchFile(path);
         }
     };
     println!("Permitted sensor IDs to change state (one per line):");

@@ -99,7 +99,7 @@ impl karl_host_server::KarlHost for Host {
     async fn start_compute(
         &self, req: Request<ComputeRequest>,
     ) -> Result<Response<NotifyStart>, Status> {
-        let req = req.into_inner();
+        let mut req = req.into_inner();
         let process_token = Token::gen();
         let perms = ProcessPerms::new(&req);
 
@@ -120,6 +120,7 @@ impl karl_host_server::KarlHost for Host {
                 Status::new(Code::Unavailable, "host is not registered with controller"))?;
             let process_token = process_token.clone();
             tokio::spawn(async move {
+                req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
                 Host::handle_compute(
                     karl_path,
                     base_path,
@@ -299,26 +300,6 @@ fn unpack_request(package: &[u8], root: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Sanitize a path.
-///
-/// Transforms into a relative path regardless of host filesystem and removes
-/// dots and trailing slashes e.g. ./raw/../camera/ --> raw/camera
-///
-/// Actual path is /home/user/.karl_controller/data/raw/camera.
-fn sanitize_path(path: &str) -> String {
-    let mut new_path = Path::new("").to_path_buf();
-    let components = Path::new(path)
-        .components()
-        .filter_map(|component| match component {
-            std::path::Component::Normal(path) => Some(Path::new(path)),
-            _ => None,
-        });
-    for component in components {
-        new_path = new_path.join(component);
-    }
-    new_path.into_os_string().into_string().unwrap()
-}
-
 impl Drop for Host {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.base_path);
@@ -425,20 +406,5 @@ impl Host {
             now.elapsed().as_secs_f32(),
         );
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_sanitize_path() {
-        assert_eq!(&sanitize_path("raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("/raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("./raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("../raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("raw/../cam"), "raw/cam");
-        assert_eq!(&sanitize_path("./raw/../cam/"), "raw/cam");
     }
 }

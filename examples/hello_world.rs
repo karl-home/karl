@@ -19,7 +19,7 @@ async fn send(controller: &str) -> Result<(), Box<dyn std::error::Error>> {
     debug!("sensor_id = {:?}", result.sensor_id);
 
     let now = Instant::now();
-    karl::net::register_hook(controller, &result.sensor_token, "hello-world").await?;
+    karl::net::register_hook(controller, &result.sensor_token, "hello-world-watch").await?;
     debug!("registered hook => {} s", now.elapsed().as_secs_f32());
 
     let image_path = "data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png";

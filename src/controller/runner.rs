@@ -1,5 +1,6 @@
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
+use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
@@ -9,9 +10,11 @@ use crate::common::*;
 
 
 pub struct HookRunner {
-    pub tx: Option<mpsc::Sender<HookID>>,
+    tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
-    pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
+    hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
+    /// Watched files and the hooks they spawn.
+    watched_files: Arc<RwLock<HashMap<PathBuf, Vec<HookID>>>>,
 }
 
 fn gen_process_id() -> ProcessID {
@@ -25,6 +28,7 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
+            watched_files: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -64,54 +68,81 @@ impl HookRunner {
     /// IoError if error importing hook from filesystem.
     /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
+        &self,
         global_hook_id: StringID,
         state_perm: Vec<SensorID>,
         network_perm: Vec<DomainName>,
         file_perm: Vec<FileACL>,
-        envs: Vec<String>,
-        hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-        tx: mpsc::Sender<HookID>,
+        mut envs: Vec<String>,
     ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?
             .set_state_perm(state_perm)
             .set_network_perm(network_perm)
             .set_file_perm(file_perm);
-        if !envs.is_empty() {
-            hook = hook.set_envs(envs)?;
-        }
+        envs.push(format!("GLOBAL_HOOK_ID={}", global_hook_id));
         let schedule = hook.schedule.clone();
         use rand::Rng;
         let hook_id = loop {
             // Loop to ensure a unique hook ID.
             let id: u32 = rand::thread_rng().gen();
-            let hook_id = format!("{}-{}", global_hook_id, id);
-            let mut hooks = hooks.lock().unwrap();
+            let hook_id = format!("{}-{}", &global_hook_id, id);
+            let mut hooks = self.hooks.lock().unwrap();
             if !hooks.contains_key(&hook_id) {
+                envs.push(format!("HOOK_ID={}", &hook_id));
+                hook = hook.set_envs(envs)?;
                 hooks.insert(hook_id.clone(), hook);
                 break hook_id;
             }
         };
 
         // Start the hook if on an interval schedule.
+        info!("registered hook {} schedule={:?}", &hook_id, &schedule);
         match schedule {
             HookSchedule::Interval(duration) => {
                 let hook_id = hook_id.clone();
+                let tx = self.tx.as_ref().unwrap().clone();
                 tokio::spawn(async move {
                     let mut interval = time::interval(duration);
                     loop {
                         interval.tick().await;
-                        Self::queue_hook(hook_id.clone(), tx.clone()).await;
+                        tx.send(hook_id.clone()).await.unwrap();
                     }
                 });
             },
-            HookSchedule::WatchFile(_) => {},
+            HookSchedule::WatchFile(path) => {
+                // TODO: hook must have appropriate ACLs to watch file
+                let path = Path::new(&sanitize_path(&path)).to_path_buf();
+                self.watched_files.write().unwrap()
+                    .entry(path)
+                    .or_insert(vec![])
+                    .push(hook_id.clone());
+            },
         }
         Ok(hook_id)
     }
 
-    /// Queue a hook to be executed at a specific instant.
-    pub async fn queue_hook(hook_id: HookID, tx: mpsc::Sender<HookID>) {
-        tx.send(hook_id).await.unwrap();
+    pub async fn spawn_if_watched(&self, modified: &str) -> usize {
+        debug!("spawn_if_watched? modified {}, internal {:?}", modified, self.watched_files.read().unwrap());
+        let hook_ids = {
+            let mut next_path = Some(Path::new(modified));
+            let mut hook_ids = HashSet::new();
+            let watched_files = self.watched_files.read().unwrap();
+            while let Some(path) = next_path {
+                if let Some(hooks) = watched_files.get(&path.to_path_buf()) {
+                    for hook_id in hooks {
+                        hook_ids.insert(hook_id.clone());
+                    }
+                }
+                next_path = path.parent();
+            }
+            hook_ids
+        };
+        let tx = self.tx.as_ref().unwrap();
+        let spawned = hook_ids.len();
+        for hook_id in hook_ids {
+            tx.send(hook_id).await.unwrap();
+        }
+        spawned
     }
 
     async fn start_queue_manager(

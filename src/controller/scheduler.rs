@@ -94,6 +94,7 @@ impl HostScheduler {
         }
     }
 
+    #[allow(dead_code)]
     pub fn remove_host(&mut self, id: &str) -> bool {
         /*
         let removed_i = if let Some(host) = self.unique_hosts.remove(id) {

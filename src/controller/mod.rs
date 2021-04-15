@@ -98,18 +98,20 @@ impl karl_controller_server::KarlController for Controller {
         // TODO: validate host token
         // TODO: update audit log
         let req = req.into_inner();
-        let data = if req.dir {
-            None
-        } else {
-            Some(req.data)
-        };
-        let lock = self.data_sink.write().unwrap();
-        lock.put_data(
-            Path::new(&req.path).to_path_buf(),
-            data,
-            req.recursive,
-        ).map_err(|e| e.into_status())?;
-        drop(lock);
+        {
+            let data = if req.dir {
+                None
+            } else {
+                Some(req.data)
+            };
+            self.data_sink.write().unwrap().put_data(
+                Path::new(&req.path).to_path_buf(),
+                data,
+                req.recursive,
+            ).map_err(|e| e.into_status())?;
+        }
+        // TODO: move to its own thread
+        self.runner.spawn_if_watched(&req.path).await;
         Ok(Response::new(()))
     }
 
@@ -166,14 +168,18 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        let sensors = self.sensors.lock().unwrap();
-        let sensor_id = if let Some(sensor) = sensors.get(&req.sensor_token) {
-            sensor.id.clone()
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
+        let sensor_id = {
+            let sensors = self.sensors.lock().unwrap();
+            if let Some(sensor) = sensors.get(&req.sensor_token) {
+                sensor.id.clone()
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
+            }
         };
-        let lock = self.data_sink.write().unwrap();
-        lock.push_sensor_data(sensor_id, req.data).map_err(|e| e.into_status())?;
+        let path = self.data_sink.write().unwrap()
+            .push_sensor_data(sensor_id, req.data)
+            .map_err(|e| e.into_status())?;
+        self.runner.spawn_if_watched(&path).await;
         Ok(Response::new(()))
     }
 
@@ -186,13 +192,13 @@ impl karl_controller_server::KarlController for Controller {
     }
 
     async fn verify_sensor(
-        &self, req: Request<VerifySensorRequest>,
+        &self, _req: Request<VerifySensorRequest>,
     ) -> Result<Response<()>, Status> {
         unimplemented!()
     }
 
     async fn verify_host(
-        &self, req: Request<VerifyHostRequest>,
+        &self, _req: Request<VerifyHostRequest>,
     ) -> Result<Response<()>, Status> {
         unimplemented!()
     }
@@ -322,14 +328,12 @@ impl Controller {
         }
 
         // Register the hook.
-        HookRunner::register_hook(
+        self.runner.register_hook(
             global_hook_id,
             state_perm,
             network_perm,
             file_perm,
             envs,
-            self.runner.hooks.clone(),
-            self.runner.tx.as_ref().unwrap().clone(),
         )?;
         Ok(())
     }

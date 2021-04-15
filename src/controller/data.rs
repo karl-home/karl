@@ -55,18 +55,18 @@ impl DataSink {
         &self,
         sensor_id: SensorID,
         data: Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> Result<String, Error> {
         debug!("push_raw_data sensor_id={} (len {})", sensor_id, data.len());
         let path = self.data_path.join("raw").join(&sensor_id);
         assert!(path.is_dir());
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
-            let path = path.join(dt);
+            let path = path.join(&dt);
             if path.exists() {
                 continue;
             }
             fs::write(path, data)?;
-            break Ok(());
+            break Ok(format!("raw/{}/{}", &sensor_id, &dt));
         }
     }
 
