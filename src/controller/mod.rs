@@ -78,7 +78,11 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<NetworkAccess>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
-        // TODO: update audit log
+        let req = req.into_inner();
+        self.audit_log.lock().unwrap().push(
+            &req.process_token,
+            LogEntryType::Network { domain: req.domain },
+        );
         Ok(Response::new(()))
     }
 
@@ -86,14 +90,15 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<GetData>,
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
-        // TODO: update audit log
         let req = req.into_inner();
-        let lock = self.data_sink.read().unwrap();
-        let data = lock.get_data(
-            Path::new(&req.path).to_path_buf(),
-            req.dir,
-        ).map_err(|e| e.into_status())?;
-        drop(lock);
+        let path = Path::new(&req.path).to_path_buf();
+        self.audit_log.lock().unwrap().push(
+            &req.process_token,
+            LogEntryType::Get { path: req.path },
+        );
+        let data = self.data_sink.read().unwrap()
+            .get_data(path, req.dir)
+            .map_err(|e| e.into_status())?;
         Ok(Response::new(GetDataResult { data }))
     }
 
@@ -101,19 +106,21 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<PutData>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
-        // TODO: update audit log
         let req = req.into_inner();
+        let path = Path::new(&req.path).to_path_buf();
+        self.audit_log.lock().unwrap().push(
+            &req.process_token,
+            LogEntryType::Put { path: req.path.clone() },
+        );
         {
             let data = if req.dir {
                 None
             } else {
                 Some(req.data)
             };
-            self.data_sink.write().unwrap().put_data(
-                Path::new(&req.path).to_path_buf(),
-                data,
-                req.recursive,
-            ).map_err(|e| e.into_status())?;
+            self.data_sink.write().unwrap()
+                .put_data(path, data, req.recursive)
+                .map_err(|e| e.into_status())?;
         }
         // TODO: move to its own thread
         self.runner.spawn_if_watched(&req.path).await;
@@ -124,13 +131,20 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<StateChange>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
-        // TODO: update audit log
         let req = req.into_inner();
         let tx = if let Some(tx) = self.state.read().unwrap().get(&req.sensor_id) {
             tx.clone()
         } else {
             return Err(Status::new(Code::NotFound, "sensor not listening"));
         };
+        self.audit_log.lock().unwrap().push(
+            &req.process_token,
+            LogEntryType::State {
+                sensor_id: req.sensor_id,
+                key: req.key.clone(),
+                value: req.value.clone(),
+            },
+        );
         let pair = StateChangePair {
             key: req.key,
             value: req.value,
@@ -227,10 +241,20 @@ impl karl_controller_server::KarlController for Controller {
 
     // users
 
-    async fn audit_file(
+    async fn audit(
         &self, req: Request<AuditRequest>,
     ) -> Result<Response<AuditResult>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        let entries = if !req.path.is_empty() {
+            let path = sanitize_path(&req.path);
+            self.audit_log.lock().unwrap().audit_file(Path::new(&path))
+        } else if !req.sensor_id.is_empty() {
+            self.audit_log.lock().unwrap().audit_sensor(&req.sensor_id)
+        } else {
+            self.audit_log.lock().unwrap().audit_process(req.pid)
+        };
+        let entries = entries.ok_or(Status::new(Code::NotFound, "not found"))?;
+        Ok(Response::new(AuditResult { entries }))
     }
 
     async fn verify_sensor(
@@ -269,14 +293,12 @@ impl Controller {
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and sensor requests.
     pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
-        let data_sink = DataSink::new(karl_path.clone());
-        let audit_log = AuditLog::new(data_sink.data_path.clone());
         Controller {
-            karl_path,
+            karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
-            data_sink: Arc::new(RwLock::new(data_sink)),
+            data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
             runner: HookRunner::new(),
-            audit_log: Arc::new(Mutex::new(audit_log)),
+            audit_log: Arc::new(Mutex::new(AuditLog::new())),
             sensors: Arc::new(Mutex::new(HashMap::new())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,

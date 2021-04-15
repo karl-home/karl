@@ -5,19 +5,19 @@ package request;
 
 service KarlHost {
   rpc StartCompute (ComputeRequest) returns (NotifyStart);
-  rpc Network (NetworkAccess) returns (NetworkAccessResult);            // TODO
-  rpc Get (GetData) returns (GetDataResult);                            // TODO
-  rpc Put (PutData) returns (google.protobuf.Empty);                    // TODO
-  rpc State (StateChange) returns (google.protobuf.Empty);              // TODO
+  rpc Network (NetworkAccess) returns (NetworkAccessResult);
+  rpc Get (GetData) returns (GetDataResult);
+  rpc Put (PutData) returns (google.protobuf.Empty);
+  rpc State (StateChange) returns (google.protobuf.Empty);
 }
 
 service KarlController {
   // hosts
   rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
-  rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);   // TODO
-  rpc ForwardGet (GetData) returns (GetDataResult);                     // TODO
-  rpc ForwardPut (PutData) returns (google.protobuf.Empty);             // TODO
-  rpc ForwardState (StateChange) returns (google.protobuf.Empty);       // TODO
+  rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
+  rpc ForwardGet (GetData) returns (GetDataResult);
+  rpc ForwardPut (PutData) returns (google.protobuf.Empty);
+  rpc ForwardState (StateChange) returns (google.protobuf.Empty);
   rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
 
@@ -27,7 +27,7 @@ service KarlController {
   rpc StateChanges (StateChangeInit) returns (stream StateChangePair);
 
   // users
-  rpc AuditFile (AuditRequest) returns (AuditResult);                         // TODO
+  rpc Audit (AuditRequest) returns (AuditResult);
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
   rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
@@ -162,12 +162,13 @@ message SensorPushData {
 // users
 
 message AuditRequest {
-  string user_token = 1;
-  // TODO
+  string path = 1;
+  string sensor_id = 2;
+  uint32 pid = 3;
 }
 
 message AuditResult {
-  // TODO
+  repeated string entries = 1;
 }
 
 message VerifySensorRequest {

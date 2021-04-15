@@ -221,6 +221,7 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
+        debug!("get {:?}", req);
         req.path = sanitize_path(&req.path);
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_read_file(Path::new(&req.path)) {
@@ -362,6 +363,19 @@ impl Host {
                 };
             }
         });
+
+        let mut process_tokens = self.process_tokens.lock().unwrap();
+        let mut perms = ProcessPerms {
+            state_perms: HashSet::new(),
+            network_perms: HashSet::new(),
+            read_perms: HashSet::new(),
+            write_perms: HashSet::new(),
+        };
+        perms.read_perms.insert(Path::new("raw/camera").to_path_buf());
+        perms.write_perms.insert(Path::new("helloworld").to_path_buf());
+        perms.network_perms.insert("https://www.google.com".to_string());
+        let process_token = "abcdefghijklmnopqrstuvwxyz".to_string();
+        process_tokens.insert(process_token, perms);
         Ok(())
     }
 

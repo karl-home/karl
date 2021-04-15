@@ -9,6 +9,7 @@ pub enum LogEntryType {
     Put { path: String },
     Get { path: String },
     Network { domain: String },
+    State { sensor_id: String, key: String, value: String },
 }
 
 /// Log entry.
@@ -21,7 +22,6 @@ pub struct LogEntry {
 
 /// Audit log.
 pub struct AuditLog {
-    data_path: PathBuf,
     /// Currently active processes, updated as they start and finish
     active_processes: HashMap<ProcessToken, ProcessID>,
     /// Map from process IDs to their corresponding hook IDs, permanent
@@ -30,10 +30,12 @@ pub struct AuditLog {
     process_entries: HashMap<ProcessID, Vec<LogEntry>>,
     /// Log entries indexed by file path
     file_entries: HashMap<PathBuf, Vec<LogEntry>>,
+    /// Log entries indexed by sensor
+    sensor_entries: HashMap<SensorID, Vec<LogEntry>>,
 }
 
 impl LogEntry {
-    pub fn new(pid: ProcessID, ty: LogEntryType) -> Self {
+    fn new(pid: ProcessID, ty: LogEntryType) -> Self {
         Self {
             timestamp: Instant::now(),
             pid,
@@ -43,13 +45,13 @@ impl LogEntry {
 }
 
 impl AuditLog {
-    pub fn new(data_path: PathBuf) -> Self {
+    pub fn new() -> Self {
         Self {
-            data_path,
             active_processes: HashMap::new(),
             process_hooks: HashMap::new(),
             process_entries: HashMap::new(),
             file_entries: HashMap::new(),
+            sensor_entries: HashMap::new(),
         }
     }
 
@@ -59,22 +61,46 @@ impl AuditLog {
         process_id: ProcessID,
         hook_id: HookID,
     ) {
+        info!("PID {} start from hook {}", process_id, hook_id);
         assert!(self.active_processes.insert(process_token, process_id).is_none());
         assert!(self.process_entries.insert(process_id, Vec::new()).is_none());
         assert!(self.process_hooks.insert(process_id, hook_id).is_none());
     }
 
     pub fn notify_end(&mut self, process_token: ProcessToken) {
-        assert!(self.active_processes.remove(&process_token).is_some());
+        let process_id = self.active_processes.remove(&process_token).unwrap();
+        info!("PID {} finish", process_id);
     }
 
-    pub fn push_log(&mut self, process_id: ProcessID, entry_ty: LogEntryType) {
-        let entry = LogEntry::new(process_id, entry_ty.clone());
-        let mut next_path = match &entry_ty {
-            LogEntryType::Put { path } => Some(Path::new(path)),
-            LogEntryType::Get { path } => Some(Path::new(path)),
+    /// Returns false if no process ID for the token.
+    pub fn push(&mut self, token: &ProcessToken, entry_ty: LogEntryType) {
+        let process_id = *self.active_processes.get(token).expect("invalid token");
+        let entry = LogEntry::new(process_id, entry_ty);
+        let mut next_path = match &entry.ty {
+            LogEntryType::Put { path } => {
+                info!("PID {} put {}", process_id, path);
+                Some(Path::new(path))
+            },
+            LogEntryType::Get { path } => {
+                info!("PID {} get {}", process_id, path);
+                Some(Path::new(path))
+            },
             LogEntryType::Network { .. } => None,
+            LogEntryType::State { .. } => None,
         };
+        match &entry.ty {
+            LogEntryType::Network { domain } => {
+                info!("PID {} network {}", process_id, domain);
+            },
+            LogEntryType::State { sensor_id, key, value } => {
+                info!("PID {} state {} {} => {}", process_id, &sensor_id, &key, &value);
+                self.sensor_entries
+                    .entry(sensor_id.to_string())
+                    .or_insert(vec![])
+                    .push(entry.clone());
+            },
+            _ => {},
+        }
         while let Some(path) = next_path {
             self.file_entries
                 .get_mut(path).unwrap()
@@ -86,12 +112,22 @@ impl AuditLog {
             .push(entry);
     }
 
-    pub fn audit_process(&self, process_id: ProcessID) -> Vec<LogEntry> {
-        unimplemented!()
+    pub fn audit_process(&self, process_id: ProcessID) -> Option<Vec<String>> {
+        self.process_entries
+            .get(&process_id)
+            .map(|entries| entries.iter().map(|entry| format!("{:?}", entry)).collect())
     }
 
-    pub fn audit_file(&self, path: &Path) -> Vec<LogEntry> {
-        unimplemented!()
+    pub fn audit_file(&self, path: &Path) -> Option<Vec<String>> {
+        self.file_entries
+            .get(path)
+            .map(|entries| entries.iter().map(|entry| format!("{:?}", entry)).collect())
+    }
+
+    pub fn audit_sensor(&self, sensor_id: &SensorID) -> Option<Vec<String>> {
+        self.sensor_entries
+            .get(sensor_id)
+            .map(|entries| entries.iter().map(|entry| format!("{:?}", entry)).collect())
     }
 }
 
