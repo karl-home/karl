@@ -15,7 +15,6 @@ use std::net::IpAddr;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 use std::fs;
-use std::io::Read;
 
 use tonic::{Request, Response, Status, Code};
 use tokio::sync::mpsc;
@@ -184,11 +183,13 @@ impl karl_controller_server::KarlController for Controller {
         let res = self.sensor_register(
             req.global_sensor_id,
             "0.0.0.0".parse().unwrap(), // TODO?
+            req.keys,
+            req.tags.clone(),
             &req.app[..],
             false,
         );
         self.data_sink.write().unwrap()
-            .new_sensor(res.sensor_id.clone())
+            .new_sensor(res.sensor_id.clone(), req.tags)
             .map_err(|e| e.into_status())?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
@@ -338,6 +339,7 @@ impl Controller {
         // Make the karl path if it doesn't already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
 
+        /*
         // Initialize sensors in the sensors file at `<KARL_PATH>/clients.txt`.
         // Expect sensor serialization format based on `dashboard/mod.rs`:
         // `<CLIENT_NAME>:<CLIENT_ADDR>=<CLIENT_TOKEN>`
@@ -370,6 +372,7 @@ impl Controller {
                 );
             }
         }
+        */
 
         // Start the dashboard.
         dashboard::start(
@@ -445,6 +448,8 @@ impl Controller {
     /// - id - The self-given ID of the client.
     /// - addr - The peer address of the TCP connection registering
     ///   the client.
+    /// - keys - State keys.
+    /// - tags - Output tags.
     /// - app_bytes - The bytes of the Handlebars template, or an empty
     ///   vector if there is no registered app.
     /// - confirmed - Whether the client should be confirmed by default.
@@ -453,6 +458,8 @@ impl Controller {
         &self,
         mut id: String,
         addr: IpAddr,
+        keys: Vec<String>,
+        tags: Vec<String>,
         app_bytes: &[u8],
         confirmed: bool,
     ) -> SensorRegisterResult {
@@ -480,6 +487,8 @@ impl Controller {
         let sensor = Client {
             confirmed: confirmed || self.autoconfirm,
             id: id.clone(),
+            keys,
+            tags,
             addr,
         };
 
@@ -496,7 +505,13 @@ impl Controller {
         let mut sensors = self.sensors.lock().unwrap();
         let token = Token::gen();
         if sensors.insert(token.clone(), sensor.clone()).is_none() {
-            info!("registered sensor {} {} {}", sensor.id, token, sensor.addr);
+            info!(
+                "registered sensor {} {} keys={:?} tags={:?}",
+                sensor.id,
+                token,
+                sensor.keys,
+                sensor.tags,
+            );
         } else {
             unreachable!("impossible to generate duplicate sensor tokens")
         }

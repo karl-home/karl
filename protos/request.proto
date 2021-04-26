@@ -151,6 +151,8 @@ message HostHeartbeat {
 message SensorRegisterRequest {
   string global_sensor_id = 1;
   bytes app = 2;
+  repeated string tags = 3;
+  repeated string keys = 4;
 }
 
 message SensorRegisterResult {

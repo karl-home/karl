@@ -38,11 +38,18 @@ impl DataSink {
         }
     }
 
-    /// Initializes a directory at `<karl_path>/data/raw/<sensor_id>` and
-    /// `<karl_path>/state/<sensor_id>` for the new sensor.
-    pub fn new_sensor(&self, sensor_id: SensorID) -> Result<(), Error> {
-        fs::create_dir_all(self.state_path.join(&sensor_id))?;
-        fs::create_dir_all(self.data_path.join("raw").join(&sensor_id))?;
+    /// Initializes directories at `<karl_path>/data/raw/<sensor_id>/<tag>/`
+    /// for each of the sensor's output tags.
+    pub fn new_sensor(
+        &self,
+        sensor_id: SensorID,
+        tags: Vec<String>,
+    ) -> Result<(), Error> {
+        let sensor_path = self.data_path.join("raw").join(&sensor_id);
+        fs::create_dir_all(&sensor_path)?;
+        for tag in &tags {
+            fs::create_dir(&sensor_path.join(tag))?;
+        }
         Ok(())
     }
 

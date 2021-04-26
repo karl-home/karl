@@ -49,6 +49,10 @@ pub struct Client {
     /// with _1, _2, etc. appended when duplicates are registered, like handling
     /// duplicates in the filesystem.
     pub id: SensorID,
+    /// State keys.
+    pub keys: Vec<String>,
+    /// Output tags.
+    pub tags: Vec<String>,
     /// IP address for proxy requests.
     pub addr: IpAddr,
 }

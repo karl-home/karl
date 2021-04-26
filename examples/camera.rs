@@ -23,7 +23,9 @@ async fn register(controller: &str) -> Result<String, Box<dyn Error>> {
     let result = karl::net::register_sensor(
         controller,
         "camera",
-        vec![],
+        vec![String::from("firmware"), String::from("livestream")], // keys
+        vec![String::from("motion"), String::from("livestream")], // tags
+        vec![], // app
     ).await?.into_inner();
     debug!("registered sensor => {} s", now.elapsed().as_secs_f32());
     debug!("sensor_token = {:?}", result.sensor_token);

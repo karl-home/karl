@@ -37,12 +37,16 @@ pub async fn register_hook(
 pub async fn register_sensor(
     controller_addr: &str,
     global_sensor_id: &str,
+    keys: Vec<String>,
+    tags: Vec<String>,
     app: Vec<u8>,
 ) -> Result<Response<SensorRegisterResult>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
     let request = SensorRegisterRequest {
         global_sensor_id: global_sensor_id.to_string(),
+        keys,
+        tags,
         app,
     };
     client.sensor_register(Request::new(request)).await
