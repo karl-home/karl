@@ -31,6 +31,10 @@ service KarlController {
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
   rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
+  rpc AddDataEdge (AddDataEdgeRequest) returns (google.protobuf.Empty);
+  rpc AddStateEdge (AddStateEdgeRequest) returns (google.protobuf.Empty);
+  rpc AddNetworkEdge (AddNetworkEdgeRequest) returns (google.protobuf.Empty);
+  rpc PersistTag (PersistTagRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -188,4 +192,27 @@ message RegisterHookRequest {
   repeated FileACL file_perm = 4;
   repeated string network_perm = 5;
   repeated string state_perm = 6;
+}
+
+message AddDataEdgeRequest {
+  string output_id = 1;
+  string output_tag = 2;
+  string input_id = 3;
+}
+
+message AddStateEdgeRequest {
+  string output_id = 1;
+  string output_tag = 2;
+  string input_id = 3;
+  string input_key = 4;
+}
+
+message AddNetworkEdgeRequest {
+  string output_id = 1;
+  string domain = 2;
+}
+
+message PersistTagRequest {
+  string id = 1;
+  string tag = 2;
 }

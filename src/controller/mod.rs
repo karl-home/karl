@@ -285,6 +285,30 @@ impl karl_controller_server::KarlController for Controller {
         trace!("register_hook => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
+
+    async fn add_data_edge(
+        &self, _req: Request<AddDataEdgeRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn add_state_edge(
+        &self, _req: Request<AddStateEdgeRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn add_network_edge(
+        &self, _req: Request<AddNetworkEdgeRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn persist_tag(
+        &self, _req: Request<PersistTagRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
 }
 
 impl Controller {
