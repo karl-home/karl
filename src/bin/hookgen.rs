@@ -22,6 +22,17 @@ fn read_line() -> String {
     line
 }
 
+fn read_tags() -> Vec<String> {
+    let mut tags = vec![];
+    loop {
+        let line = read_line();
+        if line.is_empty() {
+            return tags;
+        }
+        tags.push(line);
+    }
+}
+
 fn read_tar_builder() -> TarBuilder {
     let mut builder = TarBuilder::new();
     loop {
@@ -72,6 +83,8 @@ fn main() {
     println!("Files (one per line):");
     let builder = read_tar_builder();
     let handle = std::thread::spawn(|| builder.finalize().unwrap());
+    println!("Output tags (one per line):");
+    let tags = read_tags();
     println!("Invoke command:");
     let (binary_path, args) = read_invoke_command();
 
@@ -82,6 +95,7 @@ fn main() {
         package,
         &binary_path,
         args,
+        tags,
     );
 
     let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);

@@ -32,17 +32,17 @@ impl DataSink {
         }
     }
 
-    /// Initializes directories at `<karl_path>/data/<sensor_id>/<tag>/`
-    /// for each of the sensor's output tags.
-    pub fn new_sensor(
+    /// Initializes directories at `<karl_path>/data/<id>/<tag>/` for each
+    /// of the entity's output tags. An entity is a sensor or module.
+    pub fn new_entity(
         &self,
-        sensor_id: SensorID,
+        id: String,
         tags: Vec<String>,
     ) -> Result<(), Error> {
-        let sensor_path = self.data_path.join(&sensor_id);
-        fs::create_dir_all(&sensor_path)?;
+        let path = self.data_path.join(&id);
+        fs::create_dir_all(&path)?;
         for tag in &tags {
-            fs::create_dir_all(&sensor_path.join(tag))?;
+            fs::create_dir_all(&path.join(tag))?;
         }
         Ok(())
     }
@@ -76,37 +76,34 @@ impl DataSink {
         }
     }
 
-    /// Write data to the given path.
+    /// Write data to the given tag.
     ///
     /// Parameters:
-    /// - `path`: The sanitized path to the data.
-    /// - `bytes`: The bytes to write to the file, otherwise a directory.
-    /// - `recursive`: Whether to create parent directories if they do not
-    ///    already exist.
+    /// - `tag`: ID and tag.
+    /// - `data`: The bytes to push.
     ///
-    /// Errors if the path requires creating parent directories and recursive
-    /// is false.
-    pub fn put_data(
+    /// Returns: modified tag, and timestamp.
+    pub fn push_data(
         &self,
-        path: PathBuf,
-        bytes: Option<Vec<u8>>,
-        recursive: bool,
-    ) -> Result<(), Error> {
-        let path = self.data_path.join(path);
-        debug!("put {:?} dir={} recursive={}", path, bytes.is_none(), recursive);
-        if let Some(bytes) = bytes {
-            if recursive {
-                fs::create_dir_all(path.parent().unwrap())?;
+        tag: String,
+        data: Vec<u8>,
+    ) -> Result<(String, String), Error> {
+        let (id, tag) = {
+            let mut split = tag.split('.');
+            (split.next().unwrap(), split.next().unwrap())
+        };
+        let path = self.data_path.join(id).join(tag);
+        loop {
+            let dt = chrono::prelude::Local::now().format("%+").to_string();
+            let path = path.join(&dt);
+            if path.exists() {
+                continue;
             }
-            fs::write(path, bytes)?;
-            return Ok(())
+            debug!("push_data id={} tag={} timestamp={} (len {})",
+                id, tag, dt, data.len());
+            fs::write(path, data)?;
+            break Ok((format!("{}.{}", &id, &tag), dt));
         }
-        if recursive {
-            fs::create_dir_all(path)?;
-        } else {
-            fs::create_dir(path)?;
-        }
-        Ok(())
     }
 
     /// Get data from the given path.
@@ -126,12 +123,12 @@ impl DataSink {
         lower: String,
         upper: String,
     ) -> Result<Vec<u8>, Error> {
-        debug!("get {} {} to {}", tag, lower, upper);
+        assert_eq!(lower, upper);
+        debug!("get {} {}", tag, lower);
         let (id, tag) = {
             let mut split = tag.split('.');
             (split.next().unwrap(), split.next().unwrap())
         };
-        assert_eq!(lower, upper);
         let path = self.data_path.join(id).join(tag).join(lower);
         Ok(fs::read(path)?)
     }

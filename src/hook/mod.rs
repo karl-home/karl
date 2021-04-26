@@ -30,6 +30,7 @@ pub struct Hook {
     pub package: Vec<u8>,
     pub binary_path: PathBuf,
     pub args: Vec<String>,
+    pub tags: Vec<String>,
     pub md: HookMetadata,
 }
 
@@ -77,6 +78,7 @@ impl Hook {
         package: Vec<u8>,
         binary_path: &str,
         args: Vec<String>,
+        tags: Vec<String>,
     ) -> Self {
         let binary_path = Path::new(binary_path).to_path_buf();
         Self {
@@ -85,6 +87,7 @@ impl Hook {
             package,
             binary_path,
             args,
+            tags,
             md: Default::default(),
         }
     }

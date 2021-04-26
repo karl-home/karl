@@ -26,11 +26,11 @@ class KarlAPI:
         return res.data
 
     def push(self, tag, data):
-        tag = '{}.{}'.format(self.global_hook_id, tag)
-        # req = request_pb2.PushData(process_token=self.token,
-        #                            tag=tag,
-        #                            data=data)
-        # self.stub.Push(req)
+        tag = '{}.{}'.format(self.hook_id, tag)
+        req = request_pb2.PushData(process_token=self.token,
+                                   tag=tag,
+                                   data=data)
+        self.stub.Push(req)
 
     def network_access(stub, domain):
         req = request_pb2.NetworkAccess(process_token=self.token,

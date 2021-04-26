@@ -66,7 +66,7 @@ impl ProcessPerms {
         false
     }
 
-    pub fn can_write_file(&self, path: &Path) -> bool {
+    pub fn _can_write_file(&self, path: &Path) -> bool {
         let mut next_path = Some(path);
         while let Some(path) = next_path {
             if self.write_perms.contains(path) {
@@ -244,19 +244,18 @@ impl karl_host_server::KarlHost for Host {
             .forward_get(Request::new(req)).await
     }
 
-    async fn put(
-        &self, req: Request<PutData>,
+    async fn push(
+        &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
         // Validate the process is valid and has permissions to write the file.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
-        req.path = sanitize_path(&req.path);
         if self.validate {
-            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-                if !perms.can_write_file(Path::new(&req.path)) {
-                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-                }
+            if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+                // if !perms.can_write_file(Path::new(&req.path)) {
+                //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                // }
             } else {
                 return Err(Status::new(Code::Unauthenticated, "invalid process token"));
             }
@@ -267,7 +266,7 @@ impl karl_host_server::KarlHost for Host {
             Status::new(Code::Unavailable, "host is not registered with controller"))?;
         KarlControllerClient::connect(self.controller.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_put(Request::new(req)).await
+            .forward_push(Request::new(req)).await
     }
 
     async fn state(

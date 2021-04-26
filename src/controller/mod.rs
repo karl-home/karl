@@ -99,28 +99,20 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(GetDataResult { data }))
     }
 
-    async fn forward_put(
-        &self, req: Request<PutData>,
+    async fn forward_push(
+        &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        let path = Path::new(&req.path).to_path_buf();
-        self.audit_log.lock().unwrap().push(
-            &req.process_token,
-            LogEntryType::Put { path: req.path.clone() },
-        );
-        {
-            let data = if req.dir {
-                None
-            } else {
-                Some(req.data)
-            };
-            self.data_sink.write().unwrap()
-                .put_data(path, data, req.recursive)
-                .map_err(|e| e.into_status())?;
-        }
+        // self.audit_log.lock().unwrap().push(
+        //     &req.process_token,
+        //     LogEntryType::Put { path: req.path.clone() },
+        // );
+        let (tag, timestamp) = self.data_sink.write().unwrap()
+            .push_data(req.tag, req.data)
+            .map_err(|e| e.into_status())?;
         // TODO: move to its own thread
-        // self.runner.spawn_if_watched(tag, timestamp).await;
+        self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
     }
 
@@ -187,7 +179,7 @@ impl karl_controller_server::KarlController for Controller {
             false,
         );
         self.data_sink.write().unwrap()
-            .new_sensor(res.sensor_id.clone(), req.tags)
+            .new_entity(res.sensor_id.clone(), req.tags)
             .map_err(|e| e.into_status())?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
@@ -423,7 +415,9 @@ impl Controller {
         // }
 
         // Register the hook.
-        Ok(self.runner.register_hook(global_hook_id)?)
+        let (hook_id, tags) = self.runner.register_hook(global_hook_id)?;
+        self.data_sink.write().unwrap().new_entity(hook_id.clone(), tags)?;
+        Ok(hook_id)
     }
 
     /// Register a client.

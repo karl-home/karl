@@ -70,8 +70,9 @@ impl HookRunner {
     pub fn register_hook(
         &self,
         global_hook_id: StringID,
-    ) -> Result<HookID, Error> {
+    ) -> Result<(HookID, Vec<String>), Error> {
         let mut hook = Hook::import(&global_hook_id)?;
+        let tags = hook.tags.clone();
         use rand::Rng;
         hook.md.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
         let hook_id = loop {
@@ -86,9 +87,9 @@ impl HookRunner {
             }
         };
 
-        // Start the hook if on an interval schedule.
+        // Create directories for its output tags.
         info!("registered hook {}", &hook_id);
-        Ok(hook_id)
+        Ok((hook_id, tags))
     }
 
     pub fn set_interval(&self, hook_id: HookID, duration: Duration) {

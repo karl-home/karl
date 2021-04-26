@@ -7,7 +7,7 @@ service KarlHost {
   rpc StartCompute (ComputeRequest) returns (NotifyStart);
   rpc Network (NetworkAccess) returns (NetworkAccessResult);
   rpc Get (GetData) returns (GetDataResult);
-  rpc Put (PutData) returns (google.protobuf.Empty);
+  rpc Push (PushData) returns (google.protobuf.Empty);
   rpc State (StateChange) returns (google.protobuf.Empty);
 }
 
@@ -16,7 +16,7 @@ service KarlController {
   rpc HostRegister (HostRegisterRequest) returns (HostRegisterResult);
   rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
   rpc ForwardGet (GetData) returns (GetDataResult);
-  rpc ForwardPut (PutData) returns (google.protobuf.Empty);
+  rpc ForwardPush (PushData) returns (google.protobuf.Empty);
   rpc ForwardState (StateChange) returns (google.protobuf.Empty);
   rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
@@ -95,13 +95,11 @@ message GetDataResult {
   bytes data = 1;
 }
 
-message PutData {
+message PushData {
   string host_token = 1;
   string process_token = 2;
-  bool dir = 3;
-  string path = 4;
-  bytes data = 5;
-  bool recursive = 6;
+  string tag = 3;
+  bytes data = 4;
 }
 
 message StateChangeInit {
