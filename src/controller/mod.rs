@@ -122,7 +122,7 @@ impl karl_controller_server::KarlController for Controller {
                 .map_err(|e| e.into_status())?;
         }
         // TODO: move to its own thread
-        self.runner.spawn_if_watched(&req.path).await;
+        // self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
     }
 
@@ -207,10 +207,10 @@ impl karl_controller_server::KarlController for Controller {
                 return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
             }
         };
-        let path = self.data_sink.write().unwrap()
-            .push_sensor_data(sensor_id, req.data)
+        let (tag, timestamp) = self.data_sink.write().unwrap()
+            .push_sensor_data(sensor_id, req.tag, req.data)
             .map_err(|e| e.into_status())?;
-        self.runner.spawn_if_watched(&path).await;
+        self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
     }
 

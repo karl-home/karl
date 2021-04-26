@@ -162,7 +162,8 @@ message SensorRegisterResult {
 
 message SensorPushData {
   string sensor_token = 1;
-  bytes data = 2;
+  string tag = 2;
+  bytes data = 3;
 }
 
 // users

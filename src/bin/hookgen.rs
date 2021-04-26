@@ -151,7 +151,7 @@ fn main() {
     let (binary_path, args) = read_invoke_command();
     println!("Environment variables (one per line):");
     let envs = read_envs();
-    println!("Interval (i) or watch file (w)?:");
+    println!("Interval (i) or watch tag (w)?:");
     let schedule = loop {
         let line = read_nonempty_line();
         if line == "i".to_string() {
@@ -160,9 +160,9 @@ fn main() {
             let duration = std::time::Duration::from_secs(secs as _);
             break HookSchedule::Interval(duration);
         } else if line == "w".to_string() {
-            println!("File path (spawned when this file is modified):");
-            let path = read_nonempty_line();
-            break HookSchedule::WatchFile(path);
+            println!("Tag (spawned when data is pushed here):");
+            let tag = read_nonempty_line();
+            break HookSchedule::WatchTag(tag);
         }
     };
     println!("Permitted sensor IDs to change state (one per line):");

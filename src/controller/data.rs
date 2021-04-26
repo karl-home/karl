@@ -48,7 +48,7 @@ impl DataSink {
         let sensor_path = self.data_path.join("raw").join(&sensor_id);
         fs::create_dir_all(&sensor_path)?;
         for tag in &tags {
-            fs::create_dir(&sensor_path.join(tag))?;
+            fs::create_dir_all(&sensor_path.join(tag))?;
         }
         Ok(())
     }
@@ -57,14 +57,17 @@ impl DataSink {
     ///
     /// Parameters:
     /// - `sensor_id`: the sensor ID.
+    /// - `tag`: output tag.
     /// - `data`: the data.
+    ///
+    /// Returns: modified tag, and timestamp.
     pub fn push_sensor_data(
         &self,
         sensor_id: SensorID,
+        tag: String,
         data: Vec<u8>,
-    ) -> Result<String, Error> {
-        debug!("push_raw_data sensor_id={} (len {})", sensor_id, data.len());
-        let path = self.data_path.join("raw").join(&sensor_id);
+    ) -> Result<(String, String), Error> {
+        let path = self.data_path.join("raw").join(&sensor_id).join(&tag);
         assert!(path.is_dir());
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
@@ -72,8 +75,10 @@ impl DataSink {
             if path.exists() {
                 continue;
             }
+            debug!("push_raw_data sensor_id={} tag={} timestamp={} (len {})",
+                sensor_id, tag, dt, data.len());
             fs::write(path, data)?;
-            break Ok(format!("raw/{}/{}", &sensor_id, &dt));
+            break Ok((format!("{}.{}", &sensor_id, &tag), dt));
         }
     }
 

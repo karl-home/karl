@@ -1,4 +1,3 @@
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
@@ -13,8 +12,8 @@ pub struct HookRunner {
     tx: Option<mpsc::Sender<HookID>>,
     /// Registered hooks and their local hook IDs.
     hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-    /// Watched files and the hooks they spawn.
-    watched_files: Arc<RwLock<HashMap<PathBuf, Vec<HookID>>>>,
+    /// Watched tags and the hooks they spawn.
+    watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
 }
 
 fn gen_process_id() -> ProcessID {
@@ -28,7 +27,7 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
-            watched_files: Arc::new(RwLock::new(HashMap::new())),
+            watched_tags: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -109,11 +108,10 @@ impl HookRunner {
                     }
                 });
             },
-            HookSchedule::WatchFile(path) => {
+            HookSchedule::WatchTag(tag) => {
                 // TODO: hook must have appropriate ACLs to watch file
-                let path = Path::new(&sanitize_path(&path)).to_path_buf();
-                self.watched_files.write().unwrap()
-                    .entry(path)
+                self.watched_tags.write().unwrap()
+                    .entry(tag)
                     .or_insert(vec![])
                     .push(hook_id.clone());
             },
@@ -121,19 +119,22 @@ impl HookRunner {
         Ok(hook_id)
     }
 
-    pub async fn spawn_if_watched(&self, modified: &str) -> usize {
-        debug!("spawn_if_watched? modified {}, internal {:?}", modified, self.watched_files.read().unwrap());
+    pub async fn spawn_if_watched(
+        &self,
+        tag: String,
+        timestamp: String,
+    ) -> usize {
+        // debug!("spawn_if_watched? {}/{}, internal {:?}",
+        //     tag, timestamp, self.watched_tags.read().unwrap());
         let hook_ids = {
-            let mut next_path = Some(Path::new(modified));
             let mut hook_ids = HashSet::new();
-            let watched_files = self.watched_files.read().unwrap();
-            while let Some(path) = next_path {
-                if let Some(hooks) = watched_files.get(&path.to_path_buf()) {
-                    for hook_id in hooks {
-                        hook_ids.insert(hook_id.clone());
-                    }
+            let watched_tags = self.watched_tags.read().unwrap();
+            if let Some(hooks) = watched_tags.get(&tag) {
+                debug!("spawning {:?} from {}/{}", hooks, tag, timestamp);
+                for hook_id in hooks {
+                    // TODO: pass timestamp to queue
+                    hook_ids.insert(hook_id.clone());
                 }
-                next_path = path.parent();
             }
             hook_ids
         };

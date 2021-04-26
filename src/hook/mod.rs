@@ -20,7 +20,7 @@ pub struct FileACL {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HookSchedule {
     Interval(Duration),
-    WatchFile(String),
+    WatchTag(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
