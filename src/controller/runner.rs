@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
 use crate::controller::types::*;
-use crate::hook::{Hook, FileACL, DomainName, HookSchedule};
+use crate::hook::Hook;
 use crate::common::*;
 
 
@@ -58,65 +58,49 @@ impl HookRunner {
     ///
     /// Parameters:
     /// - global_hook_id - The ID of the hook from the global hook repository.
-    /// - state_perm - Requested state change permissions.
-    /// - network_perm - Requested network permissions.
-    /// - file_perm - Requested file permissions.
-    /// - envs - Requested environment variables / configuration `<KEY>=<VALUE>`.
-    ///   Replaces the imported environment variables only if non-empty.
     ///
     /// IoError if error importing hook from filesystem.
     /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
         &self,
         global_hook_id: StringID,
-        state_perm: Vec<SensorID>,
-        network_perm: Vec<DomainName>,
-        file_perm: Vec<FileACL>,
-        mut envs: Vec<String>,
     ) -> Result<HookID, Error> {
-        let mut hook = Hook::import(&global_hook_id)?
-            .set_state_perm(state_perm)
-            .set_network_perm(network_perm)
-            .set_file_perm(file_perm);
-        envs.push(format!("GLOBAL_HOOK_ID={}", global_hook_id));
-        let schedule = hook.schedule.clone();
+        let mut hook = Hook::import(&global_hook_id)?;
         use rand::Rng;
+        hook.md.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
         let hook_id = loop {
             // Loop to ensure a unique hook ID.
             let id: u32 = rand::thread_rng().gen();
             let hook_id = format!("{}-{}", &global_hook_id, id);
             let mut hooks = self.hooks.lock().unwrap();
             if !hooks.contains_key(&hook_id) {
-                envs.push(format!("HOOK_ID={}", &hook_id));
-                hook = hook.set_envs(envs)?;
+                hook.md.envs.push((String::from("HOOK_ID"), hook_id.clone()));
                 hooks.insert(hook_id.clone(), hook);
                 break hook_id;
             }
         };
 
         // Start the hook if on an interval schedule.
-        info!("registered hook {} schedule={:?}", &hook_id, &schedule);
-        match schedule {
-            HookSchedule::Interval(duration) => {
-                let hook_id = hook_id.clone();
-                let tx = self.tx.as_ref().unwrap().clone();
-                tokio::spawn(async move {
-                    let mut interval = time::interval(duration);
-                    loop {
-                        interval.tick().await;
-                        tx.send(hook_id.clone()).await.unwrap();
-                    }
-                });
-            },
-            HookSchedule::WatchTag(tag) => {
-                // TODO: hook must have appropriate ACLs to watch file
-                self.watched_tags.write().unwrap()
-                    .entry(tag)
-                    .or_insert(vec![])
-                    .push(hook_id.clone());
-            },
-        }
+        info!("registered hook {}", &hook_id);
         Ok(hook_id)
+    }
+
+    pub fn set_interval(&self, hook_id: HookID, duration: Duration) {
+        let tx = self.tx.as_ref().unwrap().clone();
+        tokio::spawn(async move {
+            let mut interval = time::interval(duration);
+            loop {
+                interval.tick().await;
+                tx.send(hook_id.clone()).await.unwrap();
+            }
+        });
+    }
+
+    pub fn watch_tag(&self, hook_id: HookID, tag: String) {
+        self.watched_tags.write().unwrap()
+            .entry(tag)
+            .or_insert(vec![])
+            .push(hook_id.clone());
     }
 
     pub async fn spawn_if_watched(

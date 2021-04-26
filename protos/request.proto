@@ -35,6 +35,7 @@ service KarlController {
   rpc AddStateEdge (AddStateEdgeRequest) returns (google.protobuf.Empty);
   rpc AddNetworkEdge (AddNetworkEdgeRequest) returns (google.protobuf.Empty);
   rpc PersistTag (PersistTagRequest) returns (google.protobuf.Empty);
+  rpc SetInterval (SetIntervalRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -191,16 +192,13 @@ message VerifyHostRequest {
 message RegisterHookRequest {
   string token = 1;
   string global_hook_id = 2;
-  repeated string envs = 3;
-  repeated FileACL file_perm = 4;
-  repeated string network_perm = 5;
-  repeated string state_perm = 6;
 }
 
 message AddDataEdgeRequest {
   string output_id = 1;
   string output_tag = 2;
   string input_id = 3;
+  bool trigger = 4;
 }
 
 message AddStateEdgeRequest {
@@ -208,6 +206,7 @@ message AddStateEdgeRequest {
   string output_tag = 2;
   string input_id = 3;
   string input_key = 4;
+  bool trigger = 5;
 }
 
 message AddNetworkEdgeRequest {
@@ -218,4 +217,9 @@ message AddNetworkEdgeRequest {
 message PersistTagRequest {
   string id = 1;
   string tag = 2;
+}
+
+message SetIntervalRequest {
+  string hook_id = 1;
+  uint32 seconds = 2;
 }

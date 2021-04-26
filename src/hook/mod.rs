@@ -27,13 +27,17 @@ pub enum HookSchedule {
 pub struct Hook {
     confirmed: bool,
     pub global_hook_id: StringID,
-    pub schedule: HookSchedule,
-    pub state_perm: Vec<SensorID>,
-    pub network_perm: Vec<DomainName>,
-    pub file_perm: Vec<FileACL>,
     pub package: Vec<u8>,
     pub binary_path: PathBuf,
     pub args: Vec<String>,
+    pub md: HookMetadata,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct HookMetadata {
+    pub state_perm: Vec<SensorID>,
+    pub network_perm: Vec<DomainName>,
+    pub file_perm: Vec<FileACL>,
     pub envs: Vec<(String, String)>,
 }
 
@@ -70,27 +74,18 @@ impl Into<protos::FileAcl> for FileACL {
 impl Hook {
     pub fn new(
         global_hook_id: StringID,
-        schedule: HookSchedule,
-        state_perm: Vec<SensorID>,
-        network_perm: Vec<DomainName>,
-        file_perm: Vec<FileACL>,
         package: Vec<u8>,
         binary_path: &str,
         args: Vec<String>,
-        envs: Vec<(String, String)>,
     ) -> Self {
         let binary_path = Path::new(binary_path).to_path_buf();
         Self {
             confirmed: false,
             global_hook_id,
-            schedule,
-            state_perm,
-            network_perm,
-            file_perm,
             package,
             binary_path,
             args,
-            envs,
+            md: Default::default(),
         }
     }
 
@@ -105,30 +100,30 @@ impl Hook {
     }
 
     pub fn set_network_perm(mut self, network_perm: Vec<DomainName>) -> Self {
-        self.network_perm = network_perm;
+        self.md.network_perm = network_perm;
         self
     }
 
     pub fn set_state_perm(mut self, state_perm: Vec<SensorID>) -> Self {
-        self.state_perm = state_perm;
+        self.md.state_perm = state_perm;
         self
     }
 
     pub fn set_file_perm(mut self, file_perm: Vec<FileACL>) -> Self {
-        self.file_perm = file_perm;
+        self.md.file_perm = file_perm;
         self
     }
 
     /// `<KEY>=<VALUE>`
     pub fn set_envs(mut self, envs: Vec<String>) -> Result<Self, Error> {
-        self.envs = vec![];
+        self.md.envs = vec![];
         for env in envs {
             let env = env.split("=").collect::<Vec<_>>();
             if env.len() != 2 {
                 return Err(Error::HookInstallError(format!(
                     "bad format for envvar: {:?}", env)));
             }
-            self.envs.push((env[0].to_string(), env[1].to_string()));
+            self.md.envs.push((env[0].to_string(), env[1].to_string()));
         }
         Ok(self)
     }
@@ -147,10 +142,10 @@ impl Hook {
         req.package = hook.package;
         req.binary_path = hook.binary_path.into_os_string().into_string().unwrap();
         req.args = hook.args.into_iter().collect();
-        req.envs = hook.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-        req.file_perm = hook.file_perm.into_iter().map(|acl| acl.into()).collect();
-        req.state_perm = hook.state_perm.into_iter().collect();
-        req.network_perm = hook.network_perm.into_iter().collect();
+        req.envs = hook.md.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        req.file_perm = hook.md.file_perm.into_iter().map(|acl| acl.into()).collect();
+        req.state_perm = hook.md.state_perm.into_iter().collect();
+        req.network_perm = hook.md.network_perm.into_iter().collect();
         Ok(req)
     }
 }

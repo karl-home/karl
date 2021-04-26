@@ -21,7 +21,6 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
 use crate::dashboard;
-use crate::hook::FileACL;
 use crate::common::*;
 
 /// Controller used for discovering available Karl services and coordinating
@@ -278,10 +277,6 @@ impl karl_controller_server::KarlController for Controller {
         self.register_hook(
             &req.token.to_string(),
             req.global_hook_id.to_string(),
-            req.state_perm.to_vec(),
-            req.network_perm.to_vec(),
-            req.file_perm.iter().map(|acl| FileACL::from(acl)).collect(),
-            req.envs.to_vec(),
         ).map_err(|e| e.into_status())?;
         trace!("register_hook => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
@@ -307,6 +302,12 @@ impl karl_controller_server::KarlController for Controller {
 
     async fn persist_tag(
         &self, _req: Request<PersistTagRequest>,
+    ) -> Result<Response<()>, Status> {
+        unimplemented!()
+    }
+
+    async fn set_interval(
+        &self, _req: Request<SetIntervalRequest>,
     ) -> Result<Response<()>, Status> {
         unimplemented!()
     }
@@ -401,32 +402,22 @@ impl Controller {
     /// AuthError if not a valid client token.
     fn register_hook(
         &self,
-        token: &SensorToken,
+        _token: &SensorToken,
         global_hook_id: String,
-        state_perm: Vec<SensorID>,
-        network_perm: Vec<String>,
-        file_perm: Vec<FileACL>,
-        envs: Vec<String>,
     ) -> Result<(), Error> {
-        // Validate the client token.
-        if let Some(sensor) = self.sensors.lock().unwrap().get(token) {
-            if !sensor.confirmed {
-                println!("register_hook unconfirmed sensor token {:?}", token);
-                return Err(Error::AuthError("invalid sensor token".to_string()));
-            }
-        } else {
-            println!("register_hook invalid sensor token {:?}", token);
-            return Err(Error::AuthError("invalid sensor token".to_string()));
-        }
+        // // Validate the client token.
+        // if let Some(sensor) = self.sensors.lock().unwrap().get(token) {
+        //     if !sensor.confirmed {
+        //         println!("register_hook unconfirmed sensor token {:?}", token);
+        //         return Err(Error::AuthError("invalid sensor token".to_string()));
+        //     }
+        // } else {
+        //     println!("register_hook invalid sensor token {:?}", token);
+        //     return Err(Error::AuthError("invalid sensor token".to_string()));
+        // }
 
         // Register the hook.
-        self.runner.register_hook(
-            global_hook_id,
-            state_perm,
-            network_perm,
-            file_perm,
-            envs,
-        )?;
+        self.runner.register_hook(global_hook_id)?;
         Ok(())
     }
 
