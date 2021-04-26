@@ -30,7 +30,7 @@ service KarlController {
   rpc Audit (AuditRequest) returns (AuditResult);
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
-  rpc RegisterHook (RegisterHookRequest) returns (google.protobuf.Empty);
+  rpc RegisterHook (RegisterHookRequest) returns (RegisterHookResult);
   rpc AddDataEdge (AddDataEdgeRequest) returns (google.protobuf.Empty);
   rpc AddStateEdge (AddStateEdgeRequest) returns (google.protobuf.Empty);
   rpc AddNetworkEdge (AddNetworkEdgeRequest) returns (google.protobuf.Empty);
@@ -193,6 +193,10 @@ message VerifyHostRequest {
 message RegisterHookRequest {
   string token = 1;
   string global_hook_id = 2;
+}
+
+message RegisterHookResult {
+  string hook_id = 1;
 }
 
 message AddDataEdgeRequest {

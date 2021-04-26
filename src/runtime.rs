@@ -17,9 +17,8 @@ fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     debug!("args: {:?}", args);
 
     let mut cmd = Command::new("firejail");
-    cmd.arg("--noprofile");
-    cmd.arg("--net=none");
     cmd.arg("--private=.");
+    cmd.arg("--netfilter=/etc/firejail/karl.net");
     for env in envs {
         cmd.arg(format!("--env={}", env));
     }

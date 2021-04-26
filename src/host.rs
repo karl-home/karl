@@ -92,6 +92,8 @@ pub struct Host {
     controller: String,
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
+    /// Whether to validate tokens.
+    validate: bool,
 }
 
 #[tonic::async_trait]
@@ -144,12 +146,14 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_access_domain(&req.domain) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+        if self.validate {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+                if !perms.can_access_domain(&req.domain) {
+                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                }
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
             }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
 
         // Build the network request
@@ -222,12 +226,14 @@ impl karl_host_server::KarlHost for Host {
         // Sanitizes the path.
         let mut req = req.into_inner();
         debug!("get {:?}", req);
-        if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            // if !perms.can_read_file(Path::new(&req.path)) {
-            //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-            // }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+        if self.validate {
+            if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+                // if !perms.can_read_file(Path::new(&req.path)) {
+                //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                // }
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            }
         }
 
         // Forward the file access to the controller and return the result
@@ -246,12 +252,14 @@ impl karl_host_server::KarlHost for Host {
         // Sanitizes the path.
         let mut req = req.into_inner();
         req.path = sanitize_path(&req.path);
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_write_file(Path::new(&req.path)) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+        if self.validate {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+                if !perms.can_write_file(Path::new(&req.path)) {
+                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                }
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
             }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
 
         // Forward the file access to the controller and return the result
@@ -269,12 +277,14 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_change_state(&req.sensor_id) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+        if self.validate {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+                if !perms.can_change_state(&req.sensor_id) {
+                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                }
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
             }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
 
         // Forward the file access to the controller and return the result
@@ -322,6 +332,7 @@ impl Host {
             base_path,
             controller: controller.to_string(),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
+            validate: false,
         }
     }
 

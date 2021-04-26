@@ -7,9 +7,15 @@ use crate::controller::types::*;
 use crate::hook::Hook;
 use crate::common::*;
 
+#[derive(Debug)]
+struct QueuedHook {
+    id: HookID,
+    tag: Option<String>,
+    timestamp: Option<String>,
+}
 
 pub struct HookRunner {
-    tx: Option<mpsc::Sender<HookID>>,
+    tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
     hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     /// Watched tags and the hooks they spawn.
@@ -40,7 +46,7 @@ impl HookRunner {
         mock_send_compute: bool,
     ) {
         let buffer = 100;  // TODO: tune
-        let (tx, rx) = mpsc::channel::<HookID>(buffer);
+        let (tx, rx) = mpsc::channel::<QueuedHook>(buffer);
         self.tx = Some(tx);
         let hooks = self.hooks.clone();
         tokio::spawn(async move {
@@ -91,7 +97,11 @@ impl HookRunner {
             let mut interval = time::interval(duration);
             loop {
                 interval.tick().await;
-                tx.send(hook_id.clone()).await.unwrap();
+                tx.send(QueuedHook{
+                    id: hook_id.clone(),
+                    tag: None,
+                    timestamp: None,
+                }).await.unwrap();
             }
         });
     }
@@ -125,13 +135,17 @@ impl HookRunner {
         let tx = self.tx.as_ref().unwrap();
         let spawned = hook_ids.len();
         for hook_id in hook_ids {
-            tx.send(hook_id).await.unwrap();
+            tx.send(QueuedHook {
+                id: hook_id,
+                tag: Some(tag.clone()),
+                timestamp: Some(timestamp.clone()),
+            }).await.unwrap();
         }
         spawned
     }
 
     async fn start_queue_manager(
-        mut rx: mpsc::Receiver<HookID>,
+        mut rx: mpsc::Receiver<QueuedHook>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
         audit_log: Arc<Mutex<AuditLog>>,
         scheduler: Arc<Mutex<HostScheduler>>,
@@ -139,7 +153,8 @@ impl HookRunner {
     ) {
         loop {
             // Generate a compute request based on the queued hook.
-            let hook_id: HookID = rx.recv().await.unwrap();
+            let next: QueuedHook = rx.recv().await.unwrap();
+            let hook_id = next.id;
             let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
                 match hook.to_compute_request() {
                     Ok(req) => req,
@@ -151,6 +166,12 @@ impl HookRunner {
             } else {
                 continue;
             };
+            if let Some(tag) = next.tag {
+                request.envs.push(format!("TRIGGERED_TAG={}", tag));
+            }
+            if let Some(timestamp) = next.timestamp {
+                request.envs.push(format!("TRIGGERED_TIMESTAMP={}", timestamp));
+            }
 
             // Find an available host and prepare the request.
             let process_id = gen_process_id();

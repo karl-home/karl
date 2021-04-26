@@ -50,7 +50,7 @@ async fn motion_detection(
 ) -> Result<(), Box<dyn Error>> {
     let image_path = "data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png";
     let image_bytes = fs::read(image_path)?;
-    let duration = Duration::from_secs(10);
+    let duration = Duration::from_secs(30);
     let mut interval = tokio::time::interval(duration);
     loop {
         interval.tick().await;

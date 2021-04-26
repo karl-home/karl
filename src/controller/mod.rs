@@ -270,21 +270,28 @@ impl karl_controller_server::KarlController for Controller {
 
     async fn register_hook(
         &self, req: Request<RegisterHookRequest>,
-    ) -> Result<Response<()>, Status> {
+    ) -> Result<Response<RegisterHookResult>, Status> {
         let now = Instant::now();
         let req = req.into_inner();
-        self.register_hook(
+        let hook_id = self.register_hook(
             &req.token.to_string(),
             req.global_hook_id.to_string(),
         ).map_err(|e| e.into_status())?;
         trace!("register_hook => {} s", now.elapsed().as_secs_f32());
-        Ok(Response::new(()))
+        Ok(Response::new(RegisterHookResult { hook_id }))
     }
 
     async fn add_data_edge(
-        &self, _req: Request<AddDataEdgeRequest>,
+        &self, req: Request<AddDataEdgeRequest>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        info!("add_data_edge {}.{} -> {} trigger={}",
+            req.output_id, req.output_tag, req.input_id, req.trigger);
+        if req.trigger {
+            let tag = format!("{}.{}", req.output_id, req.output_tag);
+            self.runner.watch_tag(req.input_id, tag);
+        }
+        Ok(Response::new(()))
     }
 
     async fn add_state_edge(
@@ -403,7 +410,7 @@ impl Controller {
         &self,
         _token: &SensorToken,
         global_hook_id: String,
-    ) -> Result<(), Error> {
+    ) -> Result<HookID, Error> {
         // // Validate the client token.
         // if let Some(sensor) = self.sensors.lock().unwrap().get(token) {
         //     if !sensor.confirmed {
@@ -416,8 +423,7 @@ impl Controller {
         // }
 
         // Register the hook.
-        self.runner.register_hook(global_hook_id)?;
-        Ok(())
+        Ok(self.runner.register_hook(global_hook_id)?)
     }
 
     /// Register a client.

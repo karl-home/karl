@@ -189,7 +189,7 @@ impl HostScheduler {
     /// Parameters:
     /// - token - The host token identifying the host.
     pub fn heartbeat(&mut self, token: HostToken) {
-        debug!("heartbeat {}", token);
+        trace!("heartbeat {}", token);
         if let Some(host) = self.unique_hosts.get_mut(&token) {
             host.md.last_msg = Instant::now();
         } else {

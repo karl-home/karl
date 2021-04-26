@@ -15,6 +15,14 @@ python
 node_modules/
 hooks/
 
+# person-detection
+.bashrc
+.python_history
+__pycache__/
+tmp*
+request_pb2.py
+request_pb2_grpc.py
+
 # Protobuf
 protos/js/
 protos/rust/

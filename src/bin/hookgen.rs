@@ -1,8 +1,7 @@
 use std::fs;
 use std::path::Path;
 use bincode;
-use regex::Regex;
-use karl::hook::{Hook, HookSchedule, FileACL, HOOK_STORE_PATH};
+use karl::hook::{Hook, HOOK_STORE_PATH};
 use karl::common::TarBuilder;
 
 fn read_nonempty_line() -> String {
@@ -65,23 +64,6 @@ fn read_invoke_command() -> (String, Vec<String>) {
     (binary_path, args)
 }
 
-fn read_envs() -> Vec<(String, String)> {
-    let mut envs = vec![];
-    loop {
-        let line = read_line();
-        if line.is_empty() {
-            break;
-        }
-        let line: Vec<&str> = line.split(" ").collect();
-        if line.len() != 2 {
-            println!("Invalid format - space-separated '<KEY> <VALUE>'");
-        } else {
-            envs.push((line[0].to_string(), line[1].to_string()));
-        }
-    }
-    envs
-}
-
 fn main() {
     env_logger::builder().format_timestamp(None).init();
 
@@ -101,20 +83,17 @@ fn main() {
         &binary_path,
         args,
     );
-    println!("");
-    println!("global_hook_id: {:?}", hook.global_hook_id);
-    println!("package: {:?} bytes", hook.package.len());
-    println!("binary_path: {:?}", hook.binary_path);
-    println!("args: {:?}", hook.args);
 
-    println!("Confirm? [y/n]");
-    if read_nonempty_line() != "y" {
-        println!("Canceling.");
-    } else {
-        let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);
-        println!("Writing hook to {:?}", path);
-        let bytes = bincode::serialize(&hook).unwrap();
-        println!("{} bytes", bytes.len());
-        fs::write(&path, bytes).unwrap();
+    let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);
+    if path.exists() {
+        println!("Path already exists. Override? [y/n]");
+        if read_nonempty_line() != "y" {
+            println!("Canceling.");
+            return;
+        }
     }
+    println!("Writing hook to {:?}", path);
+    let bytes = bincode::serialize(&hook).unwrap();
+    println!("{} bytes", bytes.len());
+    fs::write(&path, bytes).unwrap();
 }

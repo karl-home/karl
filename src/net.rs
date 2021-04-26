@@ -18,7 +18,7 @@ use crate::common::*;
 pub async fn register_hook(
     controller_addr: &str,
     global_hook_id: &str,
-) -> Result<Response<()>, Status> {
+) -> Result<Response<RegisterHookResult>, Status> {
     let mut client = KarlControllerClient::connect(controller_addr.to_string())
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
     let request = RegisterHookRequest {
@@ -74,6 +74,25 @@ pub async fn push_raw_data(
     };
     debug!("push_raw_data tag={} (len {})", request.tag, request.data.len());
     client.push_raw_data(Request::new(request)).await
+}
+
+/// Adds data edge.
+pub async fn add_data_edge(
+    controller_addr: &str,
+    output_id: String,
+    output_tag: String,
+    input_id: String,
+    trigger: bool,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = AddDataEdgeRequest {
+        output_id,
+        output_tag,
+        input_id,
+        trigger,
+    };
+    client.add_data_edge(Request::new(request)).await
 }
 
 /*****************************************************************************

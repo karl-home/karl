@@ -1,6 +1,13 @@
+import io
+import os
 import sys
 import time
+from karl import KarlAPI
 from datetime import datetime
+
+karl = KarlAPI()
+TAG = os.environ.get('TRIGGERED_TAG')
+TIMESTAMP = os.environ.get('TRIGGERED_TIMESTAMP')
 
 start = time.perf_counter()
 import torch, torchvision
@@ -8,15 +15,15 @@ from torchvision import transforms
 from PIL import Image, ImageDraw
 sys.stderr.write('imports\t\t%.3fs\n' % (time.perf_counter() - start))
 
-torch.hub.set_dir('storage/torch')
+torch.hub.set_dir('torch')
 model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
 model.eval()
 sys.stderr.write('init model \t%.3fs\n' % (time.perf_counter() - start))
 
-if len(sys.argv) > 1:
-    img_path = sys.argv[1]
-else:
-    img_path = 'PennFudanPed/PNGImages/FudanPed00001.png'
+img_path = 'tmp.png'
+with open(img_path, 'wb') as f:
+    img_bytes = karl.get(TAG, TIMESTAMP, TIMESTAMP)
+    f.write(img_bytes)
 img = Image.open(img_path).convert("RGB")
 img_tensor = transforms.ToTensor()(img)
 sys.stderr.write('init img \t%.3fs (%s)\n' % (time.perf_counter() - start, img_path))
@@ -37,10 +44,13 @@ for i in range(len(output['labels'])):
         boxes_filtered.append(boxes[i])
 
 sys.stderr.write('Writing output image and printing box locations\n')
-out_path = "storage/{}.jpeg".format(datetime.now()).replace(" ", "_")
 draw = ImageDraw.Draw(img)
 for box in boxes_filtered:
     print(box)
     draw.rectangle(box, outline="yellow", width=4)
-img.save(out_path, "JPEG")
+img_byte_arr = io.BytesIO()
+img.save(img_byte_arr, format='PNG')
+img_byte_arr = img_byte_arr.getvalue()
+karl.push("box", img_byte_arr)
+karl.push("count", len(boxes_filtered))
 sys.stderr.write('log output \t%.3fs\n' % (time.perf_counter() - start))

@@ -4,14 +4,36 @@ extern crate log;
 use std::error::Error;
 use clap::{Arg, App};
 
-async fn register_hooks(controller: &str) -> Result<(), Box<dyn Error>> {
-    karl::net::register_hook(controller, "person_detection").await?;
-    karl::net::register_hook(controller, "differential_privacy").await?;
-    Ok(())
+/// Registers a hook with the global hook ID and returns the hook ID.
+async fn register_hook(
+    controller: &str,
+    global_hook_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let res = karl::net::register_hook(controller, global_hook_id).await?;
+    let hook_id = res.into_inner().hook_id;
+    info!("register hook {} => {}", global_hook_id, hook_id);
+    Ok(hook_id)
 }
 
-async fn _add_edges() -> Result<(), Box<dyn Error>> {
-    // TODO: data edge camera.motion -> person_detection
+/// Adds edges:
+/// data edge - sensor "camera" to module `pd_hook_id`
+/// data edge - module `pd_hook_id` to module `dp_hook_id`
+/// network edge - module `dp_hook_id` to domain
+async fn add_edges(
+    controller: &str,
+    pd_hook_id: String,
+    // dp_hook_id: String,
+) -> Result<(), Box<dyn Error>> {
+    // data edge camera.motion -> person_detection
+    info!("add data edge from camera.motion to {}", pd_hook_id);
+    karl::net::add_data_edge(
+        controller,
+        String::from("camera"), // output_id
+        String::from("motion"), // output_tag
+        pd_hook_id.clone(), // input_id
+        true, // trigger
+    ).await?;
+
     // TODO: data edge person_detection.count -> differential_privacy
     // TODO: network edge differential_privacy -> https://metrics.karl.zapto.org
     Ok(())
@@ -24,7 +46,7 @@ async fn _persist_tags() -> Result<(), Box<dyn Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-	env_logger::builder().format_timestamp(None).init();
+    env_logger::builder().format_timestamp(None).init();
     let matches = App::new("Figure 4a setup")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
@@ -42,6 +64,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap();
     let addr = format!("http://{}:{}", ip, port);
-    register_hooks(&addr).await?;
+    let pd_hook_id = register_hook(&addr, "person_detection").await?;
+    // register_hook(&addr, "differential_privacy").await?;
+    add_edges(&addr, pd_hook_id).await?;
     Ok(())
 }
