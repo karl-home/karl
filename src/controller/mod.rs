@@ -89,13 +89,12 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        let path = Path::new(&req.path).to_path_buf();
-        self.audit_log.lock().unwrap().push(
-            &req.process_token,
-            LogEntryType::Get { path: req.path },
-        );
+        // self.audit_log.lock().unwrap().push(
+        //     &req.process_token,
+        //     LogEntryType::Get { path: req.path },
+        // );
         let data = self.data_sink.read().unwrap()
-            .get_data(path, req.dir)
+            .get_data(req.tag, req.lower, req.upper)
             .map_err(|e| e.into_status())?;
         Ok(Response::new(GetDataResult { data }))
     }

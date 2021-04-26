@@ -86,8 +86,9 @@ message NetworkAccessResult {
 message GetData {
   string host_token = 1;
   string process_token = 2;
-  bool dir = 3;
-  string path = 4;
+  string tag = 3;
+  string lower = 4;
+  string upper = 5;
 }
 
 message GetDataResult {

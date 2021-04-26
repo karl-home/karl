@@ -55,7 +55,7 @@ impl ProcessPerms {
         self.network_perms.contains(domain)
     }
 
-    pub fn can_read_file(&self, path: &Path) -> bool {
+    pub fn _can_read_file(&self, path: &Path) -> bool {
         let mut next_path = Some(path);
         while let Some(path) = next_path {
             if self.read_perms.contains(path) {
@@ -222,11 +222,10 @@ impl karl_host_server::KarlHost for Host {
         // Sanitizes the path.
         let mut req = req.into_inner();
         debug!("get {:?}", req);
-        req.path = sanitize_path(&req.path);
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_read_file(Path::new(&req.path)) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-            }
+        if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+            // if !perms.can_read_file(Path::new(&req.path)) {
+            //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+            // }
         } else {
             return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }

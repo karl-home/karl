@@ -9,7 +9,6 @@ use crate::controller::types::*;
 ///
 /// Operations to the data sink must be authenticated in the above layer.
 pub struct DataSink {
-    pub state_path: PathBuf,
     pub data_path: PathBuf,
 }
 
@@ -27,25 +26,20 @@ impl DataSink {
     /// a directory in the filesystem. Creates an empty directory at
     /// the path, `<karl_path>/data/` if it does not already exist.
     pub fn new(karl_path: PathBuf) -> Self {
-        let state_path = karl_path.join("state");
         let data_path = karl_path.join("data");
-        fs::create_dir_all(&state_path).unwrap();
-        fs::create_dir_all(data_path.join("raw")).unwrap();
-        fs::create_dir_all(data_path.join("hooks")).unwrap();
         Self {
-            state_path: state_path.to_path_buf(),
             data_path: data_path.to_path_buf(),
         }
     }
 
-    /// Initializes directories at `<karl_path>/data/raw/<sensor_id>/<tag>/`
+    /// Initializes directories at `<karl_path>/data/<sensor_id>/<tag>/`
     /// for each of the sensor's output tags.
     pub fn new_sensor(
         &self,
         sensor_id: SensorID,
         tags: Vec<String>,
     ) -> Result<(), Error> {
-        let sensor_path = self.data_path.join("raw").join(&sensor_id);
+        let sensor_path = self.data_path.join(&sensor_id);
         fs::create_dir_all(&sensor_path)?;
         for tag in &tags {
             fs::create_dir_all(&sensor_path.join(tag))?;
@@ -67,7 +61,7 @@ impl DataSink {
         tag: String,
         data: Vec<u8>,
     ) -> Result<(String, String), Error> {
-        let path = self.data_path.join("raw").join(&sensor_id).join(&tag);
+        let path = self.data_path.join(&sensor_id).join(&tag);
         assert!(path.is_dir());
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
@@ -128,33 +122,18 @@ impl DataSink {
     /// the request indicates it is a directory, or vice versa.
     pub fn get_data(
         &self,
-        path: PathBuf,
-        dir: bool,
+        tag: String,
+        lower: String,
+        upper: String,
     ) -> Result<Vec<u8>, Error> {
-        let path = self.data_path.join(path);
-        debug!("get {:?} dir={}", path, dir);
-        if dir != path.is_dir() {
-            return Err(Error::UnknownError("incorrect dir flag".to_string()));
-        }
-        if dir {
-            let mut result = ReadDirResult::default();
-            for entry in fs::read_dir(path)? {
-                let entry = entry?;
-                let val = entry.path().file_name().unwrap()
-                    .to_os_string().into_string().unwrap();
-                if entry.path().is_dir() {
-                    result.dirs.push(val);
-                } else {
-                    result.files.push(val);
-                }
-            }
-            result.files.sort();
-            result.dirs.sort();
-            serde_json::to_vec(&result).map_err(
-                |e| Error::SerializationError(format!("{}", e)))
-        } else {
-            Ok(fs::read(path)?)
-        }
+        debug!("get {} {} to {}", tag, lower, upper);
+        let (id, tag) = {
+            let mut split = tag.split('.');
+            (split.next().unwrap(), split.next().unwrap())
+        };
+        assert_eq!(lower, upper);
+        let path = self.data_path.join(id).join(tag).join(lower);
+        Ok(fs::read(path)?)
     }
 }
 
