@@ -6,16 +6,14 @@ use tonic::{Status, Code};
 use crate::controller::types::*;
 use crate::common::*;
 
+const REQUEST_THRESHOLD: usize = 10;
+
 /// Data structure for adding and allocating hosts.
 pub struct HostScheduler {
     /// Password required for a host to register with the controller.
     password: String,
-    /// Index for the next host to allocate.
-    prev_host_i: usize,
-    /// Array of ordered hosts.
-    hosts: Vec<HostToken>,
     /// Enforces unique host names.
-    unique_hosts: HashMap<HostToken, Host>,
+    hosts: HashMap<HostToken, Host>,
 }
 
 /// Data structure so the controller knows how to contact the host.
@@ -26,27 +24,27 @@ pub struct HostResult {
     pub ip: String,
     /// Host port.
     pub port: u16,
+    /// Whether the include hook ID is cached.
+    pub cached: bool,
 }
 
 impl HostScheduler {
     /// Host metadata.
     #[cfg(test)]
     pub fn md(&self, id: &str) -> &HostMetadata {
-        &self.unique_hosts.get(id).unwrap().md
+        &self.hosts.get(id).unwrap().md
     }
 
     pub fn new(password: &str) -> Self {
         Self {
             password: password.to_string(),
-            prev_host_i: 0,
-            hosts: Vec::new(),
-            unique_hosts: HashMap::new(),
+            hosts: HashMap::new(),
         }
     }
 
     /// List of hosts.
     pub fn hosts(&self) -> Vec<Host> {
-        self.unique_hosts.values().map(|host| host.clone()).collect()
+        self.hosts.values().map(|host| host.clone()).collect()
     }
 
     /// Add a host.
@@ -71,77 +69,71 @@ impl HostScheduler {
             warn!("incorrect password from {} ({:?})", &id, addr);
             None
         } else {
-            for host in self.unique_hosts.values() {
+            for host in self.hosts.values() {
                 if id == host.id {
                     return None;
                 }
             }
             let host_token: HostToken = Token::gen();
             info!("ADDED host {} {:?} {}", id, addr, host_token);
-            assert!(!self.unique_hosts.contains_key(&host_token));
-            self.unique_hosts.insert(
+            assert!(!self.hosts.contains_key(&host_token));
+            self.hosts.insert(
                 host_token.clone(),
                 Host {
                     confirmed,
                     id,
-                    index: self.hosts.len(),
                     addr,
                     md: Default::default(),
                 },
             );
-            self.hosts.push(host_token.clone());
             Some(host_token)
         }
     }
 
     pub fn remove_host(&mut self, _id: &str) -> bool {
         /*
-        let removed_i = if let Some(host) = self.unique_hosts.remove(id) {
-            self.hosts.remove(host.index);
-            host.index
-        } else {
-            return false;
-        };
-        info!("REMOVED host {:?}", id);
-        for (_, host) in self.unique_hosts.iter_mut() {
-            if host.index > removed_i {
-                host.index -= 1;
-            }
-        }
-        true
+        self.hosts.remove(id).is_some()
         */
         unimplemented!()
     }
 
-    /// Find a host to connect to round-robin.
+    /// Find a host to connect.
     ///
     /// A host is available if there is at least one host is registered,
-    /// the host does not have an active request, and the last message from
-    /// the host was received less than two heartbeat intervals ago.
-    pub fn find_host(&mut self) -> Option<HostResult> {
-        if self.hosts.is_empty() {
-            return None;
-        }
-        let mut host_i = self.prev_host_i;
-        for _ in 0..self.hosts.len() {
-            host_i = (host_i + 1) % self.hosts.len();
-            let host_token = &self.hosts[host_i];
-            let host = self.unique_hosts.get_mut(host_token).unwrap();
-            if !host.is_confirmed() {
-                continue;
+    /// and the last message from  the host was received less than two
+    /// heartbeat intervals ago.
+    ///
+    /// Picks host with the least number of active requests. Prioritizes
+    /// those with the cached hook ID, unless has more than REQUEST_THRESHOLD
+    /// requests. Set threshold based on average execution time of hook ID,
+    /// but otherwise 10.
+    pub fn find_hosts(&mut self, hook_id: &HookID) -> Vec<HostResult> {
+        let mut hosts = self.hosts.iter()
+            .filter(|(_, host)| host.is_confirmed())
+            .filter(|(_, host)| {
+                let elapsed = host.md.last_msg.elapsed().as_secs();
+                elapsed <= 2 * crate::host::HEARTBEAT_INTERVAL
+            })
+            .map(|(host_token, host)| {
+                let cached = host.md.cached_hooks.contains(hook_id);
+                (host_token, host, cached)
+            })
+            .collect::<Vec<_>>();
+        hosts.sort_by_key(|(_, host, cached)| {
+            let mut indicator = 1;
+            if *cached && host.md.active_requests.len() < REQUEST_THRESHOLD {
+                indicator = 0;
             }
-            let elapsed = host.md.last_msg.elapsed().as_secs();
-            if elapsed > 2 * crate::host::HEARTBEAT_INTERVAL {
-                continue;
-            }
-            debug!("find_host picked => {:?}", host.addr);
-            return Some(HostResult {
-                host_token: host_token.clone(),
+            (indicator, host.md.active_requests.len())
+        });
+        hosts.iter().map(|(host_token, host, cached)| {
+            HostResult {
+                host_token: host_token.to_string(),
                 ip: host.addr.ip().to_string(),
                 port: host.addr.port(),
-            });
-        }
-        None
+                cached: *cached,
+            }
+        }).collect()
     }
 
     /// Notify the scheduler that a service is starting a request.
@@ -150,11 +142,15 @@ impl HostScheduler {
     /// request to the given description. Logs an error message if the host
     /// cannot be found, or an already active request is overwritten.
     pub fn notify_start(
-        &mut self, host_token: HostToken, process_token: ProcessToken
+        &mut self,
+        host_token: HostToken,
+        hook_id: HookID,
+        process_token: ProcessToken,
     ) {
-        if let Some(host) = self.unique_hosts.get_mut(&host_token) {
+        if let Some(host) = self.hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.insert(process_token);
+            host.md.cached_hooks.insert(hook_id);
             trace!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
         } else {
             error!("missing host");
@@ -170,7 +166,7 @@ impl HostScheduler {
     pub fn notify_end(
         &mut self, host_token: HostToken, process_token: ProcessToken
     ) -> Result<(), Status> {
-        if let Some(host) = self.unique_hosts.get_mut(&host_token) {
+        if let Some(host) = self.hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.remove(&process_token);
             host.md.total += 1;
@@ -189,7 +185,7 @@ impl HostScheduler {
     /// - token - The host token identifying the host.
     pub fn heartbeat(&mut self, token: HostToken) {
         trace!("heartbeat {}", token);
-        if let Some(host) = self.unique_hosts.get_mut(&token) {
+        if let Some(host) = self.hosts.get_mut(&token) {
             host.md.last_msg = Instant::now();
         } else {
             error!("missing host");
@@ -198,7 +194,7 @@ impl HostScheduler {
 
     /// Confirms a host. Authenticated in the web dashboard.
     pub fn confirm_host(&mut self, id: &HostID) {
-        if let Some(host) = self.unique_hosts.get_mut(id) {
+        if let Some(host) = self.hosts.get_mut(id) {
             if host.is_confirmed() {
                 warn!("attempted to confirm already confirmed host: {:?}", id);
             } else {

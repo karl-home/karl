@@ -7,7 +7,7 @@ use karl::protos::karl_host_server::KarlHostServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::builder().format_timestamp(None).init();
+    env_logger::builder().init();
     let matches = App::new("Karl Host")
         .arg(Arg::with_name("karl-path")
             .help("Absolute path to the base Karl directory.")

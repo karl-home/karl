@@ -80,11 +80,10 @@ fn symlink_storage(
 ///   base path, and should exist. The computation root contains the unpacked
 ///   and decompressed bytes of the compute request.
 pub fn run(
+    root_path: &Path,
     binary_path: PathBuf,
     args: Vec<String>,
     envs: Vec<String>,
-    _karl_path: &Path,
-    root_path: &Path,
 ) -> Result<(), Error> {
     // Directory layout
     // <request_id> = 123456
@@ -120,7 +119,7 @@ pub fn run(
 
     // Return the requested results.
     warn!("{}", String::from_utf8_lossy(&output.stdout));
-    warn!("{}", String::from_utf8_lossy(&output.stderr));
+    trace!("{}", String::from_utf8_lossy(&output.stderr));
     env::set_current_dir(&previous_dir).unwrap();
     Ok(())
 }

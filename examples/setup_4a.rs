@@ -34,23 +34,23 @@ async fn add_edges(
         true, // trigger
     ).await?;
 
-    // data edge person_detection.count -> differential_privacy
-    info!("add data edge from {}.count to {}", pd_hook_id, dp_hook_id);
-    karl::net::add_data_edge(
-        controller,
-        pd_hook_id.clone(),
-        String::from("count"),
-        dp_hook_id.clone(),
-        true,
-    ).await?;
+    // // data edge person_detection.count -> differential_privacy
+    // info!("add data edge from {}.count to {}", pd_hook_id, dp_hook_id);
+    // karl::net::add_data_edge(
+    //     controller,
+    //     pd_hook_id.clone(),
+    //     String::from("count"),
+    //     dp_hook_id.clone(),
+    //     true,
+    // ).await?;
 
-    // network edge differential_privacy -> https://metrics.karl.zapto.org
-    info!("add network edge from {} to {}", pd_hook_id, dp_hook_id);
-    karl::net::add_network_edge(
-        controller,
-        dp_hook_id.clone(),
-        String::from("https://metrics.karl.zapto.org"),
-    ).await?;
+    // // network edge differential_privacy -> https://metrics.karl.zapto.org
+    // info!("add network edge from {} to {}", pd_hook_id, dp_hook_id);
+    // karl::net::add_network_edge(
+    //     controller,
+    //     dp_hook_id.clone(),
+    //     String::from("https://metrics.karl.zapto.org"),
+    // ).await?;
     Ok(())
 }
 

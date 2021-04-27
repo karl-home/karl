@@ -9,7 +9,6 @@ extern crate rocket_contrib;
 
 mod dashboard;
 pub mod net;
-pub mod runtime;
 pub mod common;
 pub mod controller;
 mod host;

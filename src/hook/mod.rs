@@ -124,17 +124,30 @@ impl Hook {
     ///
     /// The caller must set the request token before sending the compute
     /// reuqest to a host over the network.
-    pub fn to_compute_request(&self) -> Result<protos::ComputeRequest, Error> {
-        let mut req = protos::ComputeRequest::default();
-        let hook = self.clone();
-        req.package = hook.package;
-        req.binary_path = hook.binary_path.into_os_string().into_string().unwrap();
-        req.args = hook.args.into_iter().collect();
-        req.envs = hook.md.envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-        req.file_perm = hook.md.file_perm.into_iter().map(|acl| acl.into()).collect();
-        req.state_perm = hook.md.state_perm.into_iter().collect();
-        req.network_perm = hook.md.network_perm.into_iter().collect();
-        Ok(req)
+    pub fn to_compute_request(
+        &self,
+        host_token: HostToken,
+        hook_id: String,
+        cached: bool,
+    ) -> Result<protos::ComputeRequest, Error> {
+        let package = if cached {
+            vec![]
+        } else {
+            self.package.clone()
+        };
+        let binary_path = self.binary_path.clone().into_os_string().into_string().unwrap();
+        let args = self.args.clone().into_iter().collect();
+        let envs = self.md.envs.clone().iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        let file_perm = self.md.file_perm.clone().into_iter().map(|acl| acl.into()).collect();
+        let state_perm = self.md.state_perm.clone().into_iter().collect();
+        let network_perm = self.md.network_perm.clone().into_iter().collect();
+        Ok(protos::ComputeRequest {
+            host_token,
+            hook_id,
+            cached,
+            package,
+            binary_path, args, envs, file_perm, state_perm, network_perm,
+        })
     }
 }
 

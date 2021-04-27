@@ -103,6 +103,7 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
+        warn!("FINISH step 8: push box");
         let req = req.into_inner();
         // self.audit_log.lock().unwrap().push(
         //     &req.process_token,
@@ -188,6 +189,8 @@ impl karl_controller_server::KarlController for Controller {
     async fn push_raw_data(
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
+        let now = Instant::now();
+        warn!("step 2: persisting data");
         let req = req.into_inner();
         let sensor_id = {
             let sensors = self.sensors.lock().unwrap();
@@ -200,6 +203,7 @@ impl karl_controller_server::KarlController for Controller {
         let (tag, timestamp) = self.data_sink.write().unwrap()
             .push_sensor_data(sensor_id, req.tag, req.data)
             .map_err(|e| e.into_status())?;
+        warn!("=> {} s", now.elapsed().as_secs_f32());
         self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
     }

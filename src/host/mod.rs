@@ -1,108 +1,36 @@
-use std::fs;
-use std::collections::{HashSet, HashMap};
+mod runtime;
+mod cache;
+mod perms;
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 
 use tokio;
 use reqwest::{self, Method, header::HeaderName};
-use flate2::read::GzDecoder;
-use tar::Archive;
 
 use tonic::{Request, Response, Status, Code};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
 use crate::common::*;
+use perms::ProcessPerms;
+use cache::PathManager;
 
 /// Frequency at which the host must send messages to the controller, in seconds.
 pub const HEARTBEAT_INTERVAL: u64 = 10;
-
-/// Permissions of an active process
-#[derive(Debug)]
-struct ProcessPerms {
-    /// State change permissions, tag to state key
-    state_perms: HashMap<String, String>,
-    /// Network permissions
-    network_perms: HashSet<String>,
-    /// File read permissions
-    read_perms: HashSet<PathBuf>,
-    /// File write permissions
-    write_perms: HashSet<PathBuf>,
-}
-
-impl ProcessPerms {
-    pub fn new(req: &ComputeRequest) -> Self {
-        let state_perms: HashMap<_, _> = req.state_perm.clone().into_iter()
-            .filter_map(|perm| {
-                let mut split = perm.split("=");
-                if let Some(tag) = split.next() {
-                    if let Some(key) = split.next() {
-                        return Some((tag.to_string(), key.to_string()));
-                    }
-                }
-                None
-            })
-            .collect();
-        let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
-        let read_perms: HashSet<_> = req.file_perm.iter()
-            .filter(|acl| acl.read)
-            .map(|acl| Path::new(&sanitize_path(&acl.path)).to_path_buf())
-            .collect();
-        // Processes cannot write to raw/
-        let write_perms: HashSet<_> = req.file_perm.iter()
-            .filter(|acl| acl.write)
-            .map(|acl| sanitize_path(&acl.path))
-            .filter(|path| !(path == "raw" || path.starts_with("raw/")))
-            .map(|path| Path::new(&path).to_path_buf())
-            .collect();
-        Self { state_perms, network_perms, read_perms, write_perms }
-    }
-
-    pub fn can_change_state(&self, tag: &str) -> Option<&String> {
-        self.state_perms.get(tag)
-    }
-
-    pub fn can_access_domain(&self, domain: &str) -> bool {
-        self.network_perms.contains(domain)
-    }
-
-    pub fn _can_read_file(&self, path: &Path) -> bool {
-        let mut next_path = Some(path);
-        while let Some(path) = next_path {
-            if self.read_perms.contains(path) {
-                return true;
-            }
-            next_path = path.parent();
-        }
-        false
-    }
-
-    pub fn _can_write_file(&self, path: &Path) -> bool {
-        let mut next_path = Some(path);
-        while let Some(path) = next_path {
-            if self.write_perms.contains(path) {
-                return true;
-            }
-            next_path = path.parent();
-        }
-        false
-    }
-}
 
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
     /// Secret host token, assigned after registering with controller
     host_token: Option<HostToken>,
-    /// Karl path, likely ~/.karl
-    karl_path: PathBuf,
-    /// Computation request base, likely ~/.karl/<id>
-    /// Computation root likely at ~/.karl/<id>/root/
-    base_path: PathBuf,
     /// Controller address.
     controller: String,
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
+    /// Path manager.
+    path_manager: Arc<PathManager>,
     /// Whether to validate tokens.
     validate: bool,
 }
@@ -112,6 +40,8 @@ impl karl_host_server::KarlHost for Host {
     async fn start_compute(
         &self, req: Request<ComputeRequest>,
     ) -> Result<Response<NotifyStart>, Status> {
+        let now = Instant::now();
+        warn!("step 5: host receives compute request");
         let mut req = req.into_inner();
         let process_token = Token::gen();
         let perms = ProcessPerms::new(&req);
@@ -125,8 +55,7 @@ impl karl_host_server::KarlHost for Host {
         // Handle the process asynchronously
         {
             let binary_path = Path::new(&req.binary_path).to_path_buf();
-            let karl_path = self.karl_path.clone();
-            let base_path = self.base_path.clone();
+            let path_manager = self.path_manager.clone();
             let controller = self.controller.clone();
             let process_tokens = self.process_tokens.clone();
             let host_token = self.host_token.clone().ok_or(
@@ -134,9 +63,11 @@ impl karl_host_server::KarlHost for Host {
             let process_token = process_token.clone();
             tokio::spawn(async move {
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
+                warn!("=> {} s", now.elapsed().as_secs_f32());
                 Host::handle_compute(
-                    karl_path,
-                    base_path,
+                    path_manager,
+                    req.hook_id,
+                    req.cached,
                     req.package,
                     binary_path,
                     req.args,
@@ -301,26 +232,6 @@ impl karl_host_server::KarlHost for Host {
     }
 }
 
-/// Unpackage the bytes of the tarred and gzipped request to the base path.
-/// This is the input root.
-///
-/// Creates the root path directory if it does not already exist.
-fn unpack_request(package: &[u8], root: &Path) -> Result<(), Error> {
-    let now = Instant::now();
-    let tar = GzDecoder::new(package);
-    let mut archive = Archive::new(tar);
-    fs::create_dir_all(root).unwrap();
-    archive.unpack(root).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
-    info!("=> unpacked request to {:?}: {} s", root, now.elapsed().as_secs_f32());
-    Ok(())
-}
-
-impl Drop for Host {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.base_path);
-    }
-}
-
 impl Host {
     /// Generate a new host with a random ID.
     pub fn new(
@@ -329,14 +240,12 @@ impl Host {
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
-        let base_path = karl_path.join(id.to_string());
         Self {
             id,
             host_token: None,
-            karl_path,
-            base_path,
             controller: controller.to_string(),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
+            path_manager: Arc::new(PathManager::new(karl_path, id)),
             validate: false,
         }
     }
@@ -353,12 +262,6 @@ impl Host {
     /// - port - The port to listen on.
     /// - password - The password to register with the controller.
     pub async fn start(&mut self, port: u16, password: &str) -> Result<(), Status> {
-        // Create the <KARL_PATH> if it does not already exist.
-        fs::create_dir_all(&self.karl_path).unwrap();
-        // Set the current working directory to the <KARL_PATH>.
-        std::env::set_current_dir(&self.karl_path).unwrap();
-        debug!("create karl_path {:?}", &self.karl_path);
-
         let controller_addr = self.controller.clone();
         let host_token = crate::net::register_host(
             &self.controller, self.id, port, password).await?.into_inner().host_token;
@@ -385,40 +288,50 @@ impl Host {
     ///
     /// The client must be verified by the caller.
     fn handle_compute(
-        karl_path: PathBuf,
-        base_path: PathBuf,
+        path_manager: Arc<PathManager>,
+        hook_id: HookID,
+        cached: bool,
         package: Vec<u8>,
         binary_path: PathBuf,
         args: Vec<String>,
         envs: Vec<String>,
     ) -> Result<(), Error> {
-        info!("handling compute (len {}): command => {:?} {:?} envs => {:?}",
-            package.len(), binary_path, args, envs);
+        info!("handling compute (len {}) cached={}: command => {:?} {:?} envs => {:?}",
+            cached, package.len(), binary_path, args, envs);
+
         let now = Instant::now();
+        warn!("step 6a: unpacking request");
+        if cached && !path_manager.is_cached(&hook_id) {
+            return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
+        }
+        if !cached {
+            path_manager.cache_hook(&hook_id, package)?;
+        }
+        warn!("=> {} s", now.elapsed().as_secs_f32());
+        warn!("step 6b: mounting request overlayfs");
+        let (mount, paths) = path_manager.new_request(&hook_id);
+        // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
+        warn!("=> {} s", now.elapsed().as_secs_f32());
 
-        use rand::Rng;
-        let random_path: u32 = rand::thread_rng().gen();
-        let root_path = base_path.join(random_path.to_string());
-        unpack_request(&package[..], &root_path)?;
-        info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
-
-        let _res = crate::runtime::run(
+        let now = Instant::now();
+        warn!("step 7: invoke the binary");
+        let _res = runtime::run(
+            &paths.root_path,
             binary_path,
             args,
             envs,
-            &karl_path,
-            &root_path,
         )?;
+        warn!("=> {} s", now.elapsed().as_secs_f32());
 
         // Reset the root for the next computation.
-        std::env::set_current_dir(&karl_path).unwrap();
-        if let Err(e) = std::fs::remove_dir_all(&root_path) {
-            error!("error resetting root: {:?}", e);
+        path_manager.unmount(mount);
+        if let Err(e) = std::fs::remove_dir_all(&paths.request_path) {
+            error!("error resetting request path: {:?}", e);
         }
         let now = Instant::now();
         info!(
             "reset directory at {:?} => {} s",
-            root_path,
+            &paths.request_path,
             now.elapsed().as_secs_f32(),
         );
         Ok(())

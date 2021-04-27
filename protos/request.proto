@@ -49,13 +49,21 @@ message FileACL {
 
 message ComputeRequest {
   string host_token = 1;
-  bytes package = 2;
-  string binary_path = 3;
-  repeated string args = 4;
-  repeated string envs = 5;
-  repeated FileACL file_perm = 6;
-  repeated string network_perm = 7;
-  repeated string state_perm = 8;
+
+  // caching
+  string hook_id = 2;
+  bool cached = 3;
+  bytes package = 4;
+
+  // arguments
+  string binary_path = 5;
+  repeated string args = 6;
+  repeated string envs = 7;
+
+  // permissions
+  repeated FileACL file_perm = 8;
+  repeated string network_perm = 9;
+  repeated string state_perm = 10;
 }
 
 message NotifyStart {

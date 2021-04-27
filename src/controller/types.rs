@@ -20,8 +20,6 @@ pub type HookID = String;
 pub struct Host {
     /// Whether the user has confirmed this host.
     pub(crate) confirmed: bool,
-    /// Index, used internally.
-    pub(crate) index: usize,
     /// Host ID.
     pub id: HostID,
     /// Host address.
@@ -32,6 +30,8 @@ pub struct Host {
 
 #[derive(Debug, Clone)]
 pub struct HostMetadata {
+    /// Cached hook IDs:
+    pub cached_hooks: HashSet<HookID>,
     /// All active requests.
     pub active_requests: HashSet<ProcessToken>,
     /// Time of last heartbeat, notify start, or notify end.
@@ -93,6 +93,7 @@ impl Serialize for Host {
 impl Default for HostMetadata {
     fn default() -> Self {
         Self {
+            cached_hooks: HashSet::new(),
             active_requests: HashSet::new(),
             last_msg: Instant::now(),
             total: 0,

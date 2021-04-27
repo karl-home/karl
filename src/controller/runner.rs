@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex, RwLock};
 use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
+use std::time::Instant;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
 use crate::controller::types::*;
@@ -121,6 +122,8 @@ impl HookRunner {
     ) -> usize {
         // debug!("spawn_if_watched? {}/{}, internal {:?}",
         //     tag, timestamp, self.watched_tags.read().unwrap());
+        let now = Instant::now();
+        warn!("step 3: check watched tag and queue hook");
         let hook_ids = {
             let mut hook_ids = HashSet::new();
             let watched_tags = self.watched_tags.read().unwrap();
@@ -136,6 +139,7 @@ impl HookRunner {
         let tx = self.tx.as_ref().unwrap();
         let spawned = hook_ids.len();
         for hook_id in hook_ids {
+            warn!("=> {} s", now.elapsed().as_secs_f32());
             tx.send(QueuedHook {
                 id: hook_id,
                 tag: Some(tag.clone()),
@@ -153,11 +157,32 @@ impl HookRunner {
         mock_send_compute: bool,
     ) {
         loop {
-            // Generate a compute request based on the queued hook.
             let next: QueuedHook = rx.recv().await.unwrap();
+            let now = Instant::now();
+
+            // Find an available host.
+            warn!("step 4a: find a host");
             let hook_id = next.id;
+            let process_id = gen_process_id();
+            let hosts = loop {
+                let hosts = scheduler.lock().unwrap().find_hosts(&hook_id);
+                if !hosts.is_empty() {
+                    break hosts;
+                }
+                time::sleep(Duration::from_secs(1)).await;
+            };
+            let host = &hosts[0];
+            let host_addr = format!("http://{}:{}", host.ip, host.port);
+            warn!("=> {} s", now.elapsed().as_secs_f32());
+
+            // Generate a compute request based on the queued hook.
+            warn!("step 4b: runner prepares request");
             let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
-                match hook.to_compute_request() {
+                match hook.to_compute_request(
+                    host.host_token.clone(),
+                    hook_id.clone(),
+                    host.cached,
+                ) {
                     Ok(req) => req,
                     Err(e) => {
                         error!("Error converting hook {:?}: {:?}", hook_id, e);
@@ -165,6 +190,7 @@ impl HookRunner {
                     },
                 }
             } else {
+                warn!("queued missing hook");
                 continue;
             };
             if let Some(tag) = next.tag {
@@ -173,24 +199,16 @@ impl HookRunner {
             if let Some(timestamp) = next.timestamp {
                 request.envs.push(format!("TRIGGERED_TIMESTAMP={}", timestamp));
             }
-
-            // Find an available host and prepare the request.
-            let process_id = gen_process_id();
-            let host = loop {
-                if let Some(host) = scheduler.lock().unwrap().find_host() {
-                    break host;
-                }
-                time::sleep(Duration::from_secs(1)).await;
-            };
-            let host_addr = format!("http://{}:{}", host.ip, host.port);
-            request.host_token = host.host_token.clone();
+            warn!("=> {} s", now.elapsed().as_secs_f32());
 
             // Send the request.
             let process_token = if !mock_send_compute {
+                warn!("step 4c: send compute request");
                 match crate::net::send_compute(&host_addr, request).await {
                     Ok(result) => result.into_inner().process_token,
                     Err(e) => {
                         error!("error spawning hook {}: {:?}", hook_id, e);
+                        // TODO: retry?
                         continue;
                     },
                 }
@@ -198,12 +216,17 @@ impl HookRunner {
                 warn!("generated process token for testing");
                 Token::gen()
             };
+            warn!("=> {} s", now.elapsed().as_secs_f32());
 
             // Update internal data structures.
             // In particular, mark which host is doing the computation.
             // Then log the process start.
             debug!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
-            scheduler.lock().unwrap().notify_start(host.host_token, process_token.clone());
+            scheduler.lock().unwrap().notify_start(
+                host.host_token.clone(),
+                hook_id.clone(),
+                process_token.clone(),
+            );
             audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
         }
     }

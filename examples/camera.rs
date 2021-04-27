@@ -69,18 +69,21 @@ async fn motion_detection(
     loop {
         let tag = "motion".to_string();
         interval.tick().await;
+        warn!("START step 1: pushing image");
+        let now = Instant::now();
         karl::net::push_raw_data(
             &controller,
             sensor_token.clone(),
             tag,
             image_bytes.clone(),
         ).await.unwrap();
+        warn!("=> {} s", now.elapsed().as_secs_f32());
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::builder().format_timestamp(None).init();
+    env_logger::builder().init();
     let matches = App::new("Camera sensor")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")

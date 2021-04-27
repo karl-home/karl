@@ -40,6 +40,8 @@ pub enum Error {
     StorageError(String),
     /// Error processing proxy request.
     ProxyError(String),
+    /// Error with hook cache.
+    CacheError(String),
     /// Unable to verify that a NotifyStart, NotifyEnd, or HostHeartbeat
     /// message came from a real host.
     InvalidHostMessage(String),
