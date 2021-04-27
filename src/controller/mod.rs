@@ -293,9 +293,17 @@ impl karl_controller_server::KarlController for Controller {
     }
 
     async fn add_network_edge(
-        &self, _req: Request<AddNetworkEdgeRequest>,
+        &self, req: Request<AddNetworkEdgeRequest>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        info!("add_network_edge {} -> {}", req.output_id, req.domain);
+        let mut hooks = self.runner.hooks.lock().unwrap();
+        if let Some(hook) = hooks.get_mut(&req.output_id) {
+            hook.md.network_perm.push(req.domain);
+            Ok(Response::new(()))
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
     }
 
     async fn persist_tag(

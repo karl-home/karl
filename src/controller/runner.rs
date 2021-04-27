@@ -17,7 +17,7 @@ struct QueuedHook {
 pub struct HookRunner {
     tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
-    hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
+    pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     /// Watched tags and the hooks they spawn.
     watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
 }

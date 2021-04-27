@@ -44,7 +44,13 @@ async fn add_edges(
         true,
     ).await?;
 
-    // TODO: network edge differential_privacy -> https://metrics.karl.zapto.org
+    // network edge differential_privacy -> https://metrics.karl.zapto.org
+    info!("add network edge from {} to {}", pd_hook_id, dp_hook_id);
+    karl::net::add_network_edge(
+        controller,
+        dp_hook_id.clone(),
+        String::from("https://metrics.karl.zapto.org"),
+    ).await?;
     Ok(())
 }
 

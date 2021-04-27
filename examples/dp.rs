@@ -9,5 +9,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let api = KarlAPI::new();
     let data = api.get(&tag, &timestamp, &timestamp).await?;
     println!("counted {:?}", data);
+    let res = api.network("https://metrics.karl.zapto.org", "POST", vec![], data).await;
+    println!("response = {}", res);
     Ok(())
 }

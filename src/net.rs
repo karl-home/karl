@@ -65,6 +65,30 @@ impl KarlAPI {
             .push(Request::new(req)).await
             .map(|res| res.into_inner())
     }
+
+    pub async fn network(
+        &self,
+        domain: &str,
+        method: &str,
+        headers: Vec<(Vec<u8>, Vec<u8>)>,
+        body: Vec<u8>,
+    ) -> Result<NetworkAccessResult, Status> {
+        let headers = headers
+            .into_iter()
+            .map(|(key, value)| { KeyValuePair { key, value } })
+            .collect();
+        let req = NetworkAccess {
+            host_token: String::new(),
+            process_token: self.token.clone(),
+            domain: domain.to_string(),
+            method: method.to_string(),
+            headers,
+            body,
+        };
+        KarlHostClient::connect(self.host_addr.clone()).await.unwrap()
+            .network(Request::new(req)).await
+            .map(|res| res.into_inner())
+    }
 }
 
 /// Registers a hook.
@@ -146,6 +170,21 @@ pub async fn add_data_edge(
         trigger,
     };
     client.add_data_edge(Request::new(request)).await
+}
+
+/// Adds network edge.
+pub async fn add_network_edge(
+    controller_addr: &str,
+    output_id: String,
+    domain: String,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = AddNetworkEdgeRequest {
+        output_id,
+        domain,
+    };
+    client.add_network_edge(Request::new(request)).await
 }
 
 /*****************************************************************************
