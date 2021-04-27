@@ -9,7 +9,7 @@ pub enum LogEntryType {
     Put { path: String },
     Get { path: String },
     Network { domain: String },
-    State { sensor_id: String, key: String, value: String },
+    State { sensor_id: String, key: String, value: Vec<u8> },
 }
 
 /// Log entry.
@@ -93,7 +93,7 @@ impl AuditLog {
                 info!("PID {} network {}", process_id, domain);
             },
             LogEntryType::State { sensor_id, key, value } => {
-                info!("PID {} state {} {} => {}", process_id, &sensor_id, &key, &value);
+                info!("PID {} state {} {} => {:?}", process_id, &sensor_id, &key, &value);
                 self.sensor_entries
                     .entry(sensor_id.to_string())
                     .or_insert(vec![])

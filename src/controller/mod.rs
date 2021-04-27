@@ -287,9 +287,20 @@ impl karl_controller_server::KarlController for Controller {
     }
 
     async fn add_state_edge(
-        &self, _req: Request<AddStateEdgeRequest>,
+        &self, req: Request<AddStateEdgeRequest>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        info!("add_state_edge {}.{} -> {}.{}",
+            req.output_id, req.output_tag, req.input_id, req.input_key);
+        let mut hooks = self.runner.hooks.lock().unwrap();
+        if let Some(hook) = hooks.get_mut(&req.output_id) {
+            let state_perm = format!("{}.{}={}.{}",
+                req.output_id, req.output_tag, req.input_id, req.input_key);
+            hook.md.state_perm.push(state_perm);
+            Ok(Response::new(()))
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
     }
 
     async fn add_network_edge(
@@ -313,9 +324,17 @@ impl karl_controller_server::KarlController for Controller {
     }
 
     async fn set_interval(
-        &self, _req: Request<SetIntervalRequest>,
+        &self, req: Request<SetIntervalRequest>,
     ) -> Result<Response<()>, Status> {
-        unimplemented!()
+        let req = req.into_inner();
+        info!("set_interval {} = {}s", req.hook_id, req.seconds);
+        if self.runner.hooks.lock().unwrap().contains_key(&req.hook_id) {
+            let duration = std::time::Duration::from_secs(req.seconds.into());
+            self.runner.set_interval(req.hook_id, duration);
+            Ok(Response::new(()))
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
     }
 }
 

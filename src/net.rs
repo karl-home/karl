@@ -172,6 +172,25 @@ pub async fn add_data_edge(
     client.add_data_edge(Request::new(request)).await
 }
 
+/// Adds state edge.
+pub async fn add_state_edge(
+    controller_addr: &str,
+    output_id: String,
+    output_tag: String,
+    input_id: String,
+    input_key: String,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = AddStateEdgeRequest {
+        output_id,
+        output_tag,
+        input_id,
+        input_key,
+    };
+    client.add_state_edge(Request::new(request)).await
+}
+
 /// Adds network edge.
 pub async fn add_network_edge(
     controller_addr: &str,
@@ -185,6 +204,36 @@ pub async fn add_network_edge(
         domain,
     };
     client.add_network_edge(Request::new(request)).await
+}
+
+/// Adds network edge.
+pub async fn set_interval(
+    controller_addr: &str,
+    hook_id: String,
+    seconds: u32,
+) -> Result<Response<()>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = SetIntervalRequest {
+        hook_id,
+        seconds,
+    };
+    client.set_interval(Request::new(request)).await
+}
+
+/// Connect to the controller for state changes.
+pub async fn connect_state(
+    controller_addr: &str,
+    sensor_token: &str,
+    keys: Vec<String>,
+) -> Result<Response<tonic::Streaming<StateChangePair>>, Status> {
+    let mut client = KarlControllerClient::connect(controller_addr.to_string())
+        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
+    let request = StateChangeInit {
+        sensor_token: sensor_token.to_string(),
+        keys,
+    };
+    client.state_changes(Request::new(request)).await
 }
 
 /*****************************************************************************

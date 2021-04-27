@@ -36,7 +36,7 @@ pub struct Hook {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct HookMetadata {
-    pub state_perm: Vec<SensorID>,
+    pub state_perm: Vec<String>, // <id>.<tag>=<sensor_id>.<key>
     pub network_perm: Vec<DomainName>,
     pub file_perm: Vec<FileACL>,
     pub envs: Vec<(String, String)>,
@@ -100,21 +100,6 @@ impl Hook {
             .map_err(|e| Error::HookInstallError(e.to_string()))?;
         hook.confirm(); // TODO
         Ok(hook)
-    }
-
-    pub fn set_network_perm(mut self, network_perm: Vec<DomainName>) -> Self {
-        self.md.network_perm = network_perm;
-        self
-    }
-
-    pub fn set_state_perm(mut self, state_perm: Vec<SensorID>) -> Self {
-        self.md.state_perm = state_perm;
-        self
-    }
-
-    pub fn set_file_perm(mut self, file_perm: Vec<FileACL>) -> Self {
-        self.md.file_perm = file_perm;
-        self
     }
 
     /// `<KEY>=<VALUE>`

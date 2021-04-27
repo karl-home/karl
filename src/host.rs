@@ -18,9 +18,10 @@ use crate::common::*;
 pub const HEARTBEAT_INTERVAL: u64 = 10;
 
 /// Permissions of an active process
+#[derive(Debug)]
 struct ProcessPerms {
-    /// State change permissions
-    state_perms: HashSet<SensorID>,
+    /// State change permissions, tag to state key
+    state_perms: HashMap<String, String>,
     /// Network permissions
     network_perms: HashSet<String>,
     /// File read permissions
@@ -31,7 +32,17 @@ struct ProcessPerms {
 
 impl ProcessPerms {
     pub fn new(req: &ComputeRequest) -> Self {
-        let state_perms: HashSet<_> = req.state_perm.clone().into_iter().collect();
+        let state_perms: HashMap<_, _> = req.state_perm.clone().into_iter()
+            .filter_map(|perm| {
+                let mut split = perm.split("=");
+                if let Some(tag) = split.next() {
+                    if let Some(key) = split.next() {
+                        return Some((tag.to_string(), key.to_string()));
+                    }
+                }
+                None
+            })
+            .collect();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         let read_perms: HashSet<_> = req.file_perm.iter()
             .filter(|acl| acl.read)
@@ -47,8 +58,8 @@ impl ProcessPerms {
         Self { state_perms, network_perms, read_perms, write_perms }
     }
 
-    pub fn can_change_state(&self, sensor_id: &SensorID) -> bool {
-        self.state_perms.contains(sensor_id)
+    pub fn can_change_state(&self, tag: &str) -> Option<&String> {
+        self.state_perms.get(tag)
     }
 
     pub fn can_access_domain(&self, domain: &str) -> bool {
@@ -146,14 +157,12 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
-        if self.validate {
-            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-                if !perms.can_access_domain(&req.domain) {
-                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-                }
-            } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+            if !perms.can_access_domain(&req.domain) {
+                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
             }
+        } else {
+            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
 
         // Build the network request
@@ -171,6 +180,7 @@ impl karl_host_server::KarlHost for Host {
         };
         let mut builder = reqwest::Client::new()
             .request(method, req.domain.clone())
+            .timeout(Duration::from_secs(1))
             .body(req.body.clone());
         for header in &req.headers {
             let key = HeaderName::from_bytes(&header.key[..])
@@ -251,47 +261,43 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let mut req = req.into_inner();
-        if self.validate {
-            if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-                // if !perms.can_write_file(Path::new(&req.path)) {
-                //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-                // }
+        let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+            // if !perms.can_write_file(Path::new(&req.path)) {
+            //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+            // }
+            if let Some(sensor_key) = perms.can_change_state(&req.tag) {
+                let mut split = sensor_key.split(".");
+                let sensor = split.next().unwrap();
+                let key = split.next().unwrap();
+                Some((sensor.to_string(), key.to_string()))
             } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+                None
             }
-        }
+        } else {
+            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+        };
 
-        // Forward the file access to the controller and return the result
-        req.host_token = self.host_token.clone().ok_or(
+        let host_token = self.host_token.clone().ok_or(
             Status::new(Code::Unavailable, "host is not registered with controller"))?;
-        KarlControllerClient::connect(self.controller.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_push(Request::new(req)).await
-    }
-
-    async fn state(
-        &self, req: Request<StateChange>,
-    ) -> Result<Response<()>, Status> {
-        // Validate the process is valid and has permissions to change state.
-        // No serializability guarantees from other requests from the same process.
-        // Sanitizes the path.
-        let mut req = req.into_inner();
-        if self.validate {
-            if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-                if !perms.can_change_state(&req.sensor_id) {
-                    return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-                }
-            } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
-            }
+        if let Some((sensor, key)) = sensor_key {
+            // Forward as state change if the tag changes state.
+            let req = StateChange {
+                host_token,
+                process_token: req.process_token,
+                sensor_id: sensor,
+                key,
+                value: req.data,
+            };
+            KarlControllerClient::connect(self.controller.clone()).await
+                .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+                .forward_state(Request::new(req)).await
+        } else {
+            // Forward the file access to the controller and return the result
+            req.host_token = host_token;
+            KarlControllerClient::connect(self.controller.clone()).await
+                .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+                .forward_push(Request::new(req)).await
         }
-
-        // Forward the file access to the controller and return the result
-        req.host_token = self.host_token.clone().ok_or(
-            Status::new(Code::Unavailable, "host is not registered with controller"))?;
-        KarlControllerClient::connect(self.controller.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_state(Request::new(req)).await
     }
 }
 
@@ -372,19 +378,6 @@ impl Host {
                 };
             }
         });
-
-        let mut process_tokens = self.process_tokens.lock().unwrap();
-        let mut perms = ProcessPerms {
-            state_perms: HashSet::new(),
-            network_perms: HashSet::new(),
-            read_perms: HashSet::new(),
-            write_perms: HashSet::new(),
-        };
-        perms.read_perms.insert(Path::new("raw/camera").to_path_buf());
-        perms.write_perms.insert(Path::new("helloworld").to_path_buf());
-        perms.network_perms.insert("https://www.google.com".to_string());
-        let process_token = "abcdefghijklmnopqrstuvwxyz".to_string();
-        process_tokens.insert(process_token, perms);
         Ok(())
     }
 

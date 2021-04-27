@@ -36,9 +36,22 @@ async fn register(
 }
 
 /// Listen for state changes.
-async fn handle_state_changes() -> Result<(), Box<dyn Error>> {
-    // TODO: on firmware, "install" the firmware
-    // TODO: on livestream, start writing to livestream tag
+async fn handle_state_changes(
+    controller: String,
+    sensor_token: String,
+) -> Result<(), Box<dyn Error>> {
+    let keys = vec![String::from("firmware"), String::from("livestream")];
+    let mut conn = karl::net::connect_state(
+        &controller, &sensor_token, keys.clone()).await?.into_inner();
+    while let Some(msg) = conn.message().await? {
+        if msg.key == keys[0] {
+            println!("firmware update!");
+        } else if msg.key == keys[1] {
+            // TODO: on livestream, start writing to livestream tag
+        } else {
+            println!("unexpected key: {}", msg.key);
+        }
+    }
     Ok(())
 }
 
@@ -87,7 +100,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let addr = format!("http://{}:{}", ip, port);
     let (sensor_token, sensor_id) = register(&addr).await?;
     let state_change_handle = {
-        tokio::spawn(async move { handle_state_changes().await.unwrap() })
+        let addr = addr.to_string();
+        let sensor_token = sensor_token.clone();
+        tokio::spawn(async move {
+            handle_state_changes(addr, sensor_token).await.unwrap()
+        })
     };
     let motion_detection_handle = {
         let addr = addr.to_string();

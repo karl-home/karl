@@ -8,7 +8,6 @@ service KarlHost {
   rpc Network (NetworkAccess) returns (NetworkAccessResult);
   rpc Get (GetData) returns (GetDataResult);
   rpc Push (PushData) returns (google.protobuf.Empty);
-  rpc State (StateChange) returns (google.protobuf.Empty);
 }
 
 service KarlController {
@@ -109,7 +108,7 @@ message StateChangeInit {
 
 message StateChangePair {
   string key = 1;
-  string value = 2;
+  bytes value = 2;
 }
 
 message StateChange {
@@ -117,7 +116,7 @@ message StateChange {
   string process_token = 2;
   string sensor_id = 3;
   string key = 4;
-  string value = 5;
+  bytes value = 5;
 }
 
 /****************************************************************************
@@ -209,7 +208,6 @@ message AddStateEdgeRequest {
   string output_tag = 2;
   string input_id = 3;
   string input_key = 4;
-  bool trigger = 5;
 }
 
 message AddNetworkEdgeRequest {
