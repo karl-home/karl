@@ -22,7 +22,7 @@ async fn register_hook(
 async fn add_edges(
     controller: &str,
     pd_hook_id: String,
-    // dp_hook_id: String,
+    dp_hook_id: String,
 ) -> Result<(), Box<dyn Error>> {
     // data edge camera.motion -> person_detection
     info!("add data edge from camera.motion to {}", pd_hook_id);
@@ -34,7 +34,16 @@ async fn add_edges(
         true, // trigger
     ).await?;
 
-    // TODO: data edge person_detection.count -> differential_privacy
+    // data edge person_detection.count -> differential_privacy
+    info!("add data edge from {}.count to {}", pd_hook_id, dp_hook_id);
+    karl::net::add_data_edge(
+        controller,
+        pd_hook_id.clone(),
+        String::from("count"),
+        dp_hook_id.clone(),
+        true,
+    ).await?;
+
     // TODO: network edge differential_privacy -> https://metrics.karl.zapto.org
     Ok(())
 }
@@ -65,7 +74,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let port = matches.value_of("port").unwrap();
     let addr = format!("http://{}:{}", ip, port);
     let pd_hook_id = register_hook(&addr, "person_detection").await?;
-    // register_hook(&addr, "differential_privacy").await?;
-    add_edges(&addr, pd_hook_id).await?;
+    let dp_hook_id = register_hook(&addr, "differential_privacy").await?;
+    add_edges(&addr, pd_hook_id, dp_hook_id).await?;
     Ok(())
 }

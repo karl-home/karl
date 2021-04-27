@@ -52,9 +52,10 @@ async fn motion_detection(
     let image_bytes = fs::read(image_path)?;
     let duration = Duration::from_secs(30);
     let mut interval = tokio::time::interval(duration);
+    tokio::time::sleep(Duration::from_secs(10)).await;
     loop {
-        interval.tick().await;
         let tag = "motion".to_string();
+        interval.tick().await;
         karl::net::push_raw_data(
             &controller,
             sensor_token.clone(),

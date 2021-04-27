@@ -155,7 +155,7 @@ impl HostScheduler {
         if let Some(host) = self.unique_hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.insert(process_token);
-            info!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
+            trace!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
         } else {
             error!("missing host");
         }
@@ -170,12 +170,11 @@ impl HostScheduler {
     pub fn notify_end(
         &mut self, host_token: HostToken, process_token: ProcessToken
     ) -> Result<(), Status> {
-        info!("notify end host={:?} process={:?}", host_token, process_token);
         if let Some(host) = self.unique_hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.remove(&process_token);
             host.md.total += 1;
-            info!("notify end host_id={} total={}", host.id, host.md.active_requests.len());
+            trace!("notify end host_id={} total={}", host.id, host.md.active_requests.len());
             Ok(())
         } else {
             error!("missing host");

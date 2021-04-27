@@ -8,11 +8,64 @@
 //! If the request to a host is unsuccessful, the client must query the
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
+use std::env;
 use tonic::{Request, Response, Status, Code};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::karl_host_client::KarlHostClient;
 use crate::protos::*;
 use crate::common::*;
+
+pub struct KarlAPI {
+    pub global_hook_id: String,
+    pub hook_id: String,
+    pub token: String,
+    pub host_addr: String,
+}
+
+impl KarlAPI {
+    pub fn new() -> Self {
+        Self {
+            global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
+            hook_id: env::var("HOOK_ID").unwrap(),
+            token: env::var("PROCESS_TOKEN").unwrap(),
+            host_addr: String::from("http://localhost:59583"),
+        }
+    }
+
+    pub async fn get(
+        &self,
+        tag: &str,
+        lower: &str,
+        upper: &str,
+    ) -> Result<Vec<u8>, Status> {
+        let req = GetData {
+            host_token: String::new(),
+            process_token: self.token.clone(),
+            tag: tag.to_string(),
+            lower: lower.to_string(),
+            upper: upper.to_string(),
+        };
+        KarlHostClient::connect(self.host_addr.clone()).await.unwrap()
+            .get(Request::new(req)).await
+            .map(|res| res.into_inner().data)
+    }
+
+    pub async fn push(
+        &self,
+        tag: &str,
+        data: Vec<u8>,
+    ) -> Result<(), Status> {
+        let req = PushData {
+            host_token: String::new(),
+            process_token: self.token.clone(),
+            tag: format!("{}.{}", self.hook_id, tag),
+            data,
+        };
+        KarlHostClient::connect(self.host_addr.clone()).await.unwrap()
+            .push(Request::new(req)).await
+            .map(|res| res.into_inner())
+    }
+}
 
 /// Registers a hook.
 pub async fn register_hook(

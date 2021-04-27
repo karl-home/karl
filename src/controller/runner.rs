@@ -202,7 +202,7 @@ impl HookRunner {
             // Update internal data structures.
             // In particular, mark which host is doing the computation.
             // Then log the process start.
-            info!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
+            debug!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
             scheduler.lock().unwrap().notify_start(host.host_token, process_token.clone());
             audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
         }
