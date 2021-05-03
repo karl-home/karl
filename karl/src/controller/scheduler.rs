@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use tonic::{Status, Code};
-use crate::controller::types::*;
-use crate::common::*;
+use karl_common::*;
 
 const REQUEST_THRESHOLD: usize = 10;
 
@@ -112,7 +111,7 @@ impl HostScheduler {
             .filter(|(_, host)| host.is_confirmed())
             .filter(|(_, host)| {
                 let elapsed = host.md.last_msg.elapsed().as_secs();
-                elapsed <= 2 * crate::host::HEARTBEAT_INTERVAL
+                elapsed <= 2 * HEARTBEAT_INTERVAL
             })
             .map(|(host_token, host)| {
                 let cached = host.md.cached_hooks.contains(hook_id);

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use bincode;
 use serde::{Serialize, Deserialize};
 use tokio::time::Duration;
-use crate::common::*;
+use karl_common::*;
 use crate::protos;
 
 pub const HOOK_STORE_PATH: &str = "hooks";

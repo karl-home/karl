@@ -4,9 +4,8 @@ use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
-use crate::controller::types::*;
 use crate::hook::Hook;
-use crate::common::*;
+use karl_common::*;
 
 #[derive(Debug)]
 struct QueuedHook {

@@ -2,8 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use chrono;
 use serde::{Serialize, Deserialize};
-use crate::common::Error;
-use crate::controller::types::*;
+use karl_common::*;
 
 /// Persistent data sink.
 ///

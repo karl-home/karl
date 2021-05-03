@@ -29,6 +29,7 @@ tonic = "0.4"
 prost = "0.7"
 chrono = "0.4"
 sys-mount = "1.2"
+karl-common = { path = "../karl-common" }
 
 [dependencies.rocket_contrib]
 version = "0.4.6"
@@ -44,7 +45,3 @@ tempdir = "0.3"
 [[bin]]
 name = "controller"
 path = "src/bin/controller.rs"
-
-[[bin]]
-name = "host"
-path = "src/bin/host.rs"

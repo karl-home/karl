@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 use std::path::{Path, PathBuf};
-use crate::common::*;
+use karl_common::*;
 
 #[derive(Debug, Clone)]
 pub enum LogEntryType {

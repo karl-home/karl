@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use bincode;
 use karl::hook::{Hook, HOOK_STORE_PATH};
-use karl::common::TarBuilder;
+use karl_common::TarBuilder;
 
 fn read_nonempty_line() -> String {
     loop {

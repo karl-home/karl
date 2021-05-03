@@ -14,8 +14,8 @@ use rocket::{self, http::Cookies, State};
 use rocket_contrib::templates::Template;
 use serde::Serialize;
 
-use crate::common::SensorToken;
-use crate::controller::{HostScheduler, types::{Host, Client}};
+use karl_common::{SensorToken, Host, Client};
+use crate::controller::HostScheduler;
 use helper::*;
 use cookie::SessionState;
 

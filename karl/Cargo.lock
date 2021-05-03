@@ -960,6 +960,7 @@ dependencies = [
  "env_logger",
  "flate2",
  "handlebars",
+ "karl-common",
  "log 0.4.11",
  "prost",
  "rand 0.8.2",
@@ -976,6 +977,16 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-build",
+]
+
+[[package]]
+name = "karl-common"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "rand 0.8.2",
+ "serde",
+ "tar",
 ]
 
 [[package]]

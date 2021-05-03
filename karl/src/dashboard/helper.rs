@@ -2,7 +2,7 @@
 use serde::Serialize;
 use rocket::request::{FromRequest, Outcome};
 use handlebars::{Helper, Handlebars, Context, RenderContext, Output, HelperResult};
-use crate::common::Error;
+use karl_common::Error;
 
 #[derive(Serialize, Debug)]
 pub struct RequestHeaders(pub Vec<(String, String)>);

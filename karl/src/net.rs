@@ -13,7 +13,7 @@ use tonic::{Request, Response, Status, Code};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::karl_host_client::KarlHostClient;
 use crate::protos::*;
-use crate::common::*;
+use karl_common::*;
 
 /// Sends a compute request to the given host and returns the result.
 /// The only method in the Controller API.

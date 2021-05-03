@@ -1,4 +1,3 @@
-pub mod types;
 mod scheduler;
 mod data;
 mod audit;
@@ -7,7 +6,6 @@ pub use scheduler::HostScheduler;
 pub use data::DataSink;
 pub use audit::{AuditLog, LogEntry, LogEntryType};
 pub use runner::HookRunner;
-use types::*;
 
 use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -21,7 +19,14 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
 use crate::dashboard;
-use crate::common::*;
+use karl_common::*;
+
+pub fn to_status(e: Error) -> Status {
+    match e {
+        Error::InvalidHostMessage(s) => Status::new(Code::Unauthenticated, s),
+        e => Status::new(Code::Unknown, format!("{:?}", e)),
+    }
+}
 
 /// Controller used for discovering available Karl services and coordinating
 /// client requests among available services.
@@ -95,7 +100,7 @@ impl karl_controller_server::KarlController for Controller {
         // );
         let data = self.data_sink.read().unwrap()
             .get_data(req.tag, req.lower, req.upper)
-            .map_err(|e| e.into_status())?;
+            .map_err(|e| to_status(e))?;
         Ok(Response::new(GetDataResult { data }))
     }
 
@@ -111,7 +116,7 @@ impl karl_controller_server::KarlController for Controller {
         // );
         let (tag, timestamp) = self.data_sink.write().unwrap()
             .push_data(req.tag, req.data)
-            .map_err(|e| e.into_status())?;
+            .map_err(|e| to_status(e))?;
         // TODO: move to its own thread
         self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
@@ -181,7 +186,7 @@ impl karl_controller_server::KarlController for Controller {
         );
         self.data_sink.write().unwrap()
             .new_entity(res.sensor_id.clone(), req.tags)
-            .map_err(|e| e.into_status())?;
+            .map_err(|e| to_status(e))?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
     }
@@ -202,7 +207,7 @@ impl karl_controller_server::KarlController for Controller {
         };
         let (tag, timestamp) = self.data_sink.write().unwrap()
             .push_sensor_data(sensor_id, req.tag, req.data)
-            .map_err(|e| e.into_status())?;
+            .map_err(|e| to_status(e))?;
         warn!("=> {} s", now.elapsed().as_secs_f32());
         self.runner.spawn_if_watched(tag, timestamp).await;
         Ok(Response::new(()))
@@ -272,7 +277,7 @@ impl karl_controller_server::KarlController for Controller {
         let hook_id = self.register_hook(
             &req.token.to_string(),
             req.global_hook_id.to_string(),
-        ).map_err(|e| e.into_status())?;
+        ).map_err(|e| to_status(e))?;
         trace!("register_hook => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(RegisterHookResult { hook_id }))
     }
