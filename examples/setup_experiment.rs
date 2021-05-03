@@ -62,23 +62,23 @@ async fn register_hooks(
 /// Generate the graph from Figures 4 and 6 based on registered hooks.
 async fn generate_graph(hook_ids: HashMap<String, String>) {
     let data_edges_stateless = vec![
-        ("mic.sound", "command_classifier"),
-        ("mic_1.sound", "command_classifier"),
-        ("command_classifier.search", "search"),
-        ("command_classifier.light", "light_switch"),
-        ("camera.motion", "person_detection"),
-        ("person_detection.count", "differential_privacy"),
+        (("mic", "sound"), "command_classifier"),
+        (("mic_1", "sound"), "command_classifier"),
+        (("command_classifier", "search"), "search"),
+        (("command_classifier", "light"), "light_switch"),
+        (("camera", "motion"), "person_detection"),
+        (("person_detection", "count"), "differential_privacy"),
     ];
     let data_edges_stateful = vec![
-        ("camera.streaming", "targz"),
+        (("camera", "streaming"), "targz"),
     ];
     let state_edges = vec![
-        ("google.response", "mic.output"),
-        ("google.response", "mic_1.output"),
-        ("light_switch.state", "bulb.on"),
-        ("true.true", "camera.livestream"),
-        ("false.false", "camera.livestream"),
-        ("firmware_update.firmware", "camera.firmware"),
+        (("google", "response"), "mic.output"),
+        (("google", "response"), "mic_1.output"),
+        (("light_switch", "state"), "bulb.on"),
+        (("true", "true"), "camera.livestream"),
+        (("false", "false"), "camera.livestream"),
+        (("firmware_update", "firmware"), "camera.firmware"),
     ];
     let network_edges = vec![
         ("search", "google.com"),
@@ -86,7 +86,7 @@ async fn generate_graph(hook_ids: HashMap<String, String>) {
         ("firmware_update", "firmware.com"),
     ];
     let interval_schedule = vec![
-        ("firmware_update", 10),
+        ("firmware_update", 20),
     ];
 }
 

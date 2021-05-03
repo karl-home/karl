@@ -27,7 +27,7 @@ pub async fn send_compute(
 }
 
 #[derive(Debug, Clone)]
-pub struct KarlEntityAPI {
+pub struct KarlModuleAPI {
     pub global_hook_id: String,
     pub hook_id: String,
     pub process_token: String,
@@ -52,7 +52,7 @@ pub struct KarlHostAPI {
     pub host_token: Option<String>,
 }
 
-impl KarlEntityAPI {
+impl KarlModuleAPI {
     pub fn new() -> Self {
         Self {
             global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
@@ -60,6 +60,19 @@ impl KarlEntityAPI {
             process_token: env::var("PROCESS_TOKEN").unwrap(),
             host_addr: String::from("http://localhost:59583"),
         }
+    }
+
+    /// Returns None if this module was not triggered.
+    pub async fn get_triggered(&self) -> Result<Option<Vec<u8>>, Status> {
+        let (tag, timestamp) = {
+            let tag = env::var("TRIGGERED_TAG").ok();
+            let timestamp = env::var("TRIGGERED_TIMESTAMP").ok();
+            if tag.is_none() || timestamp.is_none() {
+                return Ok(None);
+            }
+            (tag.unwrap(), timestamp.unwrap())
+        };
+        self.get(&tag, &timestamp, &timestamp).await.map(|res| Some(res))
     }
 
     pub async fn get(
