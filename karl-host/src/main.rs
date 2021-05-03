@@ -29,9 +29,6 @@ use tonic::{Request, Response, Status, Code};
 use tonic::transport::Server;
 use clap::{Arg, App};
 
-/// Frequency at which the host must send messages to the controller, in seconds.
-pub const HEARTBEAT_INTERVAL: u64 = 10;
-
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
