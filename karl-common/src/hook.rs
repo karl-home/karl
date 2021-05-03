@@ -5,8 +5,6 @@ use serde::{Serialize, Deserialize};
 use std::time::Duration;
 use crate::*;
 
-const HOOK_STORE_PATH: &str = "hooks";
-
 type DomainName = String;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
