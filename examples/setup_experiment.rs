@@ -4,6 +4,7 @@ extern crate log;
 use std::collections::HashMap;
 use std::error::Error;
 use clap::{Arg, App};
+use karl::net::KarlUserAPI;
 
 const GLOBAL_HOOK_IDS: [&'static str; 9] = [
     "command_classifier",
@@ -24,34 +25,17 @@ const SENSOR_IDS: [&'static str; 4] = [
     "camera",
 ];
 
-/// Parses a string <entity_id>.<tag> as (<entity_id>, <tag>)
-fn parse_tag(tag: &str) -> (&str, &str) {
-    let mut split = tag.split(".");
-    (split.next().unwrap(), split.next().unwrap())
-}
-
-/// Registers a hook with the global hook ID and returns the hook ID.
-async fn register_hook(
-    addr: &str,
-    global_hook_id: &str,
-) -> Result<String, Box<dyn Error>> {
-    let res = karl::net::register_hook(addr, global_hook_id).await?;
-    let hook_id = res.into_inner().hook_id;
-    info!("register hook {} => {}", global_hook_id, hook_id);
-    Ok(hook_id)
-}
-
 /// Register all hooks for this test.
 /// Returns a map from global_hook_id to registered_hook_id.
 async fn register_hooks(
-    addr: &str,
+    api: &KarlUserAPI,
     global_hook_ids: &[&str],
 ) -> HashMap<String, String> {
     let mut hook_ids = HashMap::new();
     for global_hook_id in global_hook_ids {
-        match register_hook(&addr, global_hook_id).await {
-            Ok(hook_id) => {
-                hook_ids.insert(global_hook_id.to_string(), hook_id);
+        match api.register_hook(global_hook_id).await {
+            Ok(res) => {
+                hook_ids.insert(global_hook_id.to_string(), res.hook_id);
             },
             Err(error) => error!("{}", error),
         }
@@ -60,34 +44,45 @@ async fn register_hooks(
 }
 
 /// Generate the graph from Figures 4 and 6 based on registered hooks.
-async fn generate_graph(hook_ids: HashMap<String, String>) {
+async fn generate_graph(hook_ids: HashMap<String, String>) -> karl::Graph {
     let data_edges_stateless = vec![
-        (("mic", "sound"), "command_classifier"),
-        (("mic_1", "sound"), "command_classifier"),
-        (("command_classifier", "search"), "search"),
-        (("command_classifier", "light"), "light_switch"),
-        (("camera", "motion"), "person_detection"),
-        (("person_detection", "count"), "differential_privacy"),
+        ("mic.sound", "command_classifier"),
+        ("mic_1.sound", "command_classifier"),
+        ("command_classifier.search", "search"),
+        ("command_classifier.light", "light_switch"),
+        ("camera.motion", "person_detection"),
+        ("person_detection.count", "differential_privacy"),
     ];
     let data_edges_stateful = vec![
-        (("camera", "streaming"), "targz"),
+        ("camera.streaming", "targz"),
     ];
     let state_edges = vec![
-        (("google", "response"), "mic.output"),
-        (("google", "response"), "mic_1.output"),
-        (("light_switch", "state"), "bulb.on"),
-        (("true", "true"), "camera.livestream"),
-        (("false", "false"), "camera.livestream"),
-        (("firmware_update", "firmware"), "camera.firmware"),
+        ("search.response", "mic.output"),
+        ("search.response", "mic_1.output"),
+        ("light_switch.state", "bulb.on"),
+        ("true.true", "camera.livestream"),
+        ("false.false", "camera.livestream"),
+        ("firmware_update.firmware", "camera.firmware"),
     ];
     let network_edges = vec![
         ("search", "google.com"),
         ("differential_privacy", "metrics.com"),
         ("firmware_update", "firmware.com"),
     ];
-    let interval_schedule = vec![
+    let interval_modules = vec![
         ("firmware_update", 20),
     ];
+    let mut graph = karl::Graph::new(
+        SENSOR_IDS.to_vec(),
+        GLOBAL_HOOK_IDS.to_vec(),
+        data_edges_stateless,
+        data_edges_stateful,
+        state_edges,
+        network_edges,
+        interval_modules,
+    );
+    graph.replace_module_ids(&hook_ids);
+    graph
 }
 
 #[tokio::main]
@@ -107,7 +102,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap();
     let addr = format!("http://{}:{}", ip, port);
-    let hook_ids = register_hooks(&addr, &GLOBAL_HOOK_IDS).await;
+    let api = KarlUserAPI::new(&addr);
+    // let hook_ids = register_hooks(&api, &GLOBAL_HOOK_IDS).await;
+    let hook_ids = GLOBAL_HOOK_IDS
+        .iter()
+        .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
+        .collect::<HashMap<String, String>>();
     let graph = generate_graph(hook_ids).await;
+    println!("{}", graph.graphviz().unwrap());
     Ok(())
 }
