@@ -15,19 +15,27 @@ use crate::protos::karl_host_client::KarlHostClient;
 use crate::protos::*;
 use crate::common::*;
 
-pub struct KarlAPI {
+pub struct KarlEntityAPI {
     pub global_hook_id: String,
     pub hook_id: String,
-    pub token: String,
+    pub process_token: String,
     pub host_addr: String,
 }
 
-impl KarlAPI {
+pub struct KarlSensorAPI {
+    pub controller_addr: String,
+    pub sensor_token: Option<String>,
+}
+
+pub struct KarlUserAPI {
+}
+
+impl KarlEntityAPI {
     pub fn new() -> Self {
         Self {
             global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
             hook_id: env::var("HOOK_ID").unwrap(),
-            token: env::var("PROCESS_TOKEN").unwrap(),
+            process_token: env::var("PROCESS_TOKEN").unwrap(),
             host_addr: String::from("http://localhost:59583"),
         }
     }
@@ -40,7 +48,7 @@ impl KarlAPI {
     ) -> Result<Vec<u8>, Status> {
         let req = GetData {
             host_token: String::new(),
-            process_token: self.token.clone(),
+            process_token: self.process_token.clone(),
             tag: tag.to_string(),
             lower: lower.to_string(),
             upper: upper.to_string(),
@@ -57,7 +65,7 @@ impl KarlAPI {
     ) -> Result<(), Status> {
         let req = PushData {
             host_token: String::new(),
-            process_token: self.token.clone(),
+            process_token: self.process_token.clone(),
             tag: format!("{}.{}", self.hook_id, tag),
             data,
         };
@@ -79,7 +87,7 @@ impl KarlAPI {
             .collect();
         let req = NetworkAccess {
             host_token: String::new(),
-            process_token: self.token.clone(),
+            process_token: self.process_token.clone(),
             domain: domain.to_string(),
             method: method.to_string(),
             headers,
@@ -88,6 +96,85 @@ impl KarlAPI {
         KarlHostClient::connect(self.host_addr.clone()).await.unwrap()
             .network(Request::new(req)).await
             .map(|res| res.into_inner())
+    }
+}
+
+impl KarlSensorAPI {
+    pub fn new(controller_addr: &str) -> Self {
+        Self {
+            controller_addr: controller_addr.to_string(),
+            sensor_token: None,
+        }
+    }
+
+    pub fn new_with_token(controller_addr: &str, token: String) -> Self {
+        Self {
+            controller_addr: controller_addr.to_string(),
+            sensor_token: Some(token),
+        }
+    }
+
+    /// Registers a sensor.
+    pub async fn register(
+        &mut self,
+        global_sensor_id: &str,
+        keys: Vec<String>,
+        tags: Vec<String>,
+        app: Vec<u8>,
+    ) -> Result<SensorRegisterResult, Status> {
+        let request = SensorRegisterRequest {
+            global_sensor_id: global_sensor_id.to_string(),
+            keys,
+            tags,
+            app,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .sensor_register(Request::new(request)).await
+            .map(|res| {
+                let res = res.into_inner();
+                self.sensor_token = Some(res.sensor_token.clone());
+                res
+            })
+    }
+
+    /// Push raw data from a sensor.
+    pub async fn push(
+        &self,
+        tag: String,
+        data: Vec<u8>,
+    ) -> Result<(), Status> {
+        let request = SensorPushData {
+            sensor_token: self.sensor_token.clone().expect("missing token"),
+            tag,
+            data,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .push_raw_data(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+
+    /// Connect to the controller for state changes.
+    pub async fn connect_state(
+        &self,
+        keys: Vec<String>,
+    ) -> Result<tonic::Streaming<StateChangePair>, Status> {
+        let request = StateChangeInit {
+            sensor_token: self.sensor_token.clone().expect("missing token"),
+            keys,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .state_changes(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+}
+
+impl KarlUserAPI {
+    pub fn new() -> Self {
+        Self {
+        }
     }
 }
 
@@ -105,25 +192,6 @@ pub async fn register_hook(
     client.register_hook(Request::new(request)).await
 }
 
-/// Registers a sensor.
-pub async fn register_sensor(
-    controller_addr: &str,
-    global_sensor_id: &str,
-    keys: Vec<String>,
-    tags: Vec<String>,
-    app: Vec<u8>,
-) -> Result<Response<SensorRegisterResult>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = SensorRegisterRequest {
-        global_sensor_id: global_sensor_id.to_string(),
-        keys,
-        tags,
-        app,
-    };
-    client.sensor_register(Request::new(request)).await
-}
-
 /// Sends a compute request to the given host and returns the result.
 pub async fn send_compute(
     host: &str,
@@ -133,24 +201,6 @@ pub async fn send_compute(
         .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
     let request = Request::new(req);
     client.start_compute(request).await
-}
-
-/// Push raw data from a sensor.
-pub async fn push_raw_data(
-    controller_addr: &str,
-    sensor_token: SensorToken,
-    tag: String,
-    data: Vec<u8>,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = SensorPushData {
-        sensor_token,
-        tag,
-        data,
-    };
-    debug!("push_raw_data tag={} (len {})", request.tag, request.data.len());
-    client.push_raw_data(Request::new(request)).await
 }
 
 /// Adds data edge.
@@ -219,21 +269,6 @@ pub async fn set_interval(
         seconds,
     };
     client.set_interval(Request::new(request)).await
-}
-
-/// Connect to the controller for state changes.
-pub async fn connect_state(
-    controller_addr: &str,
-    sensor_token: &str,
-    keys: Vec<String>,
-) -> Result<Response<tonic::Streaming<StateChangePair>>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = StateChangeInit {
-        sensor_token: sensor_token.to_string(),
-        keys,
-    };
-    client.state_changes(Request::new(request)).await
 }
 
 /*****************************************************************************
