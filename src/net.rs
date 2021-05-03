@@ -193,11 +193,9 @@ impl KarlSensorAPI {
     /// Connect to the controller for state changes.
     pub async fn connect_state(
         &self,
-        keys: Vec<String>,
     ) -> Result<tonic::Streaming<StateChangePair>, Status> {
         let request = StateChangeInit {
             sensor_token: self.sensor_token.clone().expect("missing token"),
-            keys,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?

@@ -6,7 +6,7 @@ use std::error::Error;
 use std::time::{Instant, Duration};
 use clap::{Arg, App};
 use tokio;
-use karl;
+use karl::net::KarlSensorAPI;
 
 /// Register the sensor with the controller.
 ///
@@ -19,37 +19,40 @@ use karl;
 ///
 /// Returns: the sensor token and sensor ID.
 async fn register(
-    controller: &str,
-) -> Result<(String, String), Box<dyn Error>> {
+    api: &mut KarlSensorAPI,
+) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
-    let result = karl::net::register_sensor(
-        controller,
+    let result = api.register(
         "camera",
         vec![String::from("firmware"), String::from("livestream")], // keys
         vec![String::from("motion"), String::from("livestream")], // tags
         vec![], // app
-    ).await?.into_inner();
+    ).await?;
     debug!("registered sensor => {} s", now.elapsed().as_secs_f32());
     debug!("sensor_token = {:?}", result.sensor_token);
     debug!("sensor_id = {:?}", result.sensor_id);
-    Ok((result.sensor_token, result.sensor_id))
+    Ok(result.sensor_id)
 }
 
 /// Listen for state changes.
 async fn handle_state_changes(
-    controller: String,
-    sensor_token: String,
+    api: KarlSensorAPI,
 ) -> Result<(), Box<dyn Error>> {
-    let keys = vec![String::from("firmware"), String::from("livestream")];
-    let mut conn = karl::net::connect_state(
-        &controller, &sensor_token, keys.clone()).await?.into_inner();
+    let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
-        if msg.key == keys[0] {
-            println!("firmware update!");
-        } else if msg.key == keys[1] {
-            // TODO: on livestream, start writing to livestream tag
+        if msg.key == "firmware" {
+            info!("firmware update!");
+        } else if msg.key == "livestream" {
+            if msg.value == "on".as_bytes() {
+                info!("turning livestream on");
+                // tokio::spawn(async move {
+                // let tag = "streaming".to_string();
+                // api.push(tag, image_bytes.clone()).await.unwrap();
+            } else {
+                info!("turning livestream off");
+            }
         } else {
-            println!("unexpected key: {}", msg.key);
+            warn!("unexpected key: {}", msg.key);
         }
     }
     Ok(())
@@ -58,12 +61,12 @@ async fn handle_state_changes(
 /// Push data at a regular interval to the camera.motion tag
 /// to represent snaphots of when motion is detected.
 async fn motion_detection(
-    controller: String,
-    sensor_token: String,
+    api: KarlSensorAPI,
+    interval: u64,
 ) -> Result<(), Box<dyn Error>> {
     let image_path = "data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png";
     let image_bytes = fs::read(image_path)?;
-    let duration = Duration::from_secs(30);
+    let duration = Duration::from_secs(interval);
     let mut interval = tokio::time::interval(duration);
     tokio::time::sleep(Duration::from_secs(10)).await;
     loop {
@@ -71,12 +74,7 @@ async fn motion_detection(
         interval.tick().await;
         warn!("START step 1: pushing image");
         let now = Instant::now();
-        karl::net::push_raw_data(
-            &controller,
-            sensor_token.clone(),
-            tag,
-            image_bytes.clone(),
-        ).await.unwrap();
+        api.push(tag, image_bytes.clone()).await.unwrap();
         warn!("=> {} s", now.elapsed().as_secs_f32());
     }
 }
@@ -87,34 +85,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::new("Camera sensor")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
-            .long("ip")
             .takes_value(true)
             .default_value("127.0.0.1"))
         .arg(Arg::with_name("port")
             .help("Controller port.")
-            .short("p")
-            .long("port")
             .takes_value(true)
             .default_value("59582"))
+        .arg(Arg::with_name("interval")
+            .help("Motion detection interval, in seconds.")
+            .takes_value(true)
+            .default_value("30"))
         .get_matches();
 
-    let ip = matches.value_of("ip").unwrap();
-    let port = matches.value_of("port").unwrap();
-    let addr = format!("http://{}:{}", ip, port);
-    let (sensor_token, sensor_id) = register(&addr).await?;
+    let api = {
+        let ip = matches.value_of("ip").unwrap();
+        let port = matches.value_of("port").unwrap();
+        let addr = format!("http://{}:{}", ip, port);
+        let mut api = KarlSensorAPI::new(&addr);
+        let _sensor_id = register(&mut api).await?;
+        api
+    };
     let state_change_handle = {
-        let addr = addr.to_string();
-        let sensor_token = sensor_token.clone();
+        let api = api.clone();
         tokio::spawn(async move {
-            handle_state_changes(addr, sensor_token).await.unwrap()
+            handle_state_changes(api).await.unwrap()
         })
     };
     let motion_detection_handle = {
-        let addr = addr.to_string();
-        let sensor_token = sensor_token.clone();
-        let _sensor_id = sensor_id.clone();
+        let api = api.clone();
+        let interval: u64 =
+            matches.value_of("interval").unwrap().parse().unwrap();
         tokio::spawn(async move {
-            motion_detection(addr, sensor_token).await.unwrap()
+            motion_detection(api, interval).await.unwrap()
         })
     };
     state_change_handle.await?;

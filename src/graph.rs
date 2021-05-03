@@ -16,7 +16,7 @@ pub struct Graph {
     pub data_edges_stateful: Vec<(ModuleTag, Module)>,
     pub state_edges: Vec<(ModuleTag, SensorKey)>,
     pub network_edges: Vec<(Module, Domain)>,
-    pub interval_modules: Vec<(Module, usize)>,
+    pub interval_modules: Vec<(Module, u32)>,
 }
 
 impl Graph {
@@ -27,7 +27,7 @@ impl Graph {
         data_edges_stateful: Vec<(&str, &str)>,
         state_edges: Vec<(&str, &str)>,
         network_edges: Vec<(&str, &str)>,
-        interval_modules: Vec<(&str, usize)>,
+        interval_modules: Vec<(&str, u32)>,
     ) -> Self {
         Graph {
             sensors: sensors.into_iter().map(|a| a.to_string()).collect(),
@@ -126,6 +126,28 @@ impl Graph {
         writeln!(g, "  net [shape=ribosite];")?;
         writeln!(g, "}}")?;
         Ok(g)
+    }
+
+    pub async fn send_to_controller(
+        &self,
+        api: &crate::net::KarlUserAPI,
+    ) -> Result<(), tonic::Status> {
+        for ((m1, tag), m2) in self.data_edges_stateless.clone() {
+            api.add_data_edge(m1, tag, m2, true).await?;
+        }
+        for ((m1, tag), m2) in self.data_edges_stateful.clone() {
+            api.add_data_edge(m1, tag, m2, false).await?;
+        }
+        for ((m, tag), (s, key)) in self.state_edges.clone() {
+            api.add_state_edge(m, tag, s, key).await?;
+        }
+        for (m, domain) in self.network_edges.clone() {
+            api.add_network_edge(m, domain).await?;
+        }
+        for (m, interval) in self.interval_modules.clone() {
+            api.set_interval(m, interval).await?;
+        }
+        Ok(())
     }
 }
 

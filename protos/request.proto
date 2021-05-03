@@ -111,7 +111,6 @@ message PushData {
 
 message StateChangeInit {
   string sensor_token = 1;
-  repeated string keys = 2;
 }
 
 message StateChangePair {
