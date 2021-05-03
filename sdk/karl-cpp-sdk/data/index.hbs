@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+  <head>
+    <title>{{ client_id }}</title>
+    <style>
+      body {
+        font: 12pt Arial;
+      }
+      table, th, td {
+        padding: 5px;
+        text-align: left;
+      }
+      img {
+        width: 150px;
+        height: auto;
+      }
+    </style>
+    <script>
+      // https://stackoverflow.com/questions/9267899/arraybuffer-to-base64-encoded-string
+      function _arrayBufferToBase64(buffer) {
+        var binary = '';
+        var bytes = new Uint8Array(buffer);
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+      }
+
+      function _requestAuthHeader() {
+        var userInput = document.getElementById("camera-user");
+        var passInput = document.getElementById("camera-pass");
+        return btoa(userInput.value + ":" + passInput.value);
+      }
+
+      function testCORS(url) {
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.open("GET", url, true);
+        xmlHttp.setRequestHeader("Access-Control-Allow-Origin", "*");
+        xmlHttp.setRequestHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+        xmlHttp.setRequestHeader("Access-Control-Allow-Headers", "Origin, Content-Type, X-Auth-Token");
+        xmlHttp.responseType = "arraybuffer";
+        xmlHttp.onload = function (e) {
+          if (xmlHttp.readyState === 4) {
+            if (xmlHttp.status === 200) {
+              var buffer = xmlHttp.response;
+              console.log(buffer);
+              var picture = document.getElementById("picture");
+              var base64 = _arrayBufferToBase64(buffer);
+              picture.src = `data:image/jpg;base64,${base64}`;
+            } else {
+              console.error(xmlHttp.statusText);
+            }
+          }
+        };
+        xmlHttp.onerror = function (e) {
+          console.error(xmlHttp.statusText);
+        };
+        xmlHttp.send(null);
+      }
+
+      function takePicture() {
+        var url = `/proxy/cgi-bin/currentpic.cgi`;
+        var creds = _requestAuthHeader();
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.open("GET", url, true);
+        xmlHttp.setRequestHeader("Authorization", "Basic " + creds);
+        xmlHttp.setRequestHeader("Access-Control-Allow-Origin", "*");
+        xmlHttp.responseType = "arraybuffer";
+        xmlHttp.onload = function (e) {
+          if (xmlHttp.readyState === 4) {
+            if (xmlHttp.status === 200) {
+              var buffer = xmlHttp.response;
+              console.log(buffer);
+              var picture = document.getElementById("picture");
+              var base64 = _arrayBufferToBase64(buffer);
+              picture.src = `data:image/jpg;base64,${base64}`;
+            } else {
+              console.error(xmlHttp.statusText);
+            }
+          }
+        };
+        xmlHttp.onerror = function (e) {
+          console.error(xmlHttp.statusText);
+        };
+        xmlHttp.send(null);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Camera App</h1>
+    <form>
+      <label for="camera-user">Username:</label>
+      <input type="text" id="camera-user" name="camera-user"><br>
+      <label for="camera-pass">Password:</label>
+      <input type="text" id="camera-pass" name="camera-pass"><br>
+    </form>
+    <p id="button-section">
+      <button id="picture-button" onclick="takePicture()">
+        Take a Picture
+      </button>
+    </p>
+    <p id="picture-section">
+      <img id="picture">
+    </p>
+    <p id="files">
+      {{#each files}}
+      <img src="/storage/{{this}}">
+      {{/each}}
+      <br>
+      The following buttons should only work if the domain is https://wyzecam.karl.zapto.org due to CORS AND cookies.<br>
+      <button onclick="testCORS(`https://wyzecam.karl.zapto.org/storage/2021-01-16_15:55:13.241447.jpeg`)">
+        Test CORS /storage
+      </button>
+      <button onclick="testCORS(`https://wyzecam.karl.zapto.org/proxy/cgi-bin/currentpic.cgi`)">
+        Test CORS /proxy
+      </button>
+      <button onclick="testCORS(`https://wyzecam.karl.zapto.org/`)">
+        Test CORS app
+      </button><br>
+      The following image should only show up if the domain is https://wyzecam.karl.zapto.org and I have implemented cookies correctly. The image will show up though if you already visited the wyzecam app before visiting wyzecam_1. But the app itself shouldn't be able to read the image.<br>
+      <img src="https://wyzecam.karl.zapto.org/storage/2021-01-16_15:55:13.241447.jpeg">
+    </p>
+  </body>
+</html>

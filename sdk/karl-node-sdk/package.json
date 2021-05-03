@@ -1,0 +1,15 @@
+{
+  "name": "karl",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Gina Yuan",
+  "license": "MIT",
+  "dependencies": {
+    "google-protobuf": "^3.14.0-rc.1",
+    "tar": "^6.0.5"
+  }
+}
