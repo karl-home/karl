@@ -281,9 +281,9 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<AddDataEdgeRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        info!("add_data_edge {}.{} -> {} trigger={}",
-            req.output_id, req.output_tag, req.input_id, req.trigger);
-        if req.trigger {
+        info!("add_data_edge {}.{} -> {} stateless={}",
+            req.output_id, req.output_tag, req.input_id, req.stateless);
+        if req.stateless {
             let tag = format!("{}.{}", req.output_id, req.output_tag);
             self.runner.watch_tag(req.input_id, tag);
         }

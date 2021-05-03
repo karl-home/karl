@@ -15,6 +15,17 @@ use crate::protos::karl_host_client::KarlHostClient;
 use crate::protos::*;
 use crate::common::*;
 
+/// Sends a compute request to the given host and returns the result.
+/// The only method in the Controller API.
+pub async fn send_compute(
+    host: &str,
+    req: ComputeRequest,
+) -> Result<Response<NotifyStart>, Status> {
+    KarlHostClient::connect(host.to_string()).await
+        .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        .start_compute(Request::new(req)).await
+}
+
 #[derive(Debug, Clone)]
 pub struct KarlEntityAPI {
     pub global_hook_id: String,
@@ -31,10 +42,7 @@ pub struct KarlSensorAPI {
 
 #[derive(Debug, Clone)]
 pub struct KarlUserAPI {
-}
-
-#[derive(Debug, Clone)]
-pub struct KarlControllerAPI {
+    pub controller_addr: String,
 }
 
 #[derive(Debug, Clone)]
@@ -186,105 +194,99 @@ impl KarlSensorAPI {
 }
 
 impl KarlUserAPI {
-    pub fn new() -> Self {
+    pub fn new(controller_addr: &str) -> Self {
         Self {
+            controller_addr: controller_addr.to_string(),
         }
     }
-}
 
-/// Registers a hook.
-pub async fn register_hook(
-    controller_addr: &str,
-    global_hook_id: &str,
-) -> Result<Response<RegisterHookResult>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = RegisterHookRequest {
-        token: "".to_string(),
-        global_hook_id: global_hook_id.to_string(),
-    };
-    client.register_hook(Request::new(request)).await
-}
+    /// Registers a hook.
+    pub async fn register_hook(
+        &self,
+        global_hook_id: &str,
+    ) -> Result<RegisterHookResult, Status> {
+        let request = RegisterHookRequest {
+            token: "".to_string(),
+            global_hook_id: global_hook_id.to_string(),
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .register_hook(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
 
-/// Sends a compute request to the given host and returns the result.
-pub async fn send_compute(
-    host: &str,
-    req: ComputeRequest,
-) -> Result<Response<NotifyStart>, Status> {
-    let mut client = KarlHostClient::connect(host.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = Request::new(req);
-    client.start_compute(request).await
-}
+    /// Adds data edge.
+    pub async fn add_data_edge(
+        &self,
+        output_id: String,
+        output_tag: String,
+        input_id: String,
+        stateless: bool,
+    ) -> Result<(), Status> {
+        let request = AddDataEdgeRequest {
+            output_id,
+            output_tag,
+            input_id,
+            stateless,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .add_data_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
 
-/// Adds data edge.
-pub async fn add_data_edge(
-    controller_addr: &str,
-    output_id: String,
-    output_tag: String,
-    input_id: String,
-    trigger: bool,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = AddDataEdgeRequest {
-        output_id,
-        output_tag,
-        input_id,
-        trigger,
-    };
-    client.add_data_edge(Request::new(request)).await
-}
+    /// Adds state edge.
+    pub async fn add_state_edge(
+        &self,
+        output_id: String,
+        output_tag: String,
+        input_id: String,
+        input_key: String,
+    ) -> Result<(), Status> {
+        let request = AddStateEdgeRequest {
+            output_id,
+            output_tag,
+            input_id,
+            input_key,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .add_state_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
 
-/// Adds state edge.
-pub async fn add_state_edge(
-    controller_addr: &str,
-    output_id: String,
-    output_tag: String,
-    input_id: String,
-    input_key: String,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = AddStateEdgeRequest {
-        output_id,
-        output_tag,
-        input_id,
-        input_key,
-    };
-    client.add_state_edge(Request::new(request)).await
-}
+    /// Adds network edge.
+    pub async fn add_network_edge(
+        &self,
+        output_id: String,
+        domain: String,
+    ) -> Result<(), Status> {
+        let request = AddNetworkEdgeRequest {
+            output_id,
+            domain,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .add_network_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
 
-/// Adds network edge.
-pub async fn add_network_edge(
-    controller_addr: &str,
-    output_id: String,
-    domain: String,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = AddNetworkEdgeRequest {
-        output_id,
-        domain,
-    };
-    client.add_network_edge(Request::new(request)).await
+    /// Adds network edge.
+    pub async fn set_interval(
+        &self,
+        hook_id: String,
+        seconds: u32,
+    ) -> Result<(), Status> {
+        let request = SetIntervalRequest {
+            hook_id,
+            seconds,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .set_interval(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
 }
-
-/// Adds network edge.
-pub async fn set_interval(
-    controller_addr: &str,
-    hook_id: String,
-    seconds: u32,
-) -> Result<Response<()>, Status> {
-    let mut client = KarlControllerClient::connect(controller_addr.to_string())
-        .await.map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?;
-    let request = SetIntervalRequest {
-        hook_id,
-        seconds,
-    };
-    client.set_interval(Request::new(request)).await
-}
-
 
 impl KarlHostAPI {
     pub fn new(controller_addr: &str) -> Self {
