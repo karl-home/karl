@@ -865,7 +865,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "karl"
+name = "karl-common"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "rand 0.8.2",
+ "serde",
+ "tar",
+]
+
+[[package]]
+name = "karl-controller"
 version = "0.1.0"
 dependencies = [
  "bincode",
@@ -887,16 +897,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-build",
-]
-
-[[package]]
-name = "karl-common"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "rand 0.8.2",
- "serde",
- "tar",
 ]
 
 [[package]]
