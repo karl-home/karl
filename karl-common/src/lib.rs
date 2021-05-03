@@ -1,10 +1,9 @@
 mod error;
 mod builder;
+mod token;
+mod types;
+
 pub use error::Error;
 pub use builder::TarBuilder;
-
-pub mod token;
-pub mod types;
-pub mod protos {
-	tonic::include_proto!("request");
-}
+pub use token::*;
+pub use types::*;

@@ -20,7 +20,7 @@ pub type ProcessToken = String;
 /// dots and trailing slashes e.g. ./raw/../camera/ --> raw/camera
 ///
 /// Actual path is /home/user/.karl_controller/data/raw/camera.
-fn _sanitize_path(path: &str) -> String {
+pub fn sanitize_path(path: &str) -> String {
     let mut new_path = Path::new("").to_path_buf();
     let components = Path::new(path)
         .components()
