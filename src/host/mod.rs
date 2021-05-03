@@ -11,7 +11,6 @@ use tokio;
 use reqwest::{self, Method, header::HeaderName};
 
 use tonic::{Request, Response, Status, Code};
-use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
 use crate::common::*;
 use perms::ProcessPerms;
@@ -23,10 +22,8 @@ pub const HEARTBEAT_INTERVAL: u64 = 10;
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
-    /// Secret host token, assigned after registering with controller
-    host_token: Option<HostToken>,
-    /// Controller address.
-    controller: String,
+    /// Host API to controller.
+    api: crate::net::KarlHostAPI,
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
     /// Path manager.
@@ -55,11 +52,9 @@ impl karl_host_server::KarlHost for Host {
         // Handle the process asynchronously
         {
             let binary_path = Path::new(&req.binary_path).to_path_buf();
+            let api = self.api.clone();
             let path_manager = self.path_manager.clone();
-            let controller = self.controller.clone();
             let process_tokens = self.process_tokens.clone();
-            let host_token = self.host_token.clone().ok_or(
-                Status::new(Code::Unavailable, "host is not registered with controller"))?;
             let process_token = process_token.clone();
             tokio::spawn(async move {
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
@@ -74,7 +69,7 @@ impl karl_host_server::KarlHost for Host {
                     req.envs,
                 ).unwrap();
                 process_tokens.lock().unwrap().remove(&process_token);
-                crate::net::notify_end(&controller, host_token, process_token).await.unwrap();
+                api.notify_end(process_token).await.unwrap();
             });
         }
 
@@ -87,7 +82,7 @@ impl karl_host_server::KarlHost for Host {
         // Validate the process is valid and has permissions to access the network.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
-        let mut req = req.into_inner();
+        let req = req.into_inner();
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_access_domain(&req.domain) {
                 return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
@@ -149,11 +144,7 @@ impl karl_host_server::KarlHost for Host {
         });
 
         // Forward the network access to the controller.
-        req.host_token = self.host_token.clone().ok_or(
-            Status::new(Code::Unavailable, "host is not registered with controller"))?;
-        KarlControllerClient::connect(self.controller.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_network(Request::new(req)).await?;
+        self.api.forward_network(req).await?;
 
         // Return the result of the HTTP request.
         handle.await.map_err(|e| Status::new(Code::Internal, format!("{}", e)))?
@@ -165,7 +156,7 @@ impl karl_host_server::KarlHost for Host {
         // Validate the process is valid and has permissions to read the file.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
-        let mut req = req.into_inner();
+        let req = req.into_inner();
         debug!("get {:?}", req);
         if self.validate {
             if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
@@ -178,11 +169,7 @@ impl karl_host_server::KarlHost for Host {
         }
 
         // Forward the file access to the controller and return the result
-        req.host_token = self.host_token.clone().ok_or(
-            Status::new(Code::Unavailable, "host is not registered with controller"))?;
-        KarlControllerClient::connect(self.controller.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_get(Request::new(req)).await
+        self.api.forward_get(req).await
     }
 
     async fn push(
@@ -191,7 +178,7 @@ impl karl_host_server::KarlHost for Host {
         // Validate the process is valid and has permissions to write the file.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
-        let mut req = req.into_inner();
+        let req = req.into_inner();
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             // if !perms.can_write_file(Path::new(&req.path)) {
             //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
@@ -208,26 +195,19 @@ impl karl_host_server::KarlHost for Host {
             return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         };
 
-        let host_token = self.host_token.clone().ok_or(
-            Status::new(Code::Unavailable, "host is not registered with controller"))?;
         if let Some((sensor, key)) = sensor_key {
             // Forward as state change if the tag changes state.
             let req = StateChange {
-                host_token,
+                host_token: String::new(),
                 process_token: req.process_token,
                 sensor_id: sensor,
                 key,
                 value: req.data,
             };
-            KarlControllerClient::connect(self.controller.clone()).await
-                .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-                .forward_state(Request::new(req)).await
+            self.api.forward_state(req).await
         } else {
             // Forward the file access to the controller and return the result
-            req.host_token = host_token;
-            KarlControllerClient::connect(self.controller.clone()).await
-                .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-                .forward_push(Request::new(req)).await
+            self.api.forward_push(req).await
         }
     }
 }
@@ -242,8 +222,7 @@ impl Host {
         let id: u32 = rand::thread_rng().gen();
         Self {
             id,
-            host_token: None,
-            controller: controller.to_string(),
+            api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             path_manager: Arc::new(PathManager::new(karl_path, id)),
             validate: false,
@@ -262,20 +241,15 @@ impl Host {
     /// - port - The port to listen on.
     /// - password - The password to register with the controller.
     pub async fn start(&mut self, port: u16, password: &str) -> Result<(), Status> {
-        let controller_addr = self.controller.clone();
-        let host_token = crate::net::register_host(
-            &self.controller, self.id, port, password).await?.into_inner().host_token;
-        self.host_token = Some(host_token.clone());
+        self.api.register(self.id, port, password).await?;
+        let api = self.api.clone();
         tokio::spawn(async move {
             // Every HEARTBEAT_INTERVAL seconds, this process wakes up
             // sends a heartbeat message to the controller.
             loop {
                 tokio::time::sleep(Duration::from_secs(HEARTBEAT_INTERVAL)).await;
-                debug!("heartbeat {}", &host_token);
-                let res = crate::net::heartbeat(
-                    &controller_addr,
-                    host_token.clone(),
-                ).await;
+                trace!("heartbeat");
+                let res = api.heartbeat().await;
                 if let Err(e) = res {
                     warn!("error sending heartbeat: {}", e);
                 };
