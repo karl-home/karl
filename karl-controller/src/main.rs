@@ -1,9 +1,28 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+#![feature(custom_inner_attributes)]
+
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate rocket;
+extern crate rocket_contrib;
+
+mod dashboard;
+pub mod net;
+pub mod controller;
+mod graph;
+pub use graph::Graph;
+pub mod hook;
+pub use controller::Controller;
+
+pub mod protos {
+	tonic::include_proto!("request");
+}
+
 use std::path::Path;
 use clap::{Arg, App};
-use karl::Controller;
-
 use tonic::transport::Server;
-use karl::protos::karl_controller_server::KarlControllerServer;
+use protos::karl_controller_server::KarlControllerServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

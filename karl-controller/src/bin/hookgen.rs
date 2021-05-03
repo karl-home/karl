@@ -1,3 +1,4 @@
+/*
 use std::fs;
 use std::path::Path;
 use bincode;
@@ -110,4 +111,8 @@ fn main() {
     let bytes = bincode::serialize(&hook).unwrap();
     println!("{} bytes", bytes.len());
     fs::write(&path, bytes).unwrap();
+}
+*/
+fn main() {
+
 }

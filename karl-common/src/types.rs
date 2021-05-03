@@ -21,7 +21,7 @@ pub type HookID = String;
 #[derive(Debug, Clone)]
 pub struct Host {
     /// Whether the user has confirmed this host.
-    pub(crate) confirmed: bool,
+    pub confirmed: bool,
     /// Host ID.
     pub id: HostID,
     /// Host address.
