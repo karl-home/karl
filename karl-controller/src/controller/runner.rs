@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
-use crate::hook::Hook;
+use crate::protos::{FileAcl, ComputeRequest};
 use karl_common::*;
 
 #[derive(Debug)]
@@ -20,6 +20,42 @@ pub struct HookRunner {
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     /// Watched tags and the hooks they spawn.
     watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
+}
+
+/// Converts the hook to a protobuf compute request.
+///
+/// The caller must set the request token before sending the compute
+/// reuqest to a host over the network.
+fn hook_to_compute_request(
+    hook: &Hook,
+    host_token: HostToken,
+    hook_id: String,
+    cached: bool,
+) -> Result<ComputeRequest, Error> {
+    let package = if cached {
+        vec![]
+    } else {
+        hook.package.clone()
+    };
+    let binary_path = hook.binary_path.clone().into_os_string().into_string().unwrap();
+    let args = hook.args.clone().into_iter().collect();
+    let envs = hook.md.envs.clone().iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+    let file_perm = hook.md.file_perm.clone().into_iter().map(|acl| {
+        FileAcl {
+            path: acl.path.into_os_string().into_string().unwrap(),
+            read: acl.read,
+            write: acl.write,
+        }
+    }).collect();
+    let state_perm = hook.md.state_perm.clone().into_iter().collect();
+    let network_perm = hook.md.network_perm.clone().into_iter().collect();
+    Ok(ComputeRequest {
+        host_token,
+        hook_id,
+        cached,
+        package,
+        binary_path, args, envs, file_perm, state_perm, network_perm,
+    })
 }
 
 fn gen_process_id() -> ProcessID {
@@ -177,7 +213,8 @@ impl HookRunner {
             // Generate a compute request based on the queued hook.
             warn!("step 4b: runner prepares request");
             let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
-                match hook.to_compute_request(
+                match hook_to_compute_request(
+                    &hook,
                     host.host_token.clone(),
                     hook_id.clone(),
                     host.cached,

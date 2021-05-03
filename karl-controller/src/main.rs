@@ -12,7 +12,6 @@ pub mod net;
 pub mod controller;
 mod graph;
 pub use graph::Graph;
-pub mod hook;
 pub use controller::Controller;
 
 pub mod protos {
