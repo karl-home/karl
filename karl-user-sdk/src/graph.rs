@@ -130,7 +130,7 @@ impl Graph {
 
     pub async fn send_to_controller(
         &self,
-        api: &crate::net::KarlUserAPI,
+        api: &crate::net::KarlUserSDK,
     ) -> Result<(), tonic::Status> {
         for ((m1, tag), m2) in self.data_edges_stateless.clone() {
             api.add_data_edge(m1, tag, m2, true).await?;

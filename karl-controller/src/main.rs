@@ -10,8 +10,6 @@ extern crate rocket_contrib;
 mod dashboard;
 pub mod net;
 pub mod controller;
-mod graph;
-pub use graph::Graph;
 pub use controller::Controller;
 
 pub mod protos {
