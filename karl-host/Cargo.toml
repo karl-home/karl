@@ -21,8 +21,6 @@ clap = "2.33.3"
 dirs = "1.0.5"
 rand = "0.8"
 bytes = "0.6"
-rocket = "0.4.6"
-handlebars = "1.0"
 reqwest = { version = "0.11", features = ["blocking"] }
 regex = "1"
 tonic = "0.4"
@@ -30,20 +28,11 @@ prost = "0.7"
 chrono = "0.4"
 sys-mount = "1.2"
 
-[dependencies.rocket_contrib]
-version = "0.4.6"
-default-features = false
-features = ["handlebars_templates"]
-
 [build-dependencies]
 tonic-build = "0.4"
 
 [dev-dependencies]
 tempdir = "0.3"
-
-[[bin]]
-name = "controller"
-path = "src/bin/controller.rs"
 
 [[bin]]
 name = "host"

@@ -1,12 +1,13 @@
 mod error;
 mod builder;
+mod types;
 
 use rand::Rng;
 use std::path::Path;
 
 pub use error::Error;
 pub use builder::TarBuilder;
-pub use crate::controller::types::*;
+pub use types::*;
 
 /// String ID.
 pub type StringID = String;
