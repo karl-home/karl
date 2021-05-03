@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
-use crate::common::Error;
+use karl_common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
     debug!("bin: {:?}", bin);

@@ -2,7 +2,7 @@ use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::protos::*;
-use crate::common::*;
+use karl_common::*;
 
 /// Permissions of an active process
 #[derive(Debug)]

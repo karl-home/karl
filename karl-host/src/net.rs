@@ -11,7 +11,7 @@
 use tonic::{Request, Response, Status, Code};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
-use crate::common::*;
+use karl_common::*;
 
 #[derive(Debug, Clone)]
 pub struct KarlHostAPI {

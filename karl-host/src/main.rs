@@ -5,11 +5,9 @@
 extern crate log;
 
 pub mod net;
-pub mod common;
 mod runtime;
 mod cache;
 mod perms;
-use common::*;
 use cache::PathManager;
 use perms::ProcessPerms;
 
@@ -25,6 +23,7 @@ use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 
 use tokio;
+use karl_common::*;
 use reqwest::{self, Method, header::HeaderName};
 use tonic::{Request, Response, Status, Code};
 use tonic::transport::Server;
