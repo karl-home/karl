@@ -2,9 +2,11 @@ mod error;
 mod builder;
 mod token;
 mod types;
+mod hook;
 
 pub use error::Error;
 pub use builder::TarBuilder;
+pub use hook::Hook;
 pub use token::*;
 pub use types::*;
 
