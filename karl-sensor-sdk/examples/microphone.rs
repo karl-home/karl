@@ -100,7 +100,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let _sensor_id = register(&mut api).await?;
         api
     };
-    info!("Hello, I'm a light bulb! I can turn on and off.");
     let state_change_handle = {
         let api = api.clone();
         tokio::spawn(async move {

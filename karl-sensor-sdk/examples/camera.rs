@@ -29,9 +29,9 @@ async fn register(
         vec![String::from("motion"), String::from("livestream")], // tags
         vec![], // app
     ).await?;
-    debug!("registered sensor => {} s", now.elapsed().as_secs_f32());
-    debug!("sensor_token = {:?}", result.sensor_token);
-    debug!("sensor_id = {:?}", result.sensor_id);
+    info!("registered sensor => {} s", now.elapsed().as_secs_f32());
+    info!("sensor_token = {:?}", result.sensor_token);
+    info!("sensor_id = {:?}", result.sensor_id);
     Ok(result.sensor_id)
 }
 
