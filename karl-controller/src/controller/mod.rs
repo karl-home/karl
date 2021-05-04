@@ -98,10 +98,13 @@ impl karl_controller_server::KarlController for Controller {
         //     &req.process_token,
         //     LogEntryType::Get { path: req.path },
         // );
-        let data = self.data_sink.read().unwrap()
+        let res = self.data_sink.read().unwrap()
             .get_data(req.tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
-        Ok(Response::new(GetDataResult { data }))
+        Ok(Response::new(GetDataResult {
+            data: res.data,
+            timestamps: res.timestamps,
+        }))
     }
 
     async fn forward_push(

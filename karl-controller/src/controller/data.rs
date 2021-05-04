@@ -11,11 +11,10 @@ pub struct DataSink {
     pub data_path: PathBuf,
 }
 
-/// Result of `get_data` on a directory.
 #[derive(Serialize, Deserialize, Default)]
-pub struct ReadDirResult {
-    pub files: Vec<String>,
-    pub dirs: Vec<String>,
+pub struct GetDataResult {
+    pub timestamps: Vec<String>,
+    pub data: Vec<Vec<u8>>,
 }
 
 impl DataSink {
@@ -121,15 +120,31 @@ impl DataSink {
         tag: String,
         lower: String,
         upper: String,
-    ) -> Result<Vec<u8>, Error> {
-        assert_eq!(lower, upper);
+    ) -> Result<GetDataResult, Error> {
         debug!("get {} {}", tag, lower);
         let (id, tag) = {
             let mut split = tag.split('.');
             (split.next().unwrap(), split.next().unwrap())
         };
-        let path = self.data_path.join(id).join(tag).join(lower);
-        Ok(fs::read(path)?)
+        let path = self.data_path.join(id).join(tag);
+        let mut paths: Vec<_> = fs::read_dir(path)?.map(|r| r.unwrap()
+            .path().as_path().file_name().unwrap()
+            .to_str().unwrap()
+            .to_string()
+        ).collect();
+        paths.sort();
+        let start_i = match paths.binary_search(&lower) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+        let end_i = match paths.binary_search(&upper) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+        let timestamps: Vec<String> = paths.drain(start_i..end_i).collect();
+        let data: Vec<Vec<u8>> =
+            timestamps.iter().map(|path| fs::read(path).unwrap()).collect();
+        Ok(GetDataResult { timestamps, data })
     }
 }
 
