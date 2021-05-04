@@ -47,15 +47,15 @@ async fn register_hooks(
 /// Generate the graph from Figures 4 and 6 based on registered hooks.
 async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
     let data_edges_stateless = vec![
-        ("mic.sound", "command_classifier"),
-        ("mic_1.sound", "command_classifier"),
-        ("command_classifier.search", "search"),
-        ("command_classifier.light", "light_switch"),
-        ("camera.motion", "person_detection"),
-        ("person_detection.count", "differential_privacy"),
+        ("mic.sound", "command_classifier.sound"),
+        ("mic_1.sound", "command_classifier.sound"),
+        ("command_classifier.search", "search.query_intent"),
+        ("command_classifier.light", "light_switch.light_intent"),
+        ("camera.motion", "person_detection.image"),
+        ("person_detection.count", "differential_privacy.count"),
     ];
     let data_edges_stateful = vec![
-        ("camera.streaming", "targz"),
+        ("camera.streaming", "targz.files"),
     ];
     let state_edges = vec![
         ("search.response", "mic.output"),

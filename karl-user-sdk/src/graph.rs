@@ -12,8 +12,8 @@ type Domain = String;
 pub struct Graph {
     pub sensors: Vec<Sensor>,
     pub modules: Vec<Module>,
-    pub data_edges_stateless: Vec<(ModuleTag, Module)>,
-    pub data_edges_stateful: Vec<(ModuleTag, Module)>,
+    pub data_edges_stateless: Vec<(ModuleTag, ModuleTag)>,
+    pub data_edges_stateful: Vec<(ModuleTag, ModuleTag)>,
     pub state_edges: Vec<(ModuleTag, SensorKey)>,
     pub network_edges: Vec<(Module, Domain)>,
     pub interval_modules: Vec<(Module, u32)>,
@@ -33,9 +33,9 @@ impl Graph {
             sensors: sensors.into_iter().map(|a| a.to_string()).collect(),
             modules: modules.into_iter().map(|a| a.to_string()).collect(),
             data_edges_stateless: data_edges_stateless.into_iter()
-                .map(|(a, b)| (split(a), b.to_string())).collect(),
+                .map(|(a, b)| (split(a), split(b))).collect(),
             data_edges_stateful: data_edges_stateful.into_iter()
-                .map(|(a, b)| (split(a), b.to_string())).collect(),
+                .map(|(a, b)| (split(a), split(b))).collect(),
             state_edges: state_edges.into_iter()
                 .map(|(a, b)| (split(a), split(b))).collect(),
             network_edges: network_edges.into_iter()
@@ -54,11 +54,11 @@ impl Graph {
         for m in self.modules.iter_mut() {
             modules.push(m);
         }
-        for ((m1, _), m2) in self.data_edges_stateless.iter_mut() {
+        for ((m1, _), (m2, _)) in self.data_edges_stateless.iter_mut() {
             modules.push(m1);
             modules.push(m2);
         }
-        for ((m1, _), m2) in self.data_edges_stateful.iter_mut() {
+        for ((m1, _), (m2, _)) in self.data_edges_stateful.iter_mut() {
             modules.push(m1);
             modules.push(m2);
         }
@@ -98,13 +98,13 @@ impl Graph {
         }
         // stateless data edges
         writeln!(g, "\n  edge [style=solid];")?;
-        for ((m1, tag), m2) in &self.data_edges_stateless {
-            writeln!(g, "  {} -> {} [label=\"{}\"];", m1, m2, tag)?;
+        for ((m1, t1), (m2, t2)) in &self.data_edges_stateless {
+            writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
         }
         // stateful data edges
         writeln!(g, "\n  edge [style=dashed];")?;
-        for ((m1, tag), m2) in &self.data_edges_stateful {
-            writeln!(g, "  {} -> {} [label=\"{}\"];", m1, m2, tag)?;
+        for ((m1, t1), (m2, t2)) in &self.data_edges_stateful {
+            writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
         }
         // state edges
         writeln!(g, "\n  edge [style=solid,color=orange];")?;
@@ -132,11 +132,11 @@ impl Graph {
         &self,
         api: &crate::net::KarlUserSDK,
     ) -> Result<(), tonic::Status> {
-        for ((m1, tag), m2) in self.data_edges_stateless.clone() {
-            api.add_data_edge(m1, tag, m2, true).await?;
+        for ((m1, t1), (m2, t2)) in self.data_edges_stateless.clone() {
+            api.add_data_edge(m1, t1, m2, t2, true).await?;
         }
-        for ((m1, tag), m2) in self.data_edges_stateful.clone() {
-            api.add_data_edge(m1, tag, m2, false).await?;
+        for ((m1, t1), (m2, t2)) in self.data_edges_stateful.clone() {
+            api.add_data_edge(m1, t1, m2, t2, false).await?;
         }
         for ((m, tag), (s, key)) in self.state_edges.clone() {
             api.add_state_edge(m, tag, s, key).await?;

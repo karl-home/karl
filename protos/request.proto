@@ -212,7 +212,8 @@ message AddDataEdgeRequest {
   string output_id = 1;
   string output_tag = 2;
   string input_id = 3;
-  bool stateless = 4;
+  string input_param = 4;
+  bool stateless = 5;
 }
 
 message AddStateEdgeRequest {

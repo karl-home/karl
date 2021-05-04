@@ -31,10 +31,10 @@ The file to add is just the static binary at
 
 ## Generating Python modules
 
-| Module ID          | Input Params | Output Tags  | Network |
-| ------------------ | ------------ | ------------ | ------- |
-| command_classifier | sound        | light,search | no      |
-| person_detection   | -            | false        | no      |
+| Module ID          | Input Params | Output Tags         | Network |
+| ------------------ | ------------ | ------------------- | ------- |
+| command_classifier | sound        | light,search        | no      |
+| person_detection   | image        | box,all_count,count | no      |
 
 Running `./karl-common/target/release/hookgen`:
 

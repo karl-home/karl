@@ -45,12 +45,14 @@ impl KarlUserSDK {
         output_id: String,
         output_tag: String,
         input_id: String,
+        input_param: String,
         stateless: bool,
     ) -> Result<(), Status> {
         let request = AddDataEdgeRequest {
             output_id,
             output_tag,
             input_id,
+            input_param,
             stateless,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
