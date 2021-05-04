@@ -51,7 +51,7 @@ impl karl_host_server::KarlHost for Host {
         warn!("step 5: host receives compute request");
         let mut req = req.into_inner();
         let process_token = Token::gen();
-        let perms = ProcessPerms::new(&req);
+        let perms = ProcessPerms::new(&mut req);
 
         // Mark an active process
         let mut process_tokens = self.process_tokens.lock().unwrap();
@@ -179,26 +179,27 @@ impl karl_host_server::KarlHost for Host {
             if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
                 if perms.is_triggered(&req.tag) {
                     // cached the triggered file
-                    let res = if let Some(data) = perms.read_triggered(&req.timestamp) {
+                    let res = if req.lower != req.upper {
+                        GetDataResult::default()
+                    } else if let Some(data) = perms.read_triggered(&req.lower) {
                         GetDataResult {
-                            timestamps: vec![req.timestamp],
+                            timestamps: vec![req.lower],
                             data: vec![data],
                         }
                     } else {
                         GetDataResult::default()
                     };
-                    Ok(Response::new(res))
+                    return Ok(Response::new(res));
                 }
-                if !perms.can_read(req.tag) {
-                    Err(Status::new(Code::Unauthenticated, "cannot read"))
+                if !perms.can_read(&req.tag) {
+                    return Err(Status::new(Code::Unauthenticated, "cannot read"));
                 }
             } else {
-                Err(Status::new(Code::Unauthenticated, "invalid process token"))
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
             }
-        } else {
-            // Forward the file access to the controller and return the result
-            self.api.forward_get(req).await
         }
+        // Forward the file access to the controller and return the result
+        self.api.forward_get(req).await
     }
 
     /// Validates the process is an existing process, and checks its
@@ -217,14 +218,14 @@ impl karl_host_server::KarlHost for Host {
         // Sanitizes the path.
         let req = req.into_inner();
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            if !perms.can_write(req.tag) {
+            if !perms.can_write(&req.tag) {
                 return Err(Status::new(Code::Unauthenticated, "cannot write"));
             }
-            if req.tag[0] == "#" {
-                let mut split = sensor_key.split(".");
-                let sensor = split.next().unwrap()[1:];
+            if req.tag.chars().next() == Some('#') {
+                let mut split = req.tag.split(".");
+                let sensor = split.next().unwrap();
                 let key = split.next().unwrap();
-                Some((sensor.to_string(), key.to_string()))
+                Some((sensor[1..].to_string(), key.to_string()))
             } else {
                 None
             }

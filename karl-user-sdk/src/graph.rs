@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::collections::HashMap;
+use crate::protos::*;
 
 type SensorKey = (String, String);
 type ModuleParam = (String, String);
@@ -30,11 +31,15 @@ impl Graph {
         network_edges: Vec<(&str, &str)>,
         interval_modules: Vec<(&str, u32)>,
     ) -> Self {
-        let mut data_edges = data_edges_stateless.into_iter()
-            .map(|(a, b)| (split(a), split(b), true)).collect();
-        let mut data_edges_stateful = data_edges_stateful.into_iter()
-            .map(|(a, b)| (split(a), split(b), false)).collect();
-        data_edges_stateless.append(&mut data_edges_stateful);
+        let mut data_edges = data_edges_stateless
+            .into_iter()
+            .map(|(a, b)| (split(a), split(b), true))
+            .collect::<Vec<_>>();
+        let mut data_edges_stateful = data_edges_stateful
+            .into_iter()
+            .map(|(a, b)| (split(a), split(b), false))
+            .collect::<Vec<_>>();
+        data_edges.append(&mut data_edges_stateful);
         Graph {
             sensors: sensors.into_iter().map(|a| a.to_string()).collect(),
             modules: modules.into_iter().map(|a| a.to_string()).collect(),
@@ -97,14 +102,14 @@ impl Graph {
         }
         // stateless data edges
         writeln!(g, "\n  edge [style=solid];")?;
-        for ((m1, t1), (m2, t2), stateless) in &self.data_edges_stateless {
-            if stateless {
+        for ((m1, t1), (m2, t2), stateless) in &self.data_edges {
+            if *stateless {
                 writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
             }
         }
         // stateful data edges
         writeln!(g, "\n  edge [style=dashed];")?;
-        for ((m1, t1), (m2, t2), stateless) in &self.data_edges_stateful {
+        for ((m1, t1), (m2, t2), stateless) in &self.data_edges {
             if !stateless {
                 writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
             }
@@ -133,7 +138,7 @@ impl Graph {
 
     pub async fn send_to_controller(
         &self,
-        api: &crate::net::KarlUserSDK,
+        api: &crate::KarlUserSDK,
     ) -> Result<(), tonic::Status> {
         let data_edges = self.data_edges.clone().into_iter()
             .map(|((out_id, out_return), (in_id, in_param), stateless)| {
@@ -147,7 +152,7 @@ impl Graph {
             .map(|(module_id, domain)| {
                 NetworkEdge { module_id, domain }})
             .collect();
-        let intervals = self.intervals.clone().into_iter()
+        let intervals = self.interval_modules.clone().into_iter()
             .map(|(module_id, seconds)| {
                 Interval { module_id, seconds }})
             .collect();
@@ -157,7 +162,7 @@ impl Graph {
             network_edges,
             intervals,
         };
-        api.set_graph(req)
+        api.set_graph(req).await
     }
 }
 

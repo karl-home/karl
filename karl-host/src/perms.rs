@@ -1,8 +1,6 @@
-use std::collections::{HashSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 
 use crate::protos::*;
-use karl_common::*;
 
 /// Permissions of an active process
 #[derive(Debug)]
@@ -20,29 +18,29 @@ pub struct ProcessPerms {
 }
 
 impl ProcessPerms {
-    pub fn new(req: &ComputeRequest) -> Self {
+    pub fn new(req: &mut ComputeRequest) -> Self {
         let triggered_data = if req.triggered_tag == "" || req.triggered_timestamp == "" {
             None
         } else {
-            Some(req.triggered_data)
+            Some(req.triggered_data.drain(..).collect())
         };
         let read_perms = req.params
             .split(":")
             .map(|param| param.split(";"))
-            .map(|param| (param.next().unwrap(), param.next().unwrap()))
+            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
             .map(|(_, tag)| tag.to_string())
-            .filter(|tag| tag != req.triggered_tag)
-            .collect::HashSet<_>();
+            .filter(|tag| tag != &req.triggered_tag)
+            .collect::<HashSet<String>>();
         let write_perms = req.returns
             .split(":")
             .map(|param| param.split(";"))
-            .map(|param| (param.next().unwrap(), param.next().unwrap()))
-            .flat_map(|(_, tags)| tags.split(",").map(|tag| tag.to_string()).collect())
-            .collect::HashSet<_>();
+            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
+            .flat_map(|(_, tags)| tags.split(",").map(|tag| tag.to_string()))
+            .collect::<HashSet<String>>();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         Self {
-            triggered_tag: req.triggered_tag,
-            triggered_timestamp: req.triggered_timestamp,
+            triggered_tag: req.triggered_tag.clone(),
+            triggered_timestamp: req.triggered_timestamp.clone(),
             triggered_data,
             read_perms,
             write_perms,
@@ -70,7 +68,7 @@ impl ProcessPerms {
         self.read_perms.contains(tag)
     }
 
-    pub fn can_write(&self, path: &Path) -> bool {
+    pub fn can_write(&self, tag: &str) -> bool {
         self.write_perms.contains(tag)
     }
 }

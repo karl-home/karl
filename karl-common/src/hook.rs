@@ -9,13 +9,6 @@ use crate::*;
 
 type DomainName = String;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct FileACL {
-    pub path: PathBuf,
-    pub read: bool,
-    pub write: bool,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum HookSchedule {
     Interval(Duration),
@@ -37,18 +30,10 @@ pub struct Hook {
     pub params: HashMap<String, Option<String>>,
     /// Map from the module's expected return names and the associated tags.
     pub returns: HashMap<String, Vec<String>>,
+    /// Network permissions
     pub network_perm: Vec<DomainName>,
+    /// Environment variables
     pub envs: Vec<(String, String)>,
-}
-
-impl FileACL {
-    pub fn new(path: &str, read: bool, write: bool) -> Self {
-        Self {
-            path: Path::new(path).to_path_buf(),
-            read,
-            write,
-        }
-    }
 }
 
 impl Hook {
@@ -69,7 +54,8 @@ impl Hook {
             args,
             params: params.into_iter().map(|p| (p, None)).collect(),
             returns: returns.into_iter().map(|r| (r, vec![])).collect(),
-            md: Default::default(),
+            network_perm: vec![],
+            envs: vec![],
         }
     }
 
@@ -127,14 +113,12 @@ mod test {
         let envs = vec![("KEY".to_string(), "VALUE".to_string())];
         let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
-        let file_perm = vec![FileACL::new("main", true, true)];
 
         let hook = Hook::new(
             "hook_id".to_string(),
             HookSchedule::Interval(Duration::from_secs(10)),
             state_perm.clone(),
             network_perm.clone(),
-            file_perm.clone(),
             package.clone(),
             binary_path,
             args.clone(),
@@ -150,7 +134,6 @@ mod test {
         assert_eq!(r.state_perm, state_perm);
         assert_eq!(r.network_perm, network_perm);
         assert_eq!(r.file_perm.len(), 1);
-        assert_eq!(FileACL::from(&r.file_perm[0]), file_perm[0]);
     }
 
     #[test]

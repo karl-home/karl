@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, atomic::AtomicUsize};
 use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
 use crate::controller::{AuditLog, HostScheduler};
-use crate::protos::{FileAcl, ComputeRequest};
+use crate::protos::ComputeRequest;
 use karl_common::*;
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub struct HookRunner {
     tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-    pub(crate) tag_counter: Arc<Mutex<usize>>,
+    pub(crate) tag_counter: Arc<Mutex<AtomicUsize>>,
     /// Watched tags and the hooks they spawn.
     watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
 }
@@ -53,6 +53,9 @@ fn hook_to_compute_request(
         params: hook.params_string(),
         returns: hook.returns_string(),
         network_perm,
+        triggered_tag: String::new(),
+        triggered_timestamp: String::new(),
+        triggered_data: Vec::new(),
     })
 }
 
@@ -67,16 +70,17 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
-            tag_counter: Arc::new(Mutex::new(0)),
+            tag_counter: Arc::new(Mutex::new(AtomicUsize::new(0))),
             watched_tags: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub fn next_tag(&self) -> usize {
-        let tag_counter = self.tag_counter().lock().unwrap();
-        let tag = tag_counter;
-        tag_counter += 1;
-        tag
+    pub fn next_tag(&self) -> String {
+        let mut tag_counter = self.tag_counter.lock().unwrap();
+        let tag = tag_counter.get_mut();
+        let old_tag = *tag;
+        *tag = old_tag + 1;
+        format!("t{}", old_tag)
     }
 
     /// Spawns queue manager to monitor the delay queue for when hooks
@@ -115,14 +119,14 @@ impl HookRunner {
     ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?;
         use rand::Rng;
-        hook.md.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
+        hook.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
         let hook_id = loop {
             // Loop to ensure a unique hook ID.
             let id: u32 = rand::thread_rng().gen();
             let hook_id = format!("{}-{}", &global_hook_id, id);
             let mut hooks = self.hooks.lock().unwrap();
             if !hooks.contains_key(&hook_id) {
-                hook.md.envs.push((String::from("HOOK_ID"), hook_id.clone()));
+                hook.envs.push((String::from("HOOK_ID"), hook_id.clone()));
                 hooks.insert(hook_id.clone(), hook);
                 break hook_id;
             }
@@ -161,9 +165,9 @@ impl HookRunner {
 
     pub async fn spawn_if_watched(
         &self,
-        tag: String,
-        timestamp: String,
-        data: Vec<u8>,
+        tag: &String,
+        timestamp: &String,
+        data: &Vec<u8>,
     ) -> usize {
         // debug!("spawn_if_watched? {}/{}, internal {:?}",
         //     tag, timestamp, self.watched_tags.read().unwrap());
@@ -172,7 +176,7 @@ impl HookRunner {
         let hook_ids = {
             let mut hook_ids = HashSet::new();
             let watched_tags = self.watched_tags.read().unwrap();
-            if let Some(hooks) = watched_tags.get(&tag) {
+            if let Some(hooks) = watched_tags.get(tag) {
                 debug!("spawning {:?} from {}/{}", hooks, tag, timestamp);
                 for hook_id in hooks {
                     // TODO: pass timestamp to queue
@@ -355,13 +359,11 @@ mod test {
         runner.start(audit_log, scheduler, true);
         let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
-        let file_perm = vec![FileACL::new("main", true, true)];
         let envs = vec!["KEY=VALUE".to_string()];
         let hook_id = HookRunner::register_hook(
             "hello-world".to_string(),
             state_perm.clone(),
             network_perm.clone(),
-            file_perm.clone(),
             envs.clone(),
             runner.hooks.clone(),
             runner.tx.unwrap().clone(),

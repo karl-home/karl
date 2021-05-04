@@ -111,12 +111,16 @@ impl karl_controller_server::KarlController for Controller {
         // TODO: validate host token
         warn!("FINISH step 8: push box");
         let req = req.into_inner();
-        let label: KarlLabel = "".into(); // TODO
+        let label: KarlLabel = String::from("").into(); // TODO
         let res = self.data_sink.write().unwrap()
-            .push_data(&req.tag, req.data, label)
+            .push_data(&req.tag, &req.data, label)
             .map_err(|e| to_status(e))?;
         // TODO: move to its own thread
-        self.runner.spawn_if_watched(res.modified_tag, res.timestamp).await;
+        self.runner.spawn_if_watched(
+            &res.modified_tag,
+            &res.timestamp,
+            &req.data,
+        ).await;
         Ok(Response::new(()))
     }
 
@@ -172,13 +176,10 @@ impl karl_controller_server::KarlController for Controller {
             req.global_sensor_id,
             "0.0.0.0".parse().unwrap(), // TODO?
             req.keys,
-            req.tags.clone(),
+            req.returns.clone(),
             &req.app[..],
             false,
         );
-        self.data_sink.write().unwrap()
-            .new_entity(res.sensor_id.clone(), req.tags)
-            .map_err(|e| to_status(e))?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
     }
@@ -193,19 +194,29 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         warn!("step 2: persisting data");
         let req = req.into_inner();
-        let sensor_id = {
+        let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
             if let Some(sensor) = sensors.get(&req.sensor_token) {
-                sensor.id.clone()
+                if let Some(tags) = sensor.returns.get(&req.param) {
+                    (sensor.id.clone(), tags.clone())
+                } else {
+                    return Err(Status::new(Code::NotFound, "invalid param name"));
+                }
             } else {
                 return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
             }
         };
-        let res = self.data_sink.write().unwrap()
-            .push_data(&sensor_id, &req.tag, req.data)
-            .map_err(|e| to_status(e))?;
-        warn!("=> {} s", now.elapsed().as_secs_f32());
-        self.runner.spawn_if_watched(res.modified_tag, res.timestamp).await;
+        for tag in tags {
+            let res = self.data_sink.write().unwrap()
+                .push_data(&tag, &req.data, sensor_id.clone().into())
+                .map_err(|e| to_status(e))?;
+            warn!("=> {} s", now.elapsed().as_secs_f32());
+            self.runner.spawn_if_watched(
+                &res.modified_tag,
+                &res.timestamp,
+                &req.data,
+            ).await;
+        }
         Ok(Response::new(()))
     }
 
@@ -286,7 +297,7 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
         let mut sensors = self.sensors.lock().unwrap();
-        let mut hooks = self.hooks.lock().unwrap();
+        let mut hooks = self.runner.hooks.lock().unwrap();
         self.clear_graph(&mut hooks);
         for data_edge in req.data_edges {
             self.add_data_edge(data_edge, &mut hooks, &mut sensors)?;
@@ -411,9 +422,7 @@ impl Controller {
         // }
 
         // Register the hook.
-        let (hook_id, tags) = self.runner.register_hook(global_hook_id)?;
-        self.data_sink.write().unwrap().new_entity(hook_id.clone(), tags)?;
-        Ok(hook_id)
+        self.runner.register_hook(global_hook_id)
     }
 
     /// Register a client.
@@ -445,7 +454,7 @@ impl Controller {
         mut id: String,
         addr: IpAddr,
         keys: Vec<String>,
-        tags: Vec<String>,
+        returns: Vec<String>,
         app_bytes: &[u8],
         confirmed: bool,
     ) -> SensorRegisterResult {
@@ -474,7 +483,7 @@ impl Controller {
             confirmed: confirmed || self.autoconfirm,
             id: id.clone(),
             keys,
-            tags,
+            returns: returns.into_iter().map(|r| (r, vec![])).collect(),
             addr,
         };
 
@@ -496,7 +505,7 @@ impl Controller {
                 sensor.id,
                 token,
                 sensor.keys,
-                sensor.tags,
+                sensor.returns,
             );
         } else {
             unreachable!("impossible to generate duplicate sensor tokens")
@@ -515,11 +524,10 @@ impl Controller {
     /// Updates how new data labels are assigned relative to the new graph.
     fn add_data_edge(
         &self,
-        data_edge: DataEdge,
+        req: DataEdge,
         hooks: &mut HashMap<HookID, Hook>,
         sensors: &mut HashMap<SensorToken, Client>,
     ) -> Result<(), Status> {
-        let req = req.into_inner();
         info!("data_edge {}.{} -> {}.{} stateless={}",
             req.out_id, req.out_return, req.in_id, req.in_param, req.stateless);
         // assign a tag name to the input node, if it doesn't already have one.
@@ -528,7 +536,7 @@ impl Controller {
                 if maybe_tag.is_none() {
                     *maybe_tag = Some(self.runner.next_tag());
                 }
-                maybe_tag.as_ref().unwrap()
+                maybe_tag.clone().unwrap()
             } else {
                 error!("input module does not have input param");
                 return Ok(())
@@ -536,12 +544,12 @@ impl Controller {
         } else {
             error!("input module does not exist");
             return Ok(())
-        }
+        };
 
         // add that tag name to the output node.
         if let Some(out_module) = hooks.get_mut(&req.out_id) {
             if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
-                out_tags.push(tag);
+                out_tags.push(tag.to_string());
             } else {
                 error!("output module does not have output return name");
                 return Ok(())
@@ -552,7 +560,7 @@ impl Controller {
             for (_, sensor) in sensors.iter_mut() {
                 if sensor.id == req.out_id {
                     if let Some(out_tags) = sensor.returns.get_mut(&req.out_return) {
-                        out_tags.push(tag);
+                        out_tags.push(tag.to_string());
                     } else {
                         error!("output sensor does not have output return name");
                         return Ok(())
@@ -569,9 +577,9 @@ impl Controller {
 
         // if the edge is stateless, tell the runner to watch that tag.
         if req.stateless {
-            self.runner.watch_tag(req.input_id, tag);
+            self.runner.watch_tag(req.in_id, tag.to_string());
         }
-        Ok(Response::new(()))
+        Ok(())
     }
 
     /// Adds the unique tag name associated with sensor state to the output
@@ -602,8 +610,8 @@ impl Controller {
     fn add_network_edge(
         &self, req: NetworkEdge, hooks: &mut HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
-        info!("network_edge {} -> {}", req.output_id, req.domain);
-        if let Some(hook) = hooks.get_mut(&req.output_id) {
+        info!("network_edge {} -> {}", req.module_id, req.domain);
+        if let Some(hook) = hooks.get_mut(&req.module_id) {
             hook.network_perm.push(req.domain);
             Ok(())
         } else {
@@ -615,10 +623,10 @@ impl Controller {
     fn add_interval(
         &self, req: Interval, hooks: &HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
-        info!("interval {} = {}s", req.hook_id, req.seconds);
-        if hooks.contains_key(&req.hook_id) {
+        info!("interval {} = {}s", req.module_id, req.seconds);
+        if hooks.contains_key(&req.module_id) {
             let duration = std::time::Duration::from_secs(req.seconds.into());
-            self.runner.set_interval(req.hook_id, duration);
+            self.runner.set_interval(req.module_id, duration);
             Ok(())
         } else {
             Err(Status::new(Code::NotFound, "module id not found"))
@@ -629,7 +637,7 @@ impl Controller {
         self.runner.clear_intervals();
         for (_, hook) in hooks.iter_mut() {
             for (_, params) in hook.params.iter_mut() {
-                *params = vec![];
+                *params = None;
             }
             for (_, returns) in hook.returns.iter_mut() {
                 *returns = vec![];

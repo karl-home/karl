@@ -37,12 +37,6 @@ service KarlController {
  * HostService
  ****************************************************************************/
 
-message FileACL {
-  string path = 1;
-  bool read = 2;
-  bool write = 3;
-}
-
 message ComputeRequest {
   string host_token = 1;
 
@@ -62,9 +56,9 @@ message ComputeRequest {
   repeated string network_perm = 10;
 
   // automatically pass triggered data
-  triggered_tag = 11;
-  triggered_timestamp = 12;
-  triggered_data = 13;
+  string triggered_tag = 11;
+  string triggered_timestamp = 12;
+  bytes triggered_data = 13;
 }
 
 message NotifyStart {
@@ -159,7 +153,7 @@ message HostHeartbeat {
 message SensorRegisterRequest {
   string global_sensor_id = 1;
   bytes app = 2;
-  repeated string tags = 3;
+  repeated string returns = 3;
   repeated string keys = 4;
 }
 

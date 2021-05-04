@@ -38,21 +38,6 @@ impl DataSink {
         }
     }
 
-    /// Initializes directories at `<karl_path>/data/<id>/<tag>/` for each
-    /// of the entity's output tags. An entity is a sensor or module.
-    pub fn new_entity(
-        &self,
-        id: String,
-        tags: Vec<String>,
-    ) -> Result<(), Error> {
-        let path = self.data_path.join(&id);
-        fs::create_dir_all(&path)?;
-        for tag in &tags {
-            fs::create_dir_all(&path.join(tag))?;
-        }
-        Ok(())
-    }
-
     /// Push sensor data.
     ///
     /// Parameters:
@@ -64,7 +49,7 @@ impl DataSink {
     pub fn push_data(
         &self,
         tag: &str,
-        data: Vec<u8>,
+        data: &Vec<u8>,
         label: KarlLabel,
     ) -> Result<PushDataResult, Error> {
         let path = self.data_path.join(tag);
@@ -77,7 +62,7 @@ impl DataSink {
             }
             debug!("push data tag={} timestamp={} (len {})",
                 tag, dt, data.len());
-            fs::write(path, data)?;
+            fs::write(path, &data)?;
             break Ok(PushDataResult {
                 modified_tag: tag.to_string(),
                 timestamp: dt,

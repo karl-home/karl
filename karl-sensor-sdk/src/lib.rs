@@ -54,12 +54,12 @@ impl KarlSensorSDK {
     /// Push raw data from a sensor.
     pub async fn push(
         &self,
-        tag: String,
+        param: String,
         data: Vec<u8>,
     ) -> Result<(), Status> {
         let request = SensorPushData {
             sensor_token: self.sensor_token.clone().expect("missing token"),
-            tag,
+            param,
             data,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await

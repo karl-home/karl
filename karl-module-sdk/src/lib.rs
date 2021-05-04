@@ -25,18 +25,18 @@ impl KarlModuleSDK {
         let params = env::var("KARL_PARAMS").unwrap()
             .split(":")
             .map(|param| param.split(";"))
-            .map(|param| (param.next().unwrap(), param.next().unwrap()))
+            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
             .map(|(param, tag)| (param.to_string(), tag.to_string()))
-            .collect::HashMap<_, _>();
+            .collect::<HashMap<_, _>>();
         let returns = env::var("KARL_RETURNS").unwrap()
             .split(":")
             .map(|param| param.split(";"))
-            .map(|param| (param.next().unwrap(), param.next().unwrap()))
+            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
             .map(|(return_name, tags)| (
                 return_name.to_string(),
                 tags.split(",").map(|tag| tag.to_string()).collect(),
             ))
-            .collect::HashMap<_, _>();
+            .collect::<HashMap<_, _>>();
         Self {
             global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
             hook_id: env::var("HOOK_ID").unwrap(),
@@ -67,7 +67,7 @@ impl KarlModuleSDK {
         upper: &str,
     ) -> Result<GetDataResult, Status> {
         if let Some(tag) = self.params.get(param) {
-            self._get_tag(tag, lower, upper)
+            self._get_tag(tag, lower, upper).await
         } else {
             Err(Status::new(Code::Cancelled, "invalid param: either the \
                 user did not create an input edge to the param OR the \
@@ -103,8 +103,7 @@ impl KarlModuleSDK {
     ) -> Result<(), Status> {
         if let Some(tags) = self.returns.get(return_name) {
             assert!(!tags.is_empty());
-            let mut reqs = 0..(tags.len() - 1)
-                .iter()
+            let mut reqs = (0..(tags.len() - 1))
                 .map(|i| PushData {
                     host_token: String::new(),
                     process_token: self.process_token.clone(),
