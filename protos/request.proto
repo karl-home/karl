@@ -60,10 +60,14 @@ message ComputeRequest {
   repeated string args = 6;
   repeated string envs = 7;
 
+  // module inputs/outputs
+  repeated string params = 8;
+  repeated string tags = 9;
+
   // permissions
-  repeated FileACL file_perm = 8;
-  repeated string network_perm = 9;
-  repeated string state_perm = 10;
+  repeated FileACL file_perm = 10;
+  repeated string network_perm = 11;
+  repeated string state_perm = 12;
 }
 
 message NotifyStart {

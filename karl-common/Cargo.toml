@@ -16,3 +16,7 @@ rand = "0.8"
 
 [dev-dependencies]
 tempdir = "0.3"
+
+[[bin]]
+name = "hookgen"
+path = "src/bin/hookgen.rs"

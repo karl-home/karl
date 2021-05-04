@@ -23,10 +23,17 @@ pub enum HookSchedule {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Hook {
     confirmed: bool,
+    /// The name of the module in the global repository.
     pub global_hook_id: StringID,
+    /// The targz of the input filesystem.
     pub package: Vec<u8>,
+    /// Path to the binary within the input filesystem.
     pub binary_path: PathBuf,
+    /// Arguments to the binary path.
     pub args: Vec<String>,
+    /// Parameters expected by the module code.
+    pub params: Vec<String>,
+    /// Output tags.
     pub tags: Vec<String>,
     pub md: HookMetadata,
 }
@@ -55,6 +62,7 @@ impl Hook {
         package: Vec<u8>,
         binary_path: &str,
         args: Vec<String>,
+        params: Vec<String>,
         tags: Vec<String>,
     ) -> Self {
         let binary_path = Path::new(binary_path).to_path_buf();
@@ -64,6 +72,7 @@ impl Hook {
             package,
             binary_path,
             args,
+            params,
             tags,
             md: Default::default(),
         }

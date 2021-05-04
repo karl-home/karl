@@ -39,6 +39,8 @@ fn hook_to_compute_request(
     };
     let binary_path = hook.binary_path.clone().into_os_string().into_string().unwrap();
     let args = hook.args.clone().into_iter().collect();
+    let params = hook.params.clone().into_iter().collect();
+    let tags = hook.tags.clone().into_iter().collect();
     let envs = hook.md.envs.clone().iter().map(|(k, v)| format!("{}={}", k, v)).collect();
     let file_perm = hook.md.file_perm.clone().into_iter().map(|acl| {
         FileAcl {
@@ -54,7 +56,14 @@ fn hook_to_compute_request(
         hook_id,
         cached,
         package,
-        binary_path, args, envs, file_perm, state_perm, network_perm,
+        binary_path,
+        args,
+        envs,
+        params,
+        tags,
+        file_perm,
+        state_perm,
+        network_perm,
     })
 }
 

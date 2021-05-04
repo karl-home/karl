@@ -21,7 +21,7 @@ fn read_line() -> String {
     line
 }
 
-fn read_tags() -> Vec<String> {
+fn read_vec_string() -> Vec<String> {
     let mut tags = vec![];
     loop {
         let line = read_line();
@@ -80,8 +80,10 @@ fn main() {
     println!("Files (one per line):");
     let builder = read_tar_builder();
     let handle = std::thread::spawn(|| builder.finalize().unwrap());
+    println!("Input parameters (one per line):");
+    let params = read_vec_string();
     println!("Output tags (one per line):");
-    let tags = read_tags();
+    let tags = read_vec_string();
     println!("Invoke command:");
     let (binary_path, args) = read_invoke_command();
 
@@ -92,6 +94,7 @@ fn main() {
         package,
         &binary_path,
         args,
+        params,
         tags,
     );
 
