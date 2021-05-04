@@ -6,7 +6,7 @@ use std::error::Error;
 use std::time::{Instant, Duration};
 use clap::{Arg, App};
 use tokio;
-use karl::net::KarlSensorAPI;
+use karl_module_sdk::KarlSensorSDK;
 
 /// Register the sensor with the controller.
 ///
@@ -19,7 +19,7 @@ use karl::net::KarlSensorAPI;
 ///
 /// Returns: the sensor token and sensor ID.
 async fn register(
-    api: &mut KarlSensorAPI,
+    api: &mut KarlSensorSDK,
 ) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
     let result = api.register(
@@ -36,7 +36,7 @@ async fn register(
 
 /// Listen for state changes.
 async fn handle_state_changes(
-    api: KarlSensorAPI,
+    api: KarlSensorSDK,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
@@ -45,6 +45,7 @@ async fn handle_state_changes(
         } else if msg.key == "livestream" {
             if msg.value == "on".as_bytes() {
                 info!("turning livestream on");
+                // TODO: send livestream messages
                 // tokio::spawn(async move {
                 // let tag = "streaming".to_string();
                 // api.push(tag, image_bytes.clone()).await.unwrap();
@@ -61,10 +62,10 @@ async fn handle_state_changes(
 /// Push data at a regular interval to the camera.motion tag
 /// to represent snaphots of when motion is detected.
 async fn motion_detection(
-    api: KarlSensorAPI,
+    api: KarlSensorSDK,
     interval: u64,
+    image_path: String,
 ) -> Result<(), Box<dyn Error>> {
-    let image_path = "data/person-detection/PennFudanPed/PNGImages/FudanPed00001.png";
     let image_bytes = fs::read(image_path)?;
     let duration = Duration::from_secs(interval);
     let mut interval = tokio::time::interval(duration);
@@ -95,13 +96,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .help("Motion detection interval, in seconds.")
             .takes_value(true)
             .default_value("30"))
+        .arg(Arg::with_name("image_path")
+            .help("Path to the image to send when motion is detected.")
+            .takes_value(true)
+            .default_value("data/FudanPed00001_smaller.png"))
         .get_matches();
 
     let api = {
         let ip = matches.value_of("ip").unwrap();
         let port = matches.value_of("port").unwrap();
         let addr = format!("http://{}:{}", ip, port);
-        let mut api = KarlSensorAPI::new(&addr);
+        let mut api = KarlSensorSDK::new(&addr);
         let _sensor_id = register(&mut api).await?;
         api
     };
@@ -115,8 +120,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let api = api.clone();
         let interval: u64 =
             matches.value_of("interval").unwrap().parse().unwrap();
+        let image_path = matches.value_of("image_path").unwrap().to_string();
         tokio::spawn(async move {
-            motion_detection(api, interval).await.unwrap()
+            motion_detection(api, interval, image_path).await.unwrap()
         })
     };
     state_change_handle.await?;

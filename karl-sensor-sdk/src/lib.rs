@@ -7,12 +7,12 @@ use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
 
 #[derive(Debug, Clone)]
-pub struct KarlSensorAPI {
+pub struct KarlSensorSDK {
     pub controller_addr: String,
     pub sensor_token: Option<String>,
 }
 
-impl KarlSensorAPI {
+impl KarlSensorSDK {
     pub fn new(controller_addr: &str) -> Self {
         Self {
             controller_addr: controller_addr.to_string(),

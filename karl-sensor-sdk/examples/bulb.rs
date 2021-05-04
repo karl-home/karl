@@ -7,7 +7,7 @@ use std::time::{Instant, Duration};
 
 use tokio;
 use clap::{Arg, App};
-use karl_module_sdk::KarlSensorAPI;
+use karl_module_sdk::KarlSensorSDK;
 
 /// Register the sensor with the controller.
 ///
@@ -16,7 +16,7 @@ use karl_module_sdk::KarlSensorAPI;
 ///
 /// Returns: the sensor ID.
 async fn register(
-    api: &mut KarlSensorAPI,
+    api: &mut KarlSensorSDK,
 ) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
     let result = api.register(
@@ -32,7 +32,7 @@ async fn register(
 }
 
 async fn handle_state_changes(
-    api: KarlSensorAPI,
+    api: KarlSensorSDK,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let ip = matches.value_of("ip").unwrap();
         let port = matches.value_of("port").unwrap();
         let addr = format!("http://{}:{}", ip, port);
-        let mut api = KarlSensorAPI::new(&addr);
+        let mut api = KarlSensorSDK::new(&addr);
         let _sensor_id = register(&mut api).await?;
         api
     };
