@@ -3,10 +3,12 @@ mod builder;
 mod token;
 mod types;
 mod hook;
+mod label;
 
 pub use error::Error;
 pub use builder::TarBuilder;
 pub use hook::Hook;
+pub use label::KarlLabel;
 pub use token::*;
 pub use types::*;
 

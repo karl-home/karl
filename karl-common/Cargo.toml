@@ -13,6 +13,7 @@ serde = { version = "1.0",  features = ["derive"] }
 flate2 = "1.0.17"
 tar = "0.4.30"
 rand = "0.8"
+itertools = "0.10"
 
 [dev-dependencies]
 tempdir = "0.3"
