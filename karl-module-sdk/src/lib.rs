@@ -35,7 +35,7 @@ impl KarlModuleSDK {
             }
             (tag.unwrap(), timestamp.unwrap())
         };
-        self.get(&tag, &timestamp, &timestamp).await.map(|res| Some(res))
+        Ok(self.get(&tag, &timestamp, &timestamp).await?.data.pop())
     }
 
     pub async fn get(
@@ -43,7 +43,7 @@ impl KarlModuleSDK {
         tag: &str,
         lower: &str,
         upper: &str,
-    ) -> Result<Vec<u8>, Status> {
+    ) -> Result<GetDataResult, Status> {
         let req = GetData {
             host_token: String::new(),
             process_token: self.process_token.clone(),
@@ -53,7 +53,7 @@ impl KarlModuleSDK {
         };
         KarlHostClient::connect(self.host_addr.clone()).await.unwrap()
             .get(Request::new(req)).await
-            .map(|res| res.into_inner().data)
+            .map(|res| res.into_inner())
     }
 
     pub async fn push(

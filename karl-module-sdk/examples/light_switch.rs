@@ -1,9 +1,13 @@
+//! Inputs
+//! - intent: { state: on } or { state: off }
+//! Outputs
+//! - state: [1] for on and [0] for off
 use serde_json;
-use karl::net::KarlAPI;
+use karl_module_sdk::KarlModuleSDK;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api = KarlAPI::new();
+    let api = KarlModuleSDK::new();
     let data = api.get_triggered().await?.unwrap();
     let slots = serde_json::from_slice(&data[..])?;
     match slots {
