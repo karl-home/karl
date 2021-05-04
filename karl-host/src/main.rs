@@ -67,6 +67,8 @@ impl karl_host_server::KarlHost for Host {
             let process_tokens = self.process_tokens.clone();
             let process_token = process_token.clone();
             tokio::spawn(async move {
+                req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
+                req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &req.triggered_timestamp));
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
                 warn!("=> {} s", now.elapsed().as_secs_f32());
                 Host::handle_compute(
@@ -95,7 +97,7 @@ impl karl_host_server::KarlHost for Host {
         let req = req.into_inner();
         if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_access_domain(&req.domain) {
-                return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
+                return Err(Status::new(Code::Unauthenticated, "invalid network access"));
             }
         } else {
             return Err(Status::new(Code::Unauthenticated, "invalid process token"));
@@ -160,28 +162,53 @@ impl karl_host_server::KarlHost for Host {
         handle.await.map_err(|e| Status::new(Code::Internal, format!("{}", e)))?
     }
 
+    /// Validates the process is an existing process, and checks its
+    /// permissions to see that the tag corresponds to a valid param.
+    /// If the tag is valid and this is a stateless edge, only respond
+    /// succesfully if the module is trying to get the triggered data.
+    /// If the tag is valid and this is a stateful edge, endorse the data
+    /// with the host token and forward to the controller.
     async fn get(
         &self, req: Request<GetData>,
     ) -> Result<Response<GetDataResult>, Status> {
-        // Validate the process is valid and has permissions to read the file.
+        // Validate the process is valid and has permissions to read the tag.
         // No serializability guarantees from other requests from the same process.
-        // Sanitizes the path.
         let req = req.into_inner();
         debug!("get {:?}", req);
         if self.validate {
-            if let Some(_perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-                // if !perms.can_read_file(Path::new(&req.path)) {
-                //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-                // }
+            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+                if perms.is_triggered(&req.tag) {
+                    // cached the triggered file
+                    let res = if let Some(data) = perms.read_triggered(&req.timestamp) {
+                        GetDataResult {
+                            timestamps: vec![req.timestamp],
+                            data: vec![data],
+                        }
+                    } else {
+                        GetDataResult::default()
+                    };
+                    Ok(Response::new(res))
+                }
+                if !perms.can_read(req.tag) {
+                    Err(Status::new(Code::Unauthenticated, "cannot read"))
+                }
             } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+                Err(Status::new(Code::Unauthenticated, "invalid process token"))
             }
+        } else {
+            // Forward the file access to the controller and return the result
+            self.api.forward_get(req).await
         }
-
-        // Forward the file access to the controller and return the result
-        self.api.forward_get(req).await
     }
 
+    /// Validates the process is an existing process, and checks its
+    /// permissions to see that the process is writing to a valid tag.
+    /// If the tag is valid, endorse the data with the host token and
+    /// forward to the controller.
+    ///
+    /// If the tag corresponds to sensor state (say maybe it starts with #
+    /// which is reserved for state tags), forward the request as a state
+    /// change instead.
     async fn push(
         &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
@@ -190,12 +217,12 @@ impl karl_host_server::KarlHost for Host {
         // Sanitizes the path.
         let req = req.into_inner();
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
-            // if !perms.can_write_file(Path::new(&req.path)) {
-            //     return Err(Status::new(Code::Unauthenticated, "invalid ACL"));
-            // }
-            if let Some(sensor_key) = perms.can_change_state(&req.tag) {
+            if !perms.can_write(req.tag) {
+                return Err(Status::new(Code::Unauthenticated, "cannot write"));
+            }
+            if req.tag[0] == "#" {
                 let mut split = sensor_key.split(".");
-                let sensor = split.next().unwrap();
+                let sensor = split.next().unwrap()[1:];
                 let key = split.next().unwrap();
                 Some((sensor.to_string(), key.to_string()))
             } else {

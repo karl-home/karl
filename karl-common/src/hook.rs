@@ -1,8 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use bincode;
+use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
+use std::collections::HashMap;
 use crate::*;
 
 type DomainName = String;
@@ -31,18 +33,11 @@ pub struct Hook {
     pub binary_path: PathBuf,
     /// Arguments to the binary path.
     pub args: Vec<String>,
-    /// Parameters expected by the module code.
-    pub params: Vec<String>,
-    /// Output tags.
-    pub tags: Vec<String>,
-    pub md: HookMetadata,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct HookMetadata {
-    pub state_perm: Vec<String>, // <id>.<tag>=<sensor_id>.<key>
+    /// Map from the module's expected parameters and the associated tags.
+    pub params: HashMap<String, Option<String>>,
+    /// Map from the module's expected return names and the associated tags.
+    pub returns: HashMap<String, Vec<String>>,
     pub network_perm: Vec<DomainName>,
-    pub file_perm: Vec<FileACL>,
     pub envs: Vec<(String, String)>,
 }
 
@@ -63,7 +58,7 @@ impl Hook {
         binary_path: &str,
         args: Vec<String>,
         params: Vec<String>,
-        tags: Vec<String>,
+        returns: Vec<String>,
     ) -> Self {
         let binary_path = Path::new(binary_path).to_path_buf();
         Self {
@@ -72,8 +67,8 @@ impl Hook {
             package,
             binary_path,
             args,
-            params,
-            tags,
+            params: params.into_iter().map(|p| (p, None)).collect(),
+            returns: returns.into_iter().map(|r| (r, vec![])).collect(),
             md: Default::default(),
         }
     }
@@ -89,20 +84,34 @@ impl Hook {
 
     /// `<KEY>=<VALUE>`
     pub fn set_envs(mut self, envs: Vec<String>) -> Result<Self, Error> {
-        self.md.envs = vec![];
+        self.envs = vec![];
         for env in envs {
             let env = env.split("=").collect::<Vec<_>>();
             if env.len() != 2 {
                 return Err(Error::HookInstallError(format!(
                     "bad format for envvar: {:?}", env)));
             }
-            self.md.envs.push((env[0].to_string(), env[1].to_string()));
+            self.envs.push((env[0].to_string(), env[1].to_string()));
         }
         Ok(self)
     }
 
     pub fn confirm(&mut self) {
         self.confirmed = true;
+    }
+
+    pub fn params_string(&self) -> String {
+        self.params.iter()
+            .filter(|(_, tag)| tag.is_some())
+            .map(|(param, tag)| format!("{};{}", param, tag.as_ref().unwrap()))
+            .join(":")
+    }
+
+    pub fn returns_string(&self) -> String {
+        self.returns.iter()
+            .filter(|(_, tags)| !tags.is_empty())
+            .map(|(ret, tags)| format!("{};{}", ret, tags.iter().join(",")))
+            .join(":")
     }
 }
 

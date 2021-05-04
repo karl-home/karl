@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::{SocketAddr, IpAddr};
 use std::time::Instant;
 use serde::{Serialize, ser::{Serializer, SerializeStruct}};
@@ -53,8 +53,8 @@ pub struct Client {
     pub id: SensorID,
     /// State keys.
     pub keys: Vec<String>,
-    /// Output tags.
-    pub tags: Vec<String>,
+    /// Output returns to their tags.
+    pub returns: HashMap<String, Vec<String>>,
     /// IP address for proxy requests.
     pub addr: IpAddr,
 }

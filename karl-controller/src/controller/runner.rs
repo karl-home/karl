@@ -10,14 +10,15 @@ use karl_common::*;
 #[derive(Debug)]
 struct QueuedHook {
     id: HookID,
-    tag: Option<String>,
-    timestamp: Option<String>,
+    /// Tag, timestamp, data
+    trigger: Option<(String, String, Vec<u8>)>,
 }
 
 pub struct HookRunner {
     tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
+    pub(crate) tag_counter: Arc<Mutex<usize>>,
     /// Watched tags and the hooks they spawn.
     watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
 }
@@ -39,18 +40,8 @@ fn hook_to_compute_request(
     };
     let binary_path = hook.binary_path.clone().into_os_string().into_string().unwrap();
     let args = hook.args.clone().into_iter().collect();
-    let params = hook.params.clone().into_iter().collect();
-    let tags = hook.tags.clone().into_iter().collect();
-    let envs = hook.md.envs.clone().iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-    let file_perm = hook.md.file_perm.clone().into_iter().map(|acl| {
-        FileAcl {
-            path: acl.path.into_os_string().into_string().unwrap(),
-            read: acl.read,
-            write: acl.write,
-        }
-    }).collect();
-    let state_perm = hook.md.state_perm.clone().into_iter().collect();
-    let network_perm = hook.md.network_perm.clone().into_iter().collect();
+    let envs = hook.envs.clone().iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+    let network_perm = hook.network_perm.clone().into_iter().collect();
     Ok(ComputeRequest {
         host_token,
         hook_id,
@@ -59,10 +50,8 @@ fn hook_to_compute_request(
         binary_path,
         args,
         envs,
-        params,
-        tags,
-        file_perm,
-        state_perm,
+        params: hook.params_string(),
+        returns: hook.returns_string(),
         network_perm,
     })
 }
@@ -78,8 +67,16 @@ impl HookRunner {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
+            tag_counter: Arc::new(Mutex::new(0)),
             watched_tags: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    pub fn next_tag(&self) -> usize {
+        let tag_counter = self.tag_counter().lock().unwrap();
+        let tag = tag_counter;
+        tag_counter += 1;
+        tag
     }
 
     /// Spawns queue manager to monitor the delay queue for when hooks
@@ -115,9 +112,8 @@ impl HookRunner {
     pub fn register_hook(
         &self,
         global_hook_id: StringID,
-    ) -> Result<(HookID, Vec<String>), Error> {
+    ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?;
-        let tags = hook.tags.clone();
         use rand::Rng;
         hook.md.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
         let hook_id = loop {
@@ -134,7 +130,12 @@ impl HookRunner {
 
         // Create directories for its output tags.
         info!("registered hook {}", &hook_id);
-        Ok((hook_id, tags))
+        Ok(hook_id)
+    }
+
+    pub fn clear_intervals(&self) {
+        // TODO: keep handles for every interval schedule and be able
+        // to cancel them if necessary.
     }
 
     pub fn set_interval(&self, hook_id: HookID, duration: Duration) {
@@ -145,8 +146,7 @@ impl HookRunner {
                 interval.tick().await;
                 tx.send(QueuedHook{
                     id: hook_id.clone(),
-                    tag: None,
-                    timestamp: None,
+                    trigger: None,
                 }).await.unwrap();
             }
         });
@@ -163,6 +163,7 @@ impl HookRunner {
         &self,
         tag: String,
         timestamp: String,
+        data: Vec<u8>,
     ) -> usize {
         // debug!("spawn_if_watched? {}/{}, internal {:?}",
         //     tag, timestamp, self.watched_tags.read().unwrap());
@@ -182,12 +183,12 @@ impl HookRunner {
         };
         let tx = self.tx.as_ref().unwrap();
         let spawned = hook_ids.len();
+        // TODO: avoid cloning data unnecessarily.
         for hook_id in hook_ids {
             warn!("=> {} s", now.elapsed().as_secs_f32());
             tx.send(QueuedHook {
                 id: hook_id,
-                tag: Some(tag.clone()),
-                timestamp: Some(timestamp.clone()),
+                trigger: Some((tag.clone(), timestamp.clone(), data.clone())),
             }).await.unwrap();
         }
         spawned
@@ -238,11 +239,10 @@ impl HookRunner {
                 warn!("queued missing hook");
                 continue;
             };
-            if let Some(tag) = next.tag {
-                request.envs.push(format!("TRIGGERED_TAG={}", tag));
-            }
-            if let Some(timestamp) = next.timestamp {
-                request.envs.push(format!("TRIGGERED_TIMESTAMP={}", timestamp));
+            if let Some((tag, timestamp, data)) = next.trigger {
+                request.triggered_tag = tag;
+                request.triggered_timestamp = timestamp;
+                request.triggered_data = data;
             }
             warn!("=> {} s", now.elapsed().as_secs_f32());
 

@@ -15,6 +15,14 @@ pub struct DataSink {
 pub struct GetDataResult {
     pub timestamps: Vec<String>,
     pub data: Vec<Vec<u8>>,
+    pub labels: Vec<KarlLabel>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PushDataResult {
+    pub modified_tag: String,
+    pub timestamp: String,
+    pub label: KarlLabel,
 }
 
 impl DataSink {
@@ -55,11 +63,11 @@ impl DataSink {
     /// Returns: modified tag, and timestamp.
     pub fn push_data(
         &self,
-        entity_id: &str,
         tag: &str,
         data: Vec<u8>,
-    ) -> Result<(String, String), Error> {
-        let path = self.data_path.join(entity_id).join(tag);
+        label: KarlLabel,
+    ) -> Result<PushDataResult, Error> {
+        let path = self.data_path.join(tag);
         assert!(path.is_dir());
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
@@ -67,10 +75,14 @@ impl DataSink {
             if path.exists() {
                 continue;
             }
-            debug!("push_raw_data entity_id={} tag={} timestamp={} (len {})",
-                entity_id, tag, dt, data.len());
+            debug!("push data tag={} timestamp={} (len {})",
+                tag, dt, data.len());
             fs::write(path, data)?;
-            break Ok((format!("{}.{}", entity_id, tag), dt));
+            break Ok(PushDataResult {
+                modified_tag: tag.to_string(),
+                timestamp: dt,
+                label,
+            })
         }
     }
 
@@ -92,11 +104,8 @@ impl DataSink {
         upper: String,
     ) -> Result<GetDataResult, Error> {
         debug!("get {} {}", tag, lower);
-        let (id, tag) = {
-            let mut split = tag.split('.');
-            (split.next().unwrap(), split.next().unwrap())
-        };
-        let path = self.data_path.join(id).join(tag);
+        let path = self.data_path.join(tag);
+        assert!(path.is_dir());
         let mut paths: Vec<_> = fs::read_dir(path)?.map(|r| r.unwrap()
             .path().as_path().file_name().unwrap()
             .to_str().unwrap()
@@ -114,7 +123,11 @@ impl DataSink {
         let timestamps: Vec<String> = paths.drain(start_i..end_i).collect();
         let data: Vec<Vec<u8>> =
             timestamps.iter().map(|path| fs::read(path).unwrap()).collect();
-        Ok(GetDataResult { timestamps, data })
+        Ok(GetDataResult {
+            timestamps,
+            labels: vec![], // TODO
+            data,
+        })
     }
 }
 

@@ -89,15 +89,12 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(()))
     }
 
+    /// This request is endorsed by the host. Simply read the data and return.
     async fn forward_get(
         &self, req: Request<GetData>,
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        // self.audit_log.lock().unwrap().push(
-        //     &req.process_token,
-        //     LogEntryType::Get { path: req.path },
-        // );
         let res = self.data_sink.read().unwrap()
             .get_data(req.tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
@@ -107,28 +104,24 @@ impl karl_controller_server::KarlController for Controller {
         }))
     }
 
+    /// This request is endorsed by the host. Simply write data and return.
     async fn forward_push(
         &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         warn!("FINISH step 8: push box");
         let req = req.into_inner();
-        // self.audit_log.lock().unwrap().push(
-        //     &req.process_token,
-        //     LogEntryType::Put { path: req.path.clone() },
-        // );
-        let (id, tag) = {
-            let mut split = req.tag.split('.');
-            (split.next().unwrap(), split.next().unwrap())
-        };
-        let (tag, timestamp) = self.data_sink.write().unwrap()
-            .push_data(id, tag, req.data)
+        let label: KarlLabel = "".into(); // TODO
+        let res = self.data_sink.write().unwrap()
+            .push_data(&req.tag, req.data, label)
             .map_err(|e| to_status(e))?;
         // TODO: move to its own thread
-        self.runner.spawn_if_watched(tag, timestamp).await;
+        self.runner.spawn_if_watched(res.modified_tag, res.timestamp).await;
         Ok(Response::new(()))
     }
 
+    /// This request is endorsed by the host. Simply forward the state
+    /// change and return.
     async fn forward_state(
         &self, req: Request<StateChange>,
     ) -> Result<Response<()>, Status> {
@@ -139,14 +132,6 @@ impl karl_controller_server::KarlController for Controller {
         } else {
             return Err(Status::new(Code::NotFound, "sensor not listening"));
         };
-        self.audit_log.lock().unwrap().push(
-            &req.process_token,
-            LogEntryType::State {
-                sensor_id: req.sensor_id,
-                key: req.key.clone(),
-                value: req.value.clone(),
-            },
-        );
         let pair = StateChangePair {
             key: req.key,
             value: req.value,
@@ -198,6 +183,10 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(res))
     }
 
+    /// Since the output node is a sensor, the key is a param and not a tag.
+    /// The controller tracks which tags the param maps to and pushes to all
+    /// the tags. It tells the runner to see if any modules were watching
+    /// those tags.
     async fn push_raw_data(
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
@@ -212,11 +201,11 @@ impl karl_controller_server::KarlController for Controller {
                 return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
             }
         };
-        let (tag, timestamp) = self.data_sink.write().unwrap()
+        let res = self.data_sink.write().unwrap()
             .push_data(&sensor_id, &req.tag, req.data)
             .map_err(|e| to_status(e))?;
         warn!("=> {} s", now.elapsed().as_secs_f32());
-        self.runner.spawn_if_watched(tag, timestamp).await;
+        self.runner.spawn_if_watched(res.modified_tag, res.timestamp).await;
         Ok(Response::new(()))
     }
 
@@ -289,72 +278,29 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(RegisterHookResult { hook_id }))
     }
 
-    async fn data_edge(
-        &self, req: Request<DataEdgeRequest>,
+    /// Clears the graph of all edges and schedules.
+    /// Then sets the appropriate stateless and stateful edges, network
+    /// edges, state edges, and interval schedules.
+    async fn set_graph(
+        &self, req: Request<GraphRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        assert!(req.add);
-        info!("data_edge {}.{} -> {} stateless={}",
-            req.output_id, req.output_tag, req.input_id, req.stateless);
-        if req.stateless {
-            let tag = format!("{}.{}", req.output_id, req.output_tag);
-            self.runner.watch_tag(req.input_id, tag);
+        let mut sensors = self.sensors.lock().unwrap();
+        let mut hooks = self.hooks.lock().unwrap();
+        self.clear_graph(&mut hooks);
+        for data_edge in req.data_edges {
+            self.add_data_edge(data_edge, &mut hooks, &mut sensors)?;
+        }
+        for state_edge in req.state_edges {
+            self.add_state_edge(state_edge, &mut hooks)?;
+        }
+        for network_edge in req.network_edges {
+            self.add_network_edge(network_edge, &mut hooks)?;
+        }
+        for interval in req.intervals {
+            self.add_interval(interval, &mut hooks)?;
         }
         Ok(Response::new(()))
-    }
-
-    async fn state_edge(
-        &self, req: Request<StateEdgeRequest>,
-    ) -> Result<Response<()>, Status> {
-        let req = req.into_inner();
-        assert!(req.add);
-        info!("state_edge {}.{} -> {}.{}",
-            req.output_id, req.output_tag, req.input_id, req.input_key);
-        let mut hooks = self.runner.hooks.lock().unwrap();
-        if let Some(hook) = hooks.get_mut(&req.output_id) {
-            let state_perm = format!("{}.{}={}.{}",
-                req.output_id, req.output_tag, req.input_id, req.input_key);
-            hook.md.state_perm.push(state_perm);
-            Ok(Response::new(()))
-        } else {
-            Err(Status::new(Code::NotFound, "module id not found"))
-        }
-    }
-
-    async fn network_edge(
-        &self, req: Request<NetworkEdgeRequest>,
-    ) -> Result<Response<()>, Status> {
-        let req = req.into_inner();
-        assert!(req.add);
-        info!("network_edge {} -> {}", req.output_id, req.domain);
-        let mut hooks = self.runner.hooks.lock().unwrap();
-        if let Some(hook) = hooks.get_mut(&req.output_id) {
-            hook.md.network_perm.push(req.domain);
-            Ok(Response::new(()))
-        } else {
-            Err(Status::new(Code::NotFound, "module id not found"))
-        }
-    }
-
-    async fn persist_tag(
-        &self, _req: Request<PersistTagRequest>,
-    ) -> Result<Response<()>, Status> {
-        unimplemented!()
-    }
-
-    async fn interval(
-        &self, req: Request<IntervalRequest>,
-    ) -> Result<Response<()>, Status> {
-        let req = req.into_inner();
-        assert!(req.add);
-        info!("interval {} = {}s", req.hook_id, req.seconds);
-        if self.runner.hooks.lock().unwrap().contains_key(&req.hook_id) {
-            let duration = std::time::Duration::from_secs(req.seconds.into());
-            self.runner.set_interval(req.hook_id, duration);
-            Ok(Response::new(()))
-        } else {
-            Err(Status::new(Code::NotFound, "module id not found"))
-        }
     }
 }
 
@@ -558,6 +504,137 @@ impl Controller {
         SensorRegisterResult {
             sensor_token: token,
             sensor_id: id,
+        }
+    }
+
+    /// Assigns a tag name to the input node, if it doesn't already have one.
+    /// Adds that tag name to the output node. If the output node is a sensor,
+    /// track the return mapping for that output node. If the edge is stateless,
+    /// then tell the runner to watch the tag.
+    ///
+    /// Updates how new data labels are assigned relative to the new graph.
+    fn add_data_edge(
+        &self,
+        data_edge: DataEdge,
+        hooks: &mut HashMap<HookID, Hook>,
+        sensors: &mut HashMap<SensorToken, Client>,
+    ) -> Result<(), Status> {
+        let req = req.into_inner();
+        info!("data_edge {}.{} -> {}.{} stateless={}",
+            req.out_id, req.out_return, req.in_id, req.in_param, req.stateless);
+        // assign a tag name to the input node, if it doesn't already have one.
+        let tag = if let Some(in_module) = hooks.get_mut(&req.in_id) {
+            if let Some(maybe_tag) = in_module.params.get_mut(&req.in_param) {
+                if maybe_tag.is_none() {
+                    *maybe_tag = Some(self.runner.next_tag());
+                }
+                maybe_tag.as_ref().unwrap()
+            } else {
+                error!("input module does not have input param");
+                return Ok(())
+            }
+        } else {
+            error!("input module does not exist");
+            return Ok(())
+        }
+
+        // add that tag name to the output node.
+        if let Some(out_module) = hooks.get_mut(&req.out_id) {
+            if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
+                out_tags.push(tag);
+            } else {
+                error!("output module does not have output return name");
+                return Ok(())
+            }
+        } else {
+            // maybe a sensor
+            let mut changed = false;
+            for (_, sensor) in sensors.iter_mut() {
+                if sensor.id == req.out_id {
+                    if let Some(out_tags) = sensor.returns.get_mut(&req.out_return) {
+                        out_tags.push(tag);
+                    } else {
+                        error!("output sensor does not have output return name");
+                        return Ok(())
+                    }
+                    changed = true;
+                    break;
+                }
+            }
+            if !changed {
+                error!("output sensor nor module exists");
+                return Ok(())
+            }
+        }
+
+        // if the edge is stateless, tell the runner to watch that tag.
+        if req.stateless {
+            self.runner.watch_tag(req.input_id, tag);
+        }
+        Ok(Response::new(()))
+    }
+
+    /// Adds the unique tag name associated with sensor state to the output
+    /// node.
+    ///
+    /// Updates how new data labels are assigned relative to the new graph.
+    fn add_state_edge(
+        &self, req: StateEdge, hooks: &mut HashMap<HookID, Hook>,
+    ) -> Result<(), Status> {
+        info!("state_edge {}.{} -> {}.{}",
+            req.out_id, req.out_return, req.sensor_id, req.sensor_key);
+        if let Some(out_module) = hooks.get_mut(&req.out_id) {
+            let state_tag = format!("#{}.{}", req.sensor_id, req.sensor_key);
+            if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
+                out_tags.push(state_tag);
+                Ok(())
+            } else {
+                Err(Status::new(Code::NotFound,
+                    "output module does not have output return name"))
+            }
+        } else {
+            Err(Status::new(Code::NotFound, "output module does not exist"))
+        }
+    }
+
+    /// Permits a specific module to access the network.
+    /// Updates how data labels are assigned relative to the new graph.
+    fn add_network_edge(
+        &self, req: NetworkEdge, hooks: &mut HashMap<HookID, Hook>,
+    ) -> Result<(), Status> {
+        info!("network_edge {} -> {}", req.output_id, req.domain);
+        if let Some(hook) = hooks.get_mut(&req.output_id) {
+            hook.network_perm.push(req.domain);
+            Ok(())
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
+    }
+
+    /// Set a module to be spawned at a regular interval.
+    fn add_interval(
+        &self, req: Interval, hooks: &HashMap<HookID, Hook>,
+    ) -> Result<(), Status> {
+        info!("interval {} = {}s", req.hook_id, req.seconds);
+        if hooks.contains_key(&req.hook_id) {
+            let duration = std::time::Duration::from_secs(req.seconds.into());
+            self.runner.set_interval(req.hook_id, duration);
+            Ok(())
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
+    }
+
+    fn clear_graph(&self, hooks: &mut HashMap<HookID, Hook>) {
+        self.runner.clear_intervals();
+        for (_, hook) in hooks.iter_mut() {
+            for (_, params) in hook.params.iter_mut() {
+                *params = vec![];
+            }
+            for (_, returns) in hook.returns.iter_mut() {
+                *returns = vec![];
+            }
+            hook.network_perm = vec![];
         }
     }
 }

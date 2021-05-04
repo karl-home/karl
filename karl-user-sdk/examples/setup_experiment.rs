@@ -104,13 +104,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let port = matches.value_of("port").unwrap();
     let addr = format!("http://{}:{}", ip, port);
     let api = KarlUserSDK::new(&addr);
-    let hook_ids = register_hooks(&api, &GLOBAL_HOOK_IDS).await;
-    // let hook_ids = GLOBAL_HOOK_IDS
-    //     .iter()
-    //     .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
-    //     .collect::<HashMap<String, String>>();
+    // let hook_ids = register_hooks(&api, &GLOBAL_HOOK_IDS).await;
+    let hook_ids = GLOBAL_HOOK_IDS
+        .iter()
+        .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
+        .collect::<HashMap<String, String>>();
     let graph = generate_graph(hook_ids).await;
-    // println!("{}", graph.graphviz().unwrap());
+    println!("{}", graph.graphviz().unwrap());
     // graph.send_to_controller(&api).await.unwrap();
     Ok(())
 }

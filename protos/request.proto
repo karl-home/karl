@@ -30,11 +30,7 @@ service KarlController {
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
   rpc RegisterHook (RegisterHookRequest) returns (RegisterHookResult);
-  rpc DataEdge (DataEdgeRequest) returns (google.protobuf.Empty);
-  rpc StateEdge (StateEdgeRequest) returns (google.protobuf.Empty);
-  rpc NetworkEdge (NetworkEdgeRequest) returns (google.protobuf.Empty);
-  rpc PersistTag (PersistTagRequest) returns (google.protobuf.Empty);
-  rpc Interval (IntervalRequest) returns (google.protobuf.Empty);
+  rpc SetGraph (GraphRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -60,14 +56,15 @@ message ComputeRequest {
   repeated string args = 6;
   repeated string envs = 7;
 
-  // module inputs/outputs
-  repeated string params = 8;
-  repeated string tags = 9;
+  // module inputs/outputs and network permissions
+  string params = 8;
+  string returns = 9;
+  repeated string network_perm = 10;
 
-  // permissions
-  repeated FileACL file_perm = 10;
-  repeated string network_perm = 11;
-  repeated string state_perm = 12;
+  // automatically pass triggered data
+  triggered_tag = 11;
+  triggered_timestamp = 12;
+  triggered_data = 13;
 }
 
 message NotifyStart {
@@ -173,7 +170,7 @@ message SensorRegisterResult {
 
 message SensorPushData {
   string sensor_token = 1;
-  string tag = 2;
+  string param = 2;
   bytes data = 3;
 }
 
@@ -208,36 +205,35 @@ message RegisterHookResult {
   string hook_id = 1;
 }
 
-message DataEdgeRequest {
-  string output_id = 1;
-  string output_tag = 2;
-  string input_id = 3;
-  string input_param = 4;
+// Graph
+message DataEdge {
+  string out_id = 1;
+  string out_return = 2;
+  string in_id = 3;
+  string in_param = 4;
   bool stateless = 5;
-  bool add = 6;
 }
 
-message StateEdgeRequest {
-  string output_id = 1;
-  string output_tag = 2;
-  string input_id = 3;
-  string input_key = 4;
-  bool add = 5;
+message StateEdge {
+  string out_id = 1;
+  string out_return = 2;
+  string sensor_id = 3;
+  string sensor_key = 4;
 }
 
-message NetworkEdgeRequest {
-  string output_id = 1;
+message NetworkEdge {
+  string module_id = 1;
   string domain = 2;
-  bool add = 3;
 }
 
-message PersistTagRequest {
-  string id = 1;
-  string tag = 2;
-}
-
-message IntervalRequest {
-  string hook_id = 1;
+message Interval {
+  string module_id = 1;
   uint32 seconds = 2;
-  bool add = 3;
+}
+
+message GraphRequest {
+  repeated DataEdge data_edges = 1;
+  repeated StateEdge state_edges = 2;
+  repeated NetworkEdge network_edges = 3;
+  repeated Interval intervals = 4;
 }

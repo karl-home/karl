@@ -1,16 +1,20 @@
 use std::fmt;
+use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Entity {
     name: String,
+    network: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EntityTree {
     root: Entity,
     next: Vec<EntityTree>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct KarlLabel {
     entity: Entity,
     descendants: Vec<EntityTree>,
@@ -21,7 +25,18 @@ impl Entity {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
+            network: false,
         }
+    }
+
+    pub fn allow_net(mut self) -> Self {
+        self.network = true;
+        self
+    }
+
+    pub fn disallow_net(mut self) -> Self {
+        self.network = false;
+        self
     }
 }
 
@@ -37,15 +52,19 @@ impl EntityTree {
     }
 
     pub fn merge(t1: &EntityTree, t2: &EntityTree) -> Option<Self> {
-        if t1.root != t2.root {
+        let root = if t1.root.name != t2.root.name {
             return None;
-        }
+        } else if t1.root.network == t2.root.network {
+            t1.root.clone()
+        } else {
+            t1.root.clone().disallow_net()
+        };
         let new_next: Vec<_> = t1.next.iter()
             .cartesian_product(&t2.next)
             .filter_map(|(t1, t2)| EntityTree::merge(&t1, &t2))
             .collect();
         Some(EntityTree {
-            root: t1.root.clone(),
+            root,
             next: new_next,
         })
     }
@@ -64,7 +83,9 @@ impl KarlLabel {
     pub fn next(mut self, next_entity: Entity) -> Result<Self, Self> {
         let mut next_tree_i = None;
         for i in 0..self.descendants.len() {
-            if self.descendants.get(i).unwrap().root == next_entity {
+            let next_root = &self.descendants.get(i).unwrap().root;
+            if next_root.name == next_entity.name {
+                assert!(next_root.network == next_entity.network);
                 next_tree_i = Some(i);
                 break;
             }
@@ -84,7 +105,7 @@ impl KarlLabel {
     /// Relabel the entity based on reading data from a stateful edge.
     /// More permissive upstream but less permissive downstream.
     pub fn relabel(self, label: KarlLabel) -> Result<Self, Self> {
-        if self.entity == label.entity {
+        if self.entity.name == label.entity.name {
             // Ignore the ancestors of the secondary label
             // Just take the intersection of the descendants
             let t1 = EntityTree::new(self.entity, self.descendants);
@@ -115,5 +136,23 @@ impl KarlLabel {
 
     pub fn descendants(&self) -> Vec<&Entity> {
         self.descendants.iter().map(|tree| &tree.root).collect()
+    }
+}
+
+impl Into<Entity> for String {
+    fn into(self) -> Entity {
+        Entity::new(&self)
+    }
+}
+
+impl Into<EntityTree> for String {
+    fn into(self) -> EntityTree {
+        EntityTree::new(self.into(), vec![])
+    }
+}
+
+impl Into<KarlLabel> for String {
+    fn into(self) -> KarlLabel {
+        KarlLabel::new(self.into())
     }
 }

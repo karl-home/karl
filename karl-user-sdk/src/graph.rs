@@ -1,9 +1,11 @@
 use std::fmt::Write;
 use std::collections::HashMap;
 
-/// All SensorKeys are also ModuleTags
 type SensorKey = (String, String);
-type ModuleTag = (String, String);
+type ModuleParam = (String, String);
+/// All module returns are also entity returns
+type ModuleReturn = (String, String);
+type EntityReturn = (String, String);
 type Sensor = String;
 type Module = String;
 type Domain = String;
@@ -12,9 +14,8 @@ type Domain = String;
 pub struct Graph {
     pub sensors: Vec<Sensor>,
     pub modules: Vec<Module>,
-    pub data_edges_stateless: Vec<(ModuleTag, ModuleTag)>,
-    pub data_edges_stateful: Vec<(ModuleTag, ModuleTag)>,
-    pub state_edges: Vec<(ModuleTag, SensorKey)>,
+    pub data_edges: Vec<(EntityReturn, ModuleParam, bool)>,
+    pub state_edges: Vec<(ModuleReturn, SensorKey)>,
     pub network_edges: Vec<(Module, Domain)>,
     pub interval_modules: Vec<(Module, u32)>,
 }
@@ -29,13 +30,15 @@ impl Graph {
         network_edges: Vec<(&str, &str)>,
         interval_modules: Vec<(&str, u32)>,
     ) -> Self {
+        let mut data_edges = data_edges_stateless.into_iter()
+            .map(|(a, b)| (split(a), split(b), true)).collect();
+        let mut data_edges_stateful = data_edges_stateful.into_iter()
+            .map(|(a, b)| (split(a), split(b), false)).collect();
+        data_edges_stateless.append(&mut data_edges_stateful);
         Graph {
             sensors: sensors.into_iter().map(|a| a.to_string()).collect(),
             modules: modules.into_iter().map(|a| a.to_string()).collect(),
-            data_edges_stateless: data_edges_stateless.into_iter()
-                .map(|(a, b)| (split(a), split(b))).collect(),
-            data_edges_stateful: data_edges_stateful.into_iter()
-                .map(|(a, b)| (split(a), split(b))).collect(),
+            data_edges,
             state_edges: state_edges.into_iter()
                 .map(|(a, b)| (split(a), split(b))).collect(),
             network_edges: network_edges.into_iter()
@@ -54,11 +57,7 @@ impl Graph {
         for m in self.modules.iter_mut() {
             modules.push(m);
         }
-        for ((m1, _), (m2, _)) in self.data_edges_stateless.iter_mut() {
-            modules.push(m1);
-            modules.push(m2);
-        }
-        for ((m1, _), (m2, _)) in self.data_edges_stateful.iter_mut() {
+        for ((m1, _), (m2, _), _) in self.data_edges.iter_mut() {
             modules.push(m1);
             modules.push(m2);
         }
@@ -98,13 +97,17 @@ impl Graph {
         }
         // stateless data edges
         writeln!(g, "\n  edge [style=solid];")?;
-        for ((m1, t1), (m2, t2)) in &self.data_edges_stateless {
-            writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+        for ((m1, t1), (m2, t2), stateless) in &self.data_edges_stateless {
+            if stateless {
+                writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+            }
         }
         // stateful data edges
         writeln!(g, "\n  edge [style=dashed];")?;
-        for ((m1, t1), (m2, t2)) in &self.data_edges_stateful {
-            writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+        for ((m1, t1), (m2, t2), stateless) in &self.data_edges_stateful {
+            if !stateless {
+                writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+            }
         }
         // state edges
         writeln!(g, "\n  edge [style=solid,color=orange];")?;
@@ -132,26 +135,33 @@ impl Graph {
         &self,
         api: &crate::net::KarlUserSDK,
     ) -> Result<(), tonic::Status> {
-        for ((m1, t1), (m2, t2)) in self.data_edges_stateless.clone() {
-            api.add_data_edge(m1, t1, m2, t2, true).await?;
-        }
-        for ((m1, t1), (m2, t2)) in self.data_edges_stateful.clone() {
-            api.add_data_edge(m1, t1, m2, t2, false).await?;
-        }
-        for ((m, tag), (s, key)) in self.state_edges.clone() {
-            api.add_state_edge(m, tag, s, key).await?;
-        }
-        for (m, domain) in self.network_edges.clone() {
-            api.add_network_edge(m, domain).await?;
-        }
-        for (m, interval) in self.interval_modules.clone() {
-            api.set_interval(m, interval).await?;
-        }
-        Ok(())
+        let data_edges = self.data_edges.clone().into_iter()
+            .map(|((out_id, out_return), (in_id, in_param), stateless)| {
+                DataEdge { out_id, out_return, in_id, in_param, stateless }})
+            .collect();
+        let state_edges = self.state_edges.clone().into_iter()
+            .map(|((out_id, out_return), (sensor_id, sensor_key))| {
+                StateEdge { out_id, out_return, sensor_id, sensor_key }})
+            .collect();
+        let network_edges = self.network_edges.clone().into_iter()
+            .map(|(module_id, domain)| {
+                NetworkEdge { module_id, domain }})
+            .collect();
+        let intervals = self.intervals.clone().into_iter()
+            .map(|(module_id, seconds)| {
+                Interval { module_id, seconds }})
+            .collect();
+        let req = GraphRequest {
+            data_edges,
+            state_edges,
+            network_edges,
+            intervals,
+        };
+        api.set_graph(req)
     }
 }
 
-fn split(tag: &str) -> ModuleTag {
+fn split(tag: &str) -> (String, String) {
     let mut split = tag.split(".");
     (split.next().unwrap().to_string(), split.next().unwrap().to_string())
 }
