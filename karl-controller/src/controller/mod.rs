@@ -117,8 +117,12 @@ impl karl_controller_server::KarlController for Controller {
         //     &req.process_token,
         //     LogEntryType::Put { path: req.path.clone() },
         // );
+        let (id, tag) = {
+            let mut split = req.tag.split('.');
+            (split.next().unwrap(), split.next().unwrap())
+        };
         let (tag, timestamp) = self.data_sink.write().unwrap()
-            .push_data(req.tag, req.data)
+            .push_data(id, tag, req.data)
             .map_err(|e| to_status(e))?;
         // TODO: move to its own thread
         self.runner.spawn_if_watched(tag, timestamp).await;
@@ -209,7 +213,7 @@ impl karl_controller_server::KarlController for Controller {
             }
         };
         let (tag, timestamp) = self.data_sink.write().unwrap()
-            .push_sensor_data(sensor_id, req.tag, req.data)
+            .push_data(&sensor_id, &req.tag, req.data)
             .map_err(|e| to_status(e))?;
         warn!("=> {} s", now.elapsed().as_secs_f32());
         self.runner.spawn_if_watched(tag, timestamp).await;

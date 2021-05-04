@@ -48,18 +48,18 @@ impl DataSink {
     /// Push sensor data.
     ///
     /// Parameters:
-    /// - `sensor_id`: the sensor ID.
+    /// - `entity_id`: the entity ID.
     /// - `tag`: output tag.
     /// - `data`: the data.
     ///
     /// Returns: modified tag, and timestamp.
-    pub fn push_sensor_data(
+    pub fn push_data(
         &self,
-        sensor_id: SensorID,
-        tag: String,
+        entity_id: &str,
+        tag: &str,
         data: Vec<u8>,
     ) -> Result<(String, String), Error> {
-        let path = self.data_path.join(&sensor_id).join(&tag);
+        let path = self.data_path.join(entity_id).join(tag);
         assert!(path.is_dir());
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
@@ -67,40 +67,10 @@ impl DataSink {
             if path.exists() {
                 continue;
             }
-            debug!("push_raw_data sensor_id={} tag={} timestamp={} (len {})",
-                sensor_id, tag, dt, data.len());
+            debug!("push_raw_data entity_id={} tag={} timestamp={} (len {})",
+                entity_id, tag, dt, data.len());
             fs::write(path, data)?;
-            break Ok((format!("{}.{}", &sensor_id, &tag), dt));
-        }
-    }
-
-    /// Write data to the given tag.
-    ///
-    /// Parameters:
-    /// - `tag`: ID and tag.
-    /// - `data`: The bytes to push.
-    ///
-    /// Returns: modified tag, and timestamp.
-    pub fn push_data(
-        &self,
-        tag: String,
-        data: Vec<u8>,
-    ) -> Result<(String, String), Error> {
-        let (id, tag) = {
-            let mut split = tag.split('.');
-            (split.next().unwrap(), split.next().unwrap())
-        };
-        let path = self.data_path.join(id).join(tag);
-        loop {
-            let dt = chrono::prelude::Local::now().format("%+").to_string();
-            let path = path.join(&dt);
-            if path.exists() {
-                continue;
-            }
-            debug!("push_data id={} tag={} timestamp={} (len {})",
-                id, tag, dt, data.len());
-            fs::write(path, data)?;
-            break Ok((format!("{}.{}", &id, &tag), dt));
+            break Ok((format!("{}.{}", entity_id, tag), dt));
         }
     }
 
