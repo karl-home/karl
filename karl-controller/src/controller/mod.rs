@@ -369,6 +369,7 @@ impl Controller {
     /// starts the web dashboard.
     pub async fn start(
         &mut self,
+        use_dashboard: bool,
         port: u16,
     ) -> Result<(), Error> {
         // Make the karl path if it doesn't already exist.
@@ -410,11 +411,13 @@ impl Controller {
         */
 
         // Start the dashboard.
-        dashboard::start(
-            self.karl_path.clone(),
-            self.scheduler.clone(),
-            self.sensors.clone(),
-        );
+        if use_dashboard {
+            dashboard::start(
+                self.karl_path.clone(),
+                self.scheduler.clone(),
+                self.sensors.clone(),
+            );
+        }
         // Start the hook runner.
         self.runner.start(
             self.audit_log.clone(),
