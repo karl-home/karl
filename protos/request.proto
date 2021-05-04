@@ -30,11 +30,11 @@ service KarlController {
   rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
   rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
   rpc RegisterHook (RegisterHookRequest) returns (RegisterHookResult);
-  rpc AddDataEdge (AddDataEdgeRequest) returns (google.protobuf.Empty);
-  rpc AddStateEdge (AddStateEdgeRequest) returns (google.protobuf.Empty);
-  rpc AddNetworkEdge (AddNetworkEdgeRequest) returns (google.protobuf.Empty);
+  rpc DataEdge (DataEdgeRequest) returns (google.protobuf.Empty);
+  rpc StateEdge (StateEdgeRequest) returns (google.protobuf.Empty);
+  rpc NetworkEdge (NetworkEdgeRequest) returns (google.protobuf.Empty);
   rpc PersistTag (PersistTagRequest) returns (google.protobuf.Empty);
-  rpc SetInterval (SetIntervalRequest) returns (google.protobuf.Empty);
+  rpc Interval (IntervalRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -208,24 +208,27 @@ message RegisterHookResult {
   string hook_id = 1;
 }
 
-message AddDataEdgeRequest {
+message DataEdgeRequest {
   string output_id = 1;
   string output_tag = 2;
   string input_id = 3;
   string input_param = 4;
   bool stateless = 5;
+  bool add = 6;
 }
 
-message AddStateEdgeRequest {
+message StateEdgeRequest {
   string output_id = 1;
   string output_tag = 2;
   string input_id = 3;
   string input_key = 4;
+  bool add = 5;
 }
 
-message AddNetworkEdgeRequest {
+message NetworkEdgeRequest {
   string output_id = 1;
   string domain = 2;
+  bool add = 3;
 }
 
 message PersistTagRequest {
@@ -233,7 +236,8 @@ message PersistTagRequest {
   string tag = 2;
 }
 
-message SetIntervalRequest {
+message IntervalRequest {
   string hook_id = 1;
   uint32 seconds = 2;
+  bool add = 3;
 }

@@ -285,11 +285,12 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(RegisterHookResult { hook_id }))
     }
 
-    async fn add_data_edge(
-        &self, req: Request<AddDataEdgeRequest>,
+    async fn data_edge(
+        &self, req: Request<DataEdgeRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        info!("add_data_edge {}.{} -> {} stateless={}",
+        assert!(req.add);
+        info!("data_edge {}.{} -> {} stateless={}",
             req.output_id, req.output_tag, req.input_id, req.stateless);
         if req.stateless {
             let tag = format!("{}.{}", req.output_id, req.output_tag);
@@ -298,11 +299,12 @@ impl karl_controller_server::KarlController for Controller {
         Ok(Response::new(()))
     }
 
-    async fn add_state_edge(
-        &self, req: Request<AddStateEdgeRequest>,
+    async fn state_edge(
+        &self, req: Request<StateEdgeRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        info!("add_state_edge {}.{} -> {}.{}",
+        assert!(req.add);
+        info!("state_edge {}.{} -> {}.{}",
             req.output_id, req.output_tag, req.input_id, req.input_key);
         let mut hooks = self.runner.hooks.lock().unwrap();
         if let Some(hook) = hooks.get_mut(&req.output_id) {
@@ -315,11 +317,12 @@ impl karl_controller_server::KarlController for Controller {
         }
     }
 
-    async fn add_network_edge(
-        &self, req: Request<AddNetworkEdgeRequest>,
+    async fn network_edge(
+        &self, req: Request<NetworkEdgeRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        info!("add_network_edge {} -> {}", req.output_id, req.domain);
+        assert!(req.add);
+        info!("network_edge {} -> {}", req.output_id, req.domain);
         let mut hooks = self.runner.hooks.lock().unwrap();
         if let Some(hook) = hooks.get_mut(&req.output_id) {
             hook.md.network_perm.push(req.domain);
@@ -335,11 +338,12 @@ impl karl_controller_server::KarlController for Controller {
         unimplemented!()
     }
 
-    async fn set_interval(
-        &self, req: Request<SetIntervalRequest>,
+    async fn interval(
+        &self, req: Request<IntervalRequest>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        info!("set_interval {} = {}s", req.hook_id, req.seconds);
+        assert!(req.add);
+        info!("interval {} = {}s", req.hook_id, req.seconds);
         if self.runner.hooks.lock().unwrap().contains_key(&req.hook_id) {
             let duration = std::time::Duration::from_secs(req.seconds.into());
             self.runner.set_interval(req.hook_id, duration);

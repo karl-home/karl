@@ -48,16 +48,17 @@ impl KarlUserSDK {
         input_param: String,
         stateless: bool,
     ) -> Result<(), Status> {
-        let request = AddDataEdgeRequest {
+        let request = DataEdgeRequest {
             output_id,
             output_tag,
             input_id,
             input_param,
             stateless,
+            add: true,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .add_data_edge(Request::new(request)).await
+            .data_edge(Request::new(request)).await
             .map(|res| res.into_inner())
     }
 
@@ -69,15 +70,16 @@ impl KarlUserSDK {
         input_id: String,
         input_key: String,
     ) -> Result<(), Status> {
-        let request = AddStateEdgeRequest {
+        let request = StateEdgeRequest {
             output_id,
             output_tag,
             input_id,
             input_key,
+            add: true,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .add_state_edge(Request::new(request)).await
+            .state_edge(Request::new(request)).await
             .map(|res| res.into_inner())
     }
 
@@ -87,29 +89,109 @@ impl KarlUserSDK {
         output_id: String,
         domain: String,
     ) -> Result<(), Status> {
-        let request = AddNetworkEdgeRequest {
+        let request = NetworkEdgeRequest {
             output_id,
             domain,
+            add: true,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .add_network_edge(Request::new(request)).await
+            .network_edge(Request::new(request)).await
             .map(|res| res.into_inner())
     }
 
-    /// Adds network edge.
+    /// Sets interval schedule.
     pub async fn set_interval(
         &self,
         hook_id: String,
         seconds: u32,
     ) -> Result<(), Status> {
-        let request = SetIntervalRequest {
+        let request = IntervalRequest {
             hook_id,
             seconds,
+            add: true,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .set_interval(Request::new(request)).await
+            .interval(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+
+    /// Removes data edge.
+    pub async fn remove_data_edge(
+        &self,
+        output_id: String,
+        output_tag: String,
+        input_id: String,
+        input_param: String,
+        stateless: bool,
+    ) -> Result<(), Status> {
+        let request = DataEdgeRequest {
+            output_id,
+            output_tag,
+            input_id,
+            input_param,
+            stateless,
+            add: false,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .data_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+
+    /// Removes state edge.
+    pub async fn remove_state_edge(
+        &self,
+        output_id: String,
+        output_tag: String,
+        input_id: String,
+        input_key: String,
+    ) -> Result<(), Status> {
+        let request = StateEdgeRequest {
+            output_id,
+            output_tag,
+            input_id,
+            input_key,
+            add: false,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .state_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+
+    /// Removes network edge.
+    pub async fn remove_network_edge(
+        &self,
+        output_id: String,
+        domain: String,
+    ) -> Result<(), Status> {
+        let request = NetworkEdgeRequest {
+            output_id,
+            domain,
+            add: false,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .network_edge(Request::new(request)).await
+            .map(|res| res.into_inner())
+    }
+
+    /// Sets interval schedule.
+    pub async fn remove_interval(
+        &self,
+        hook_id: String,
+        seconds: u32,
+    ) -> Result<(), Status> {
+        let request = IntervalRequest {
+            hook_id,
+            seconds,
+            add: false,
+        };
+        KarlControllerClient::connect(self.controller_addr.clone()).await
+            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+            .interval(Request::new(request)).await
             .map(|res| res.into_inner())
     }
 }
