@@ -1,4 +1,3 @@
-python -m grpc_tools.protoc -I/home/gina/karl/protos --python_out=. --grpc_python_out=. /home/gina/karl/protos/request.proto
 firejail --private=. \
 --netfilter=/etc/firejail/karl.net \
 --env=GLOBAL_HOOK_ID=person_detection \

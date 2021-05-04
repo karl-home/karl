@@ -3,12 +3,10 @@ start = time.perf_counter()
 import io
 import os
 import sys
-from karl import KarlAPI
+from karl import KarlSDK
 from datetime import datetime
 
-karl = KarlAPI()
-TAG = os.environ.get('TRIGGERED_TAG')
-TIMESTAMP = os.environ.get('TRIGGERED_TIMESTAMP')
+karl = KarlSDK()
 
 import torch, torchvision
 from torchvision import transforms
@@ -22,7 +20,7 @@ sys.stderr.write('init model \t%.3fs\n' % (time.perf_counter() - start))
 
 img_path = 'tmp.png'
 with open(img_path, 'wb') as f:
-    img_bytes = karl.get(TAG, TIMESTAMP, TIMESTAMP)
+    img_bytes = karl.get_triggered()
     f.write(img_bytes)
 sys.stderr.write('read img \t%.3fs (%s)\n' % (time.perf_counter() - start, img_path))
 img = Image.open(img_path).convert("RGB")

@@ -4,13 +4,18 @@ import grpc
 import request_pb2
 import request_pb2_grpc
 
-class KarlAPI:
+class KarlSDK:
     def __init__(self):
         self.global_hook_id = os.environ.get('GLOBAL_HOOK_ID')
         self.hook_id = os.environ.get('HOOK_ID')
         self.token = os.environ.get('PROCESS_TOKEN')
         self.channel = grpc.insecure_channel('localhost:59583')
         self.stub = request_pb2_grpc.KarlHostStub(self.channel)
+
+    def get_triggered(self):
+        tag = os.environ.get('TRIGGERED_TAG')
+        timestamp = os.environ.get('TRIGGERED_TIMESTAMP')
+        return self.get(tag, timestamp, timestamp)
 
     def get(self, tag, lower_timestamp, upper_timestamp):
         req = request_pb2.GetData(process_token=self.token,
