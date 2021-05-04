@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+use log::LevelFilter;
 
 use std::fs;
 use std::error::Error;
@@ -82,7 +83,7 @@ async fn motion_detection(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::builder().init();
+    env_logger::builder().filter_level(LevelFilter::Info).init();
     let matches = App::new("Camera sensor")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")

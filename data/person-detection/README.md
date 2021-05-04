@@ -1,0 +1,5 @@
+# person-detection
+
+```
+./setup.sh
+```

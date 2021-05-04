@@ -1,12 +1,12 @@
-# Generate the gRPC wrappers
-python3 -m pip install --user grpcio-tools
-python3 -m grpc_tools.protoc -I../../protos \
-    --python_out=. --grpc_python_out=. ../../protos/request.proto
-
 # Setup Python virtual environment
 virtualenv -p python3 env
 source env/bin/activate
-pip install torch torchvision grpcio grpcio-tools
+pip install grpcio grpcio-tools
+pip install torch torchvision
+
+# Generate the gRPC wrappers
+python -m grpc_tools.protoc -I../../protos \
+    --python_out=. --grpc_python_out=. ../../protos/request.proto
 
 # Download the PennFudan dataset
 wget https://www.cis.upenn.edu/~jshi/ped_html/PennFudanPed.zip

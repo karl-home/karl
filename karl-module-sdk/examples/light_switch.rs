@@ -1,5 +1,5 @@
 //! Inputs
-//! - intent: { state: on } or { state: off }
+//! - light_intent: { state: on } or { state: off }
 //! Outputs
 //! - state: [1] for on and [0] for off
 use serde_json;

@@ -1,12 +1,17 @@
+//! Search google given a text query from a classifier.
+//!
+//! Inputs
+//! - query_intent: an intent expressing the query { query: text }
+//! Outputs
+//! - response: the text response
+//! Network access required
 use serde_json;
-use karl::net::KarlAPI;
+use karl_module_sdk::KarlModuleSDK;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tag = std::env::var("TRIGGERED_TAG")?;
-    let timestamp = std::env::var("TRIGGERED_TIMESTAMP")?;
-    let api = KarlAPI::new();
-    let data = api.get(&tag, &timestamp, &timestamp).await?;
+    let api = KarlModuleSDK::new();
+    let data = api.get_triggered().await?.unwrap();
     let slots = serde_json::from_slice(&data[..])?;
     println!("slots = {:?}", slots);
     match slots {
