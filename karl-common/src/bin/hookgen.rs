@@ -80,12 +80,12 @@ fn main() {
     println!("Files (one per line):");
     let builder = read_tar_builder();
     let handle = std::thread::spawn(|| builder.finalize().unwrap());
-    println!("Input parameters (one per line):");
-    let params = read_vec_string();
-    println!("Output tags (one per line):");
-    let tags = read_vec_string();
     println!("Invoke command:");
     let (binary_path, args) = read_invoke_command();
+    println!("Input parameters (one per line):");
+    let params = read_vec_string();
+    println!("Output returns (one per line):");
+    let returns = read_vec_string();
 
     println!("Done configuring! Building...");
     let package = handle.join().expect("failed to build tar");
@@ -95,7 +95,7 @@ fn main() {
         &binary_path,
         args,
         params,
-        tags,
+        returns,
     );
 
     let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);

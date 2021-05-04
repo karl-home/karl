@@ -95,6 +95,7 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
+        info!("get_data tag={} {}-{}", req.tag, req.lower, req.upper);
         let res = self.data_sink.read().unwrap()
             .get_data(req.tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
@@ -109,7 +110,6 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
-        warn!("FINISH step 8: push box");
         let req = req.into_inner();
         let label: KarlLabel = String::from("").into(); // TODO
         let res = self.data_sink.write().unwrap()
@@ -150,7 +150,7 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         self.scheduler.lock().unwrap().notify_end(req.host_token, req.process_token.clone())?;
-        self.audit_log.lock().unwrap().notify_end(req.process_token);
+        // self.audit_log.lock().unwrap().notify_end(req.process_token);
         trace!("notify_end => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
@@ -192,7 +192,6 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
         let now = Instant::now();
-        warn!("step 2: persisting data");
         let req = req.into_inner();
         let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
@@ -210,7 +209,6 @@ impl karl_controller_server::KarlController for Controller {
             let res = self.data_sink.write().unwrap()
                 .push_data(&tag, &req.data, sensor_id.clone().into())
                 .map_err(|e| to_status(e))?;
-            warn!("=> {} s", now.elapsed().as_secs_f32());
             self.runner.spawn_if_watched(
                 &res.modified_tag,
                 &res.timestamp,
@@ -501,7 +499,7 @@ impl Controller {
         let token = Token::gen();
         if sensors.insert(token.clone(), sensor.clone()).is_none() {
             info!(
-                "registered sensor {} {} keys={:?} tags={:?}",
+                "registered sensor {} {} keys={:?} returns={:?}",
                 sensor.id,
                 token,
                 sensor.keys,
@@ -528,7 +526,7 @@ impl Controller {
         hooks: &mut HashMap<HookID, Hook>,
         sensors: &mut HashMap<SensorToken, Client>,
     ) -> Result<(), Status> {
-        info!("data_edge {}.{} -> {}.{} stateless={}",
+        debug!("data_edge {}.{} -> {}.{} stateless={}",
             req.out_id, req.out_return, req.in_id, req.in_param, req.stateless);
         // assign a tag name to the input node, if it doesn't already have one.
         let tag = if let Some(in_module) = hooks.get_mut(&req.in_id) {
@@ -589,7 +587,7 @@ impl Controller {
     fn add_state_edge(
         &self, req: StateEdge, hooks: &mut HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
-        info!("state_edge {}.{} -> {}.{}",
+        debug!("state_edge {}.{} -> {}.{}",
             req.out_id, req.out_return, req.sensor_id, req.sensor_key);
         if let Some(out_module) = hooks.get_mut(&req.out_id) {
             let state_tag = format!("#{}.{}", req.sensor_id, req.sensor_key);
@@ -610,7 +608,7 @@ impl Controller {
     fn add_network_edge(
         &self, req: NetworkEdge, hooks: &mut HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
-        info!("network_edge {} -> {}", req.module_id, req.domain);
+        debug!("network_edge {} -> {}", req.module_id, req.domain);
         if let Some(hook) = hooks.get_mut(&req.module_id) {
             hook.network_perm.push(req.domain);
             Ok(())
@@ -623,7 +621,7 @@ impl Controller {
     fn add_interval(
         &self, req: Interval, hooks: &HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
-        info!("interval {} = {}s", req.module_id, req.seconds);
+        debug!("interval {} = {}s", req.module_id, req.seconds);
         if hooks.contains_key(&req.module_id) {
             let duration = std::time::Duration::from_secs(req.seconds.into());
             self.runner.set_interval(req.module_id, duration);

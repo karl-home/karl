@@ -27,15 +27,27 @@ impl ProcessPerms {
         let read_perms = req.params
             .split(":")
             .map(|param| param.split(";"))
-            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
-            .map(|(_, tag)| tag.to_string())
+            .filter_map(|mut param| {
+                if let Some(_) = param.next() {
+                    param.next()
+                } else {
+                    None
+                }
+            })
+            .map(|tag| tag.to_string())
             .filter(|tag| tag != &req.triggered_tag)
             .collect::<HashSet<String>>();
         let write_perms = req.returns
             .split(":")
             .map(|param| param.split(";"))
-            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
-            .flat_map(|(_, tags)| tags.split(",").map(|tag| tag.to_string()))
+            .filter_map(|mut param| {
+                if let Some(_) = param.next() {
+                    param.next()
+                } else {
+                    None
+                }
+            })
+            .flat_map(|tags| tags.split(",").map(|tag| tag.to_string()))
             .collect::<HashSet<String>>();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         Self {

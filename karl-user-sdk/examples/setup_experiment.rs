@@ -6,16 +6,17 @@ use std::error::Error;
 use clap::{Arg, App};
 use karl_user_sdk::{Graph, KarlUserSDK};
 
-const GLOBAL_HOOK_IDS: [&'static str; 9] = [
-    "command_classifier",
-    "search",
-    "light_switch",
-    "firmware_update",
+// const GLOBAL_HOOK_IDS: [&'static str; 9] = [
+const GLOBAL_HOOK_IDS: [&'static str; 2] = [
+    // "command_classifier",
+    // "search",
+    // "light_switch",
+    // "firmware_update",
     "person_detection",
     "differential_privacy",
-    "targz",
-    "true",
-    "false",
+    // "targz",
+    // "true",
+    // "false",
 ];
 
 const SENSOR_IDS: [&'static str; 4] = [
@@ -47,31 +48,31 @@ async fn register_hooks(
 /// Generate the graph from Figures 4 and 6 based on registered hooks.
 async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
     let data_edges_stateless = vec![
-        ("mic.sound", "command_classifier.sound"),
-        ("mic_1.sound", "command_classifier.sound"),
-        ("command_classifier.search", "search.query_intent"),
-        ("command_classifier.light", "light_switch.light_intent"),
+        // ("mic.sound", "command_classifier.sound"),
+        // ("mic_1.sound", "command_classifier.sound"),
+        // ("command_classifier.search", "search.query_intent"),
+        // ("command_classifier.light", "light_switch.light_intent"),
         ("camera.motion", "person_detection.image"),
         ("person_detection.count", "differential_privacy.count"),
     ];
     let data_edges_stateful = vec![
-        ("camera.streaming", "targz.files"),
+        // ("camera.streaming", "targz.files"),
     ];
     let state_edges = vec![
-        ("search.response", "mic.output"),
-        ("search.response", "mic_1.output"),
-        ("light_switch.state", "bulb.on"),
-        ("true.true", "camera.livestream"),
-        ("false.false", "camera.livestream"),
-        ("firmware_update.firmware", "camera.firmware"),
+        // ("search.response", "mic.output"),
+        // ("search.response", "mic_1.output"),
+        // ("light_switch.state", "bulb.on"),
+        // ("true.true", "camera.livestream"),
+        // ("false.false", "camera.livestream"),
+        // ("firmware_update.firmware", "camera.firmware"),
     ];
     let network_edges = vec![
-        ("search", "google.com"),
+        // ("search", "google.com"),
         ("differential_privacy", "metrics.com"),
-        ("firmware_update", "firmware.com"),
+        // ("firmware_update", "firmware.com"),
     ];
     let interval_modules = vec![
-        ("firmware_update", 20),
+        // ("firmware_update", 20),
     ];
     let mut graph = Graph::new(
         SENSOR_IDS.to_vec(),
@@ -104,13 +105,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let port = matches.value_of("port").unwrap();
     let addr = format!("http://{}:{}", ip, port);
     let api = KarlUserSDK::new(&addr);
-    // let hook_ids = register_hooks(&api, &GLOBAL_HOOK_IDS).await;
-    let hook_ids = GLOBAL_HOOK_IDS
-        .iter()
-        .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
-        .collect::<HashMap<String, String>>();
+    let hook_ids = register_hooks(&api, &GLOBAL_HOOK_IDS).await;
+    // let hook_ids = GLOBAL_HOOK_IDS
+    //     .iter()
+    //     .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
+    //     .collect::<HashMap<String, String>>();
     let graph = generate_graph(hook_ids).await;
-    println!("{}", graph.graphviz().unwrap());
-    // graph.send_to_controller(&api).await.unwrap();
+    // println!("{}", graph.graphviz().unwrap());
+    graph.send_to_controller(&api).await.unwrap();
     Ok(())
 }

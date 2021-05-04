@@ -66,7 +66,7 @@ impl KarlHostAPI {
             host_token: self.host_token.clone().expect("missing token"),
             process_token,
         };
-        debug!("notify_end host_token={}, process_token={}", request.host_token, request.process_token);
+        trace!("notify_end host_token={}, process_token={}", request.host_token, request.process_token);
         KarlControllerClient::connect(self.controller_addr.clone()).await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
             .finish_compute(Request::new(request)).await

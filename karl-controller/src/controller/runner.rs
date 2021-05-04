@@ -169,17 +169,11 @@ impl HookRunner {
         timestamp: &String,
         data: &Vec<u8>,
     ) -> usize {
-        // debug!("spawn_if_watched? {}/{}, internal {:?}",
-        //     tag, timestamp, self.watched_tags.read().unwrap());
-        let now = Instant::now();
-        warn!("step 3: check watched tag and queue hook");
         let hook_ids = {
             let mut hook_ids = HashSet::new();
             let watched_tags = self.watched_tags.read().unwrap();
             if let Some(hooks) = watched_tags.get(tag) {
-                debug!("spawning {:?} from {}/{}", hooks, tag, timestamp);
                 for hook_id in hooks {
-                    // TODO: pass timestamp to queue
                     hook_ids.insert(hook_id.clone());
                 }
             }
@@ -189,7 +183,7 @@ impl HookRunner {
         let spawned = hook_ids.len();
         // TODO: avoid cloning data unnecessarily.
         for hook_id in hook_ids {
-            warn!("=> {} s", now.elapsed().as_secs_f32());
+            debug!("spawning {} from {}", hook_id, tag);
             tx.send(QueuedHook {
                 id: hook_id,
                 trigger: Some((tag.clone(), timestamp.clone(), data.clone())),
@@ -210,7 +204,6 @@ impl HookRunner {
             let now = Instant::now();
 
             // Find an available host.
-            warn!("step 4a: find a host");
             let hook_id = next.id;
             let process_id = gen_process_id();
             let hosts = loop {
@@ -222,10 +215,9 @@ impl HookRunner {
             };
             let host = &hosts[0];
             let host_addr = format!("http://{}:{}", host.ip, host.port);
-            warn!("=> {} s", now.elapsed().as_secs_f32());
+            debug!("find a host => {} s", now.elapsed().as_secs_f32());
 
             // Generate a compute request based on the queued hook.
-            warn!("step 4b: runner prepares request");
             let mut request = if let Some(hook) = hooks.lock().unwrap().get(&hook_id) {
                 match hook_to_compute_request(
                     &hook,
@@ -248,11 +240,10 @@ impl HookRunner {
                 request.triggered_timestamp = timestamp;
                 request.triggered_data = data;
             }
-            warn!("=> {} s", now.elapsed().as_secs_f32());
+            debug!("convert hook to compute request => {} s", now.elapsed().as_secs_f32());
 
             // Send the request.
             let process_token = if !mock_send_compute {
-                warn!("step 4c: send compute request");
                 match crate::net::send_compute(&host_addr, request).await {
                     Ok(result) => result.into_inner().process_token,
                     Err(e) => {
@@ -265,18 +256,18 @@ impl HookRunner {
                 warn!("generated process token for testing");
                 Token::gen()
             };
-            warn!("=> {} s", now.elapsed().as_secs_f32());
 
             // Update internal data structures.
             // In particular, mark which host is doing the computation.
             // Then log the process start.
-            debug!("started process_id={} hook_id={} {}", process_id, hook_id, process_token);
+            info!("started process_id={} hook_id={} => {} s",
+                process_id, hook_id, now.elapsed().as_secs_f32());
             scheduler.lock().unwrap().notify_start(
                 host.host_token.clone(),
                 hook_id.clone(),
                 process_token.clone(),
             );
-            audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
+            // audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
         }
     }
 }

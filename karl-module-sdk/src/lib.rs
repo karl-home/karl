@@ -25,13 +25,33 @@ impl KarlModuleSDK {
         let params = env::var("KARL_PARAMS").unwrap()
             .split(":")
             .map(|param| param.split(";"))
-            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
+            .filter_map(|mut split| {
+                if let Some(param) = split.next() {
+                    if let Some(tag) = split.next() {
+                        Some((param, tag))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
             .map(|(param, tag)| (param.to_string(), tag.to_string()))
             .collect::<HashMap<_, _>>();
         let returns = env::var("KARL_RETURNS").unwrap()
             .split(":")
             .map(|param| param.split(";"))
-            .map(|mut param| (param.next().unwrap(), param.next().unwrap()))
+            .filter_map(|mut split| {
+                if let Some(return_name) = split.next() {
+                    if let Some(tags) = split.next() {
+                        Some((return_name, tags))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
             .map(|(return_name, tags)| (
                 return_name.to_string(),
                 tags.split(",").map(|tag| tag.to_string()).collect(),

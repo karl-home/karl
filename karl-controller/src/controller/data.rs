@@ -53,14 +53,16 @@ impl DataSink {
         label: KarlLabel,
     ) -> Result<PushDataResult, Error> {
         let path = self.data_path.join(tag);
-        assert!(path.is_dir());
+        if !path.is_dir() {
+            fs::create_dir_all(&path)?;
+        }
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
             let path = path.join(&dt);
             if path.exists() {
                 continue;
             }
-            debug!("push data tag={} timestamp={} (len {})",
+            debug!("push_data tag={} timestamp={} (len {})",
                 tag, dt, data.len());
             fs::write(path, &data)?;
             break Ok(PushDataResult {
@@ -88,9 +90,11 @@ impl DataSink {
         lower: String,
         upper: String,
     ) -> Result<GetDataResult, Error> {
-        debug!("get {} {}", tag, lower);
+        debug!("get_data tag={} {}", tag, lower);
         let path = self.data_path.join(tag);
-        assert!(path.is_dir());
+        if !path.is_dir() {
+            fs::create_dir_all(&path)?;
+        }
         let mut paths: Vec<_> = fs::read_dir(path)?.map(|r| r.unwrap()
             .path().as_path().file_name().unwrap()
             .to_str().unwrap()

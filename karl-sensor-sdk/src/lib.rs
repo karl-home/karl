@@ -32,13 +32,13 @@ impl KarlSensorSDK {
         &mut self,
         global_sensor_id: &str,
         keys: Vec<String>,
-        tags: Vec<String>,
+        returns: Vec<String>,
         app: Vec<u8>,
     ) -> Result<SensorRegisterResult, Status> {
         let request = SensorRegisterRequest {
             global_sensor_id: global_sensor_id.to_string(),
             keys,
-            tags,
+            returns,
             app,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await

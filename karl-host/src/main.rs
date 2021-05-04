@@ -38,8 +38,6 @@ pub struct Host {
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
     /// Path manager.
     path_manager: Arc<PathManager>,
-    /// Whether to validate tokens.
-    validate: bool,
 }
 
 #[tonic::async_trait]
@@ -47,9 +45,8 @@ impl karl_host_server::KarlHost for Host {
     async fn start_compute(
         &self, req: Request<ComputeRequest>,
     ) -> Result<Response<NotifyStart>, Status> {
-        let now = Instant::now();
-        warn!("step 5: host receives compute request");
         let mut req = req.into_inner();
+        info!("HANDLE_COMPUTE START {}", req.hook_id);
         let process_token = Token::gen();
         let perms = ProcessPerms::new(&mut req);
 
@@ -70,7 +67,8 @@ impl karl_host_server::KarlHost for Host {
                 req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
                 req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &req.triggered_timestamp));
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
-                warn!("=> {} s", now.elapsed().as_secs_f32());
+                req.envs.push(format!("KARL_PARAMS={}", &req.params));
+                req.envs.push(format!("KARL_RETURNS={}", &req.returns));
                 Host::handle_compute(
                     path_manager,
                     req.hook_id,
@@ -174,31 +172,34 @@ impl karl_host_server::KarlHost for Host {
         // Validate the process is valid and has permissions to read the tag.
         // No serializability guarantees from other requests from the same process.
         let req = req.into_inner();
-        debug!("get {:?}", req);
-        if self.validate {
-            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
-                if perms.is_triggered(&req.tag) {
-                    // cached the triggered file
-                    let res = if req.lower != req.upper {
-                        GetDataResult::default()
-                    } else if let Some(data) = perms.read_triggered(&req.lower) {
-                        GetDataResult {
-                            timestamps: vec![req.lower],
-                            data: vec![data],
-                        }
-                    } else {
-                        GetDataResult::default()
-                    };
-                    return Ok(Response::new(res));
-                }
-                if !perms.can_read(&req.tag) {
-                    return Err(Status::new(Code::Unauthenticated, "cannot read"));
-                }
-            } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+        if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+            if perms.is_triggered(&req.tag) {
+                // cached the triggered file
+                let res = if req.lower != req.upper {
+                    debug!("get: {} invalid triggered timestamps", req.process_token);
+                    GetDataResult::default()
+                } else if let Some(data) = perms.read_triggered(&req.lower) {
+                    debug!("get: {} reading triggered data", req.process_token);
+                    GetDataResult {
+                        timestamps: vec![req.lower],
+                        data: vec![data],
+                    }
+                } else {
+                    debug!("get: {} process was not triggered", req.process_token);
+                    GetDataResult::default()
+                };
+                return Ok(Response::new(res));
             }
+            if !perms.can_read(&req.tag) {
+                warn!("get: {} cannot read {}", req.process_token, req.tag);
+                return Err(Status::new(Code::Unauthenticated, "cannot read"));
+            }
+        } else {
+            warn!("get: invalid token {}", req.process_token);
+            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
         // Forward the file access to the controller and return the result
+        debug!("get: {} forwarding tag={}", req.process_token, req.tag);
         self.api.forward_get(req).await
     }
 
@@ -219,6 +220,7 @@ impl karl_host_server::KarlHost for Host {
         let req = req.into_inner();
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_write(&req.tag) {
+                debug!("push: {} cannot write tag={}", req.process_token, req.tag);
                 return Err(Status::new(Code::Unauthenticated, "cannot write"));
             }
             if req.tag.chars().next() == Some('#') {
@@ -235,6 +237,7 @@ impl karl_host_server::KarlHost for Host {
 
         if let Some((sensor, key)) = sensor_key {
             // Forward as state change if the tag changes state.
+            debug!("push: {} forwarding state change tag={}", req.process_token, req.tag);
             let req = StateChange {
                 host_token: String::new(),
                 process_token: req.process_token,
@@ -245,6 +248,7 @@ impl karl_host_server::KarlHost for Host {
             self.api.forward_state(req).await
         } else {
             // Forward the file access to the controller and return the result
+            debug!("push: {} forwarding push tag={}", req.process_token, req.tag);
             self.api.forward_push(req).await
         }
     }
@@ -263,7 +267,6 @@ impl Host {
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             path_manager: Arc::new(PathManager::new(karl_path, id)),
-            validate: false,
         }
     }
 
@@ -308,32 +311,28 @@ impl Host {
         args: Vec<String>,
         envs: Vec<String>,
     ) -> Result<(), Error> {
-        info!("handling compute (len {}) cached={}: command => {:?} {:?} envs => {:?}",
-            cached, package.len(), binary_path, args, envs);
-
         let now = Instant::now();
-        warn!("step 6a: unpacking request");
         if cached && !path_manager.is_cached(&hook_id) {
             return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
         }
         if !cached {
             path_manager.cache_hook(&hook_id, package)?;
         }
-        warn!("=> {} s", now.elapsed().as_secs_f32());
-        warn!("step 6b: mounting request overlayfs");
+        debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
+        let now = Instant::now();
         let (mount, paths) = path_manager.new_request(&hook_id);
         // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
-        warn!("=> {} s", now.elapsed().as_secs_f32());
+        debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
 
         let now = Instant::now();
-        warn!("step 7: invoke the binary");
         let _res = runtime::run(
             &paths.root_path,
             binary_path,
             args,
             envs,
         )?;
-        warn!("=> {} s", now.elapsed().as_secs_f32());
+        debug!("invoked binary => {} s", now.elapsed().as_secs_f32());
+        info!("HANDLE_COMPUTE FINISH {}", hook_id);
 
         // Reset the root for the next computation.
         path_manager.unmount(mount);
@@ -341,7 +340,7 @@ impl Host {
             error!("error resetting request path: {:?}", e);
         }
         let now = Instant::now();
-        info!(
+        trace!(
             "reset directory at {:?} => {} s",
             &paths.request_path,
             now.elapsed().as_secs_f32(),

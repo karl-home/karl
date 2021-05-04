@@ -74,10 +74,11 @@ async fn motion_detection(
     loop {
         let tag = "motion".to_string();
         interval.tick().await;
-        warn!("START step 1: pushing image");
-        let now = Instant::now();
+        // warn!("START step 1: pushing image");
+        info!("pushing {} byte image", image_bytes.len());
+        // let now = Instant::now();
         api.push(tag, image_bytes.clone()).await.unwrap();
-        warn!("=> {} s", now.elapsed().as_secs_f32());
+        // warn!("=> {} s", now.elapsed().as_secs_f32());
     }
 }
 
@@ -87,18 +88,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::new("Camera sensor")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
+            .long("ip")
             .takes_value(true)
             .default_value("127.0.0.1"))
         .arg(Arg::with_name("port")
             .help("Controller port.")
+            .long("port")
             .takes_value(true)
             .default_value("59582"))
         .arg(Arg::with_name("interval")
             .help("Motion detection interval, in seconds.")
+            .long("interval")
             .takes_value(true)
             .default_value("30"))
         .arg(Arg::with_name("image_path")
             .help("Path to the image to send when motion is detected.")
+            .long("image_path")
             .takes_value(true)
             .default_value("data/FudanPed00001_smaller.png"))
         .get_matches();

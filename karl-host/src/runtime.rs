@@ -12,9 +12,9 @@ use std::time::Instant;
 use karl_common::Error;
 
 fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
-    debug!("bin: {:?}", bin);
-    debug!("envs: {:?}", envs);
-    debug!("args: {:?}", args);
+    trace!("bin: {:?}", bin);
+    trace!("envs: {:?}", envs);
+    trace!("args: {:?}", args);
 
     let mut cmd = Command::new("firejail");
     cmd.arg("--private=.");
@@ -118,8 +118,8 @@ pub fn run(
     info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
-    warn!("{}", String::from_utf8_lossy(&output.stdout));
-    trace!("{}", String::from_utf8_lossy(&output.stderr));
+    debug!("\n{}", String::from_utf8_lossy(&output.stdout));
+    debug!("{}", String::from_utf8_lossy(&output.stderr));
     env::set_current_dir(&previous_dir).unwrap();
     Ok(())
 }
