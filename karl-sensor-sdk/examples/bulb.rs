@@ -36,7 +36,7 @@ async fn handle_state_changes(
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
-        if msg.key == "state" {
+        if msg.key == "on" {
             let state = msg.value;
             if state.len() != 1 {
                 warn!("invalid length message: {:?}", state);

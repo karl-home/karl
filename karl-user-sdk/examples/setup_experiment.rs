@@ -7,21 +7,21 @@ use clap::{Arg, App};
 use karl_user_sdk::{Graph, KarlUserSDK};
 
 // const GLOBAL_HOOK_IDS: [&'static str; 9] = [
-const GLOBAL_HOOK_IDS: [&'static str; 2] = [
-    // "command_classifier",
-    // "search",
-    // "light_switch",
+const GLOBAL_HOOK_IDS: [&'static str; 3] = [
+    "command_classifier",
+    "search",
+    "light_switch",
     // "firmware_update",
-    "person_detection",
-    "differential_privacy",
+    // "person_detection",
+    // "differential_privacy",
     // "targz",
     // "true",
     // "false",
 ];
 
 const SENSOR_IDS: [&'static str; 4] = [
-    "mic",
-    "mic_1",
+    "microphone",
+    "microphone_1",
     "bulb",
     "camera",
 ];
@@ -48,27 +48,27 @@ async fn register_hooks(
 /// Generate the graph from Figures 4 and 6 based on registered hooks.
 async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
     let data_edges_stateless = vec![
-        // ("mic.sound", "command_classifier.sound"),
-        // ("mic_1.sound", "command_classifier.sound"),
-        // ("command_classifier.search", "search.query_intent"),
-        // ("command_classifier.light", "light_switch.light_intent"),
-        ("camera.motion", "person_detection.image"),
-        ("person_detection.count", "differential_privacy.count"),
+        ("microphone.sound", "command_classifier.sound"),
+        // ("microphone_1.sound", "command_classifier.sound"),
+        ("command_classifier.search", "search.query_intent"),
+        ("command_classifier.light", "light_switch.light_intent"),
+        // ("camera.motion", "person_detection.image"),
+        // ("person_detection.count", "differential_privacy.count"),
     ];
     let data_edges_stateful = vec![
         // ("camera.streaming", "targz.files"),
     ];
     let state_edges = vec![
-        // ("search.response", "mic.output"),
-        // ("search.response", "mic_1.output"),
-        // ("light_switch.state", "bulb.on"),
+        ("search.response", "microphone.response"),
+        // ("search.response", "microphone_1.response"),
+        ("light_switch.state", "bulb.on"),
         // ("true.true", "camera.livestream"),
         // ("false.false", "camera.livestream"),
         // ("firmware_update.firmware", "camera.firmware"),
     ];
     let network_edges = vec![
-        // ("search", "google.com"),
-        ("differential_privacy", "metrics.com"),
+        ("search", "google.com"),
+        // ("differential_privacy", "metrics.com"),
         // ("firmware_update", "firmware.com"),
     ];
     let interval_modules = vec![

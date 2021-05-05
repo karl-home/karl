@@ -16,7 +16,7 @@ Generate hooks from the static binaries.
 ./target/release/hookgen
 ```
 
-| Module ID            | Input Params | Output Tags | Network |
+| Module ID            | Input Params | Returns     | Network |
 | -------------------- | ------------ | ----------- | ------- |
 | differential_privacy | count        | -           | yes     |
 | false                | -            | false       | no      |
@@ -31,7 +31,7 @@ The file to add is just the static binary at
 
 ## Generating Python modules
 
-| Module ID          | Input Params | Output Tags         | Network |
+| Module ID          | Input Params | Returns             | Network |
 | ------------------ | ------------ | ------------------- | ------- |
 | command_classifier | sound        | light,search        | no      |
 | person_detection   | image        | box,all_count,count | no      |

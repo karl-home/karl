@@ -1,14 +1,12 @@
 mod scheduler;
 mod data;
-mod audit;
 mod runner;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
-pub use audit::{AuditLog, LogEntry, LogEntryType};
 pub use runner::HookRunner;
 
 use std::collections::{HashSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
@@ -38,8 +36,6 @@ pub struct Controller {
     data_sink: Arc<RwLock<DataSink>>,
     /// Data structure for queueing and spawning processes from hooks.
     runner: HookRunner,
-    /// Audit log indexed by process ID and path accessed.
-    audit_log: Arc<Mutex<AuditLog>>,
     /// Map from client token to client.
     ///
     /// Unique identifier for the sensor, known only by the controller
@@ -82,11 +78,7 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        // self.audit_log.lock().unwrap().push(
-        //     &req.process_token,
-        //     LogEntryType::Network { domain: req.domain },
-        // );
-        info!("network domain={}", req.domain);
+        debug!("network domain={}", req.domain);
         Ok(Response::new(()))
     }
 
@@ -151,7 +143,6 @@ impl karl_controller_server::KarlController for Controller {
         let now = Instant::now();
         let req = req.into_inner();
         self.scheduler.lock().unwrap().notify_end(req.host_token, req.process_token.clone())?;
-        // self.audit_log.lock().unwrap().notify_end(req.process_token);
         trace!("notify_end => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(()))
     }
@@ -192,7 +183,6 @@ impl karl_controller_server::KarlController for Controller {
     async fn push_raw_data(
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
-        let now = Instant::now();
         let req = req.into_inner();
         let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
@@ -248,19 +238,20 @@ impl karl_controller_server::KarlController for Controller {
     // users
 
     async fn audit(
-        &self, req: Request<AuditRequest>,
+        &self, _req: Request<AuditRequest>,
     ) -> Result<Response<AuditResult>, Status> {
-        let req = req.into_inner();
-        let entries = if !req.path.is_empty() {
-            let path = sanitize_path(&req.path);
-            self.audit_log.lock().unwrap().audit_file(Path::new(&path))
-        } else if !req.sensor_id.is_empty() {
-            self.audit_log.lock().unwrap().audit_sensor(&req.sensor_id)
-        } else {
-            self.audit_log.lock().unwrap().audit_process(req.pid)
-        };
-        let entries = entries.ok_or(Status::new(Code::NotFound, "not found"))?;
-        Ok(Response::new(AuditResult { entries }))
+        // let req = req.into_inner();
+        // let entries = if !req.path.is_empty() {
+        //     let path = sanitize_path(&req.path);
+        //     self.audit_log.lock().unwrap().audit_file(Path::new(&path))
+        // } else if !req.sensor_id.is_empty() {
+        //     self.audit_log.lock().unwrap().audit_sensor(&req.sensor_id)
+        // } else {
+        //     self.audit_log.lock().unwrap().audit_process(req.pid)
+        // };
+        // let entries = entries.ok_or(Status::new(Code::NotFound, "not found"))?;
+        // Ok(Response::new(AuditResult { entries }))
+        unimplemented!()
     }
 
     async fn verify_sensor(
@@ -302,7 +293,7 @@ impl karl_controller_server::KarlController for Controller {
             self.add_data_edge(data_edge, &mut hooks, &mut sensors)?;
         }
         for state_edge in req.state_edges {
-            self.add_state_edge(state_edge, &mut hooks)?;
+            self.add_state_edge(state_edge, &mut hooks, &sensors)?;
         }
         for network_edge in req.network_edges {
             self.add_network_edge(network_edge, &mut hooks)?;
@@ -325,7 +316,6 @@ impl Controller {
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
             runner: HookRunner::new(),
-            audit_log: Arc::new(Mutex::new(AuditLog::new())),
             sensors: Arc::new(Mutex::new(HashMap::new())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,
@@ -386,11 +376,7 @@ impl Controller {
             );
         }
         // Start the hook runner.
-        self.runner.start(
-            self.audit_log.clone(),
-            self.scheduler.clone(),
-            false,
-        );
+        self.runner.start(self.scheduler.clone(), false);
 
         info!("Karl controller listening on port {}", port);
         Ok(())
@@ -586,22 +572,39 @@ impl Controller {
     ///
     /// Updates how new data labels are assigned relative to the new graph.
     fn add_state_edge(
-        &self, req: StateEdge, hooks: &mut HashMap<HookID, Hook>,
+        &self,
+        req: StateEdge,
+        hooks: &mut HashMap<HookID, Hook>,
+        sensors: &HashMap<SensorToken, Client>,
     ) -> Result<(), Status> {
         debug!("state_edge {}.{} -> {}.{}",
             req.out_id, req.out_return, req.sensor_id, req.sensor_key);
+        // check that the sensor has that key
+        if let Some(sensor) = sensors.iter()
+                .map(|(_, sensor)| sensor)
+                .filter(|sensor| sensor.id == req.sensor_id)
+                .next() {
+            if !sensor.keys.contains(&req.sensor_key) {
+                error!("sensor does not have input key {:?}", sensor.keys);
+                return Ok(());
+            }
+        } else {
+            error!("output sensor does not exist");
+            return Ok(());
+        }
+
+        // add the state tag to the output module
         if let Some(out_module) = hooks.get_mut(&req.out_id) {
             let state_tag = format!("#{}.{}", req.sensor_id, req.sensor_key);
             if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
                 out_tags.push(state_tag);
-                Ok(())
             } else {
-                Err(Status::new(Code::NotFound,
-                    "output module does not have output return name"))
+                error!("output module does not have output return name");
             }
         } else {
-            Err(Status::new(Code::NotFound, "output module does not exist"))
+            error!("output module does not exist");
         }
+        Ok(())
     }
 
     /// Permits a specific module to access the network.

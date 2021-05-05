@@ -3,7 +3,7 @@ use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
-use crate::controller::{AuditLog, HostScheduler};
+use crate::controller::HostScheduler;
 use crate::protos::ComputeRequest;
 use karl_common::*;
 
@@ -87,7 +87,6 @@ impl HookRunner {
     /// are read to be scheduled. Add hooks to the queue via `queue_hook()`.
     pub fn start(
         &mut self,
-        audit_log: Arc<Mutex<AuditLog>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
@@ -99,7 +98,6 @@ impl HookRunner {
             Self::start_queue_manager(
                 rx,
                 hooks,
-                audit_log,
                 scheduler,
                 mock_send_compute,
             ).await;
@@ -195,7 +193,6 @@ impl HookRunner {
     async fn start_queue_manager(
         mut rx: mpsc::Receiver<QueuedHook>,
         hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
-        audit_log: Arc<Mutex<AuditLog>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
@@ -267,7 +264,6 @@ impl HookRunner {
                 hook_id.clone(),
                 process_token.clone(),
             );
-            // audit_log.lock().unwrap().notify_start(process_token, process_id, hook_id);
         }
     }
 }
@@ -278,11 +274,6 @@ mod test {
     use std::path::Path;
     use std::net::SocketAddr;
     const PASSWORD: &str = "password";
-
-    fn init_audit_log() -> Arc<Mutex<AuditLog>> {
-        let data_path = Path::new("/home/data").to_path_buf();
-        Arc::new(Mutex::new(AuditLog::new(data_path)))
-    }
 
     fn init_scheduler(nhosts: usize) -> Arc<Mutex<HostScheduler>> {
         let mut scheduler = HostScheduler::new(PASSWORD);
@@ -297,7 +288,6 @@ mod test {
 
     #[tokio::test]
     async fn test_start_creates_a_mpsc_channel() {
-        let audit_log = init_audit_log();
         let scheduler = init_scheduler(1);
         let mut runner = HookRunner::new();
         assert!(runner.tx.is_none());
