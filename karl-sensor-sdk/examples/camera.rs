@@ -14,9 +14,9 @@ use karl_module_sdk::KarlSensorSDK;
 /// * keys
 ///     - firmware: new firmware to install
 ///     - livestream: whether the camera should be pushing a livestream
-/// * tags
+/// * returns
 ///     - motion: a snapshot image when motion is detected
-///     - livestream: streaming write
+///     - streaming: streaming write
 ///
 /// Returns: the sensor token and sensor ID.
 async fn register(
@@ -26,7 +26,7 @@ async fn register(
     let result = api.register(
         "camera",
         vec![String::from("firmware"), String::from("livestream")], // keys
-        vec![String::from("motion"), String::from("livestream")], // tags
+        vec![String::from("motion"), String::from("streaming")], // returns
         vec![], // app
     ).await?;
     info!("registered sensor => {} s", now.elapsed().as_secs_f32());

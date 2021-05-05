@@ -64,11 +64,19 @@ impl karl_host_server::KarlHost for Host {
             let process_tokens = self.process_tokens.clone();
             let process_token = process_token.clone();
             tokio::spawn(async move {
-                req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
-                req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &req.triggered_timestamp));
+                if !req.triggered_tag.is_empty() {
+                    req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
+                }
+                if !req.triggered_timestamp.is_empty() {
+                    req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &req.triggered_timestamp));
+                }
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
-                req.envs.push(format!("KARL_PARAMS={}", &req.params));
-                req.envs.push(format!("KARL_RETURNS={}", &req.returns));
+                if !req.params.is_empty() {
+                    req.envs.push(format!("KARL_PARAMS={}", &req.params));
+                }
+                if !req.returns.is_empty() {
+                    req.envs.push(format!("KARL_RETURNS={}", &req.returns));
+                }
                 Host::handle_compute(
                     path_manager,
                     req.hook_id,
@@ -220,8 +228,8 @@ impl karl_host_server::KarlHost for Host {
         let req = req.into_inner();
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
             if !perms.can_write(&req.tag) {
-                debug!("push: {} cannot write tag={}", req.process_token, req.tag);
-                return Err(Status::new(Code::Unauthenticated, "cannot write"));
+                debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
+                return Ok(Response::new(()));
             }
             if req.tag.chars().next() == Some('#') {
                 let mut split = req.tag.split(".");

@@ -11,19 +11,24 @@ class KarlSDK:
         self.token = os.environ.get('PROCESS_TOKEN')
         self.params = {}
         self.returns = {}
-        for x in os.environ.get('KARL_PARAMS').split(':'):
-            y = x.split(';')
-            self.params[y[0]] = y[1]
-        for x in os.environ.get('KARL_RETURNS').split(':'):
-            y = x.split(';')
-            self.returns[y[0]] = y[1].split(',')
+        params = os.environ.get('KARL_PARAMS')
+        returns = os.environ.get('KARL_RETURNS')
+        if params is not None:
+            for x in params.split(':'):
+                y = x.split(';')
+                self.params[y[0]] = y[1]
+        if returns is not None:
+            for x in returns.split(':'):
+                y = x.split(';')
+                self.returns[y[0]] = y[1].split(',')
         self.channel = grpc.insecure_channel('localhost:59583')
         self.stub = request_pb2_grpc.KarlHostStub(self.channel)
 
     def get_triggered(self):
         tag = os.environ.get('TRIGGERED_TAG')
         timestamp = os.environ.get('TRIGGERED_TIMESTAMP')
-        return self._get_tag(tag, timestamp, timestamp).data[0]
+        if tag is not None and timestamp is not None:
+            return self._get_tag(tag, timestamp, timestamp).data[0]
 
     def get(self, param, lower_timestamp, upper_timestamp):
         if param in self.params:
@@ -41,9 +46,8 @@ class KarlSDK:
         return res
 
     def push(self, return_name, data):
-        if return_name in self.tags:
-            for tag in self.tags[return_name]:
-                tag = '{}.{}'.format(self.hook_id, tag)
+        if return_name in self.returns:
+            for tag in self.returns[return_name]:
                 req = request_pb2.PushData(process_token=self.token,
                                            tag=tag,
                                            data=data)

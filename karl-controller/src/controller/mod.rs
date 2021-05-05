@@ -82,10 +82,11 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        self.audit_log.lock().unwrap().push(
-            &req.process_token,
-            LogEntryType::Network { domain: req.domain },
-        );
+        // self.audit_log.lock().unwrap().push(
+        //     &req.process_token,
+        //     LogEntryType::Network { domain: req.domain },
+        // );
+        info!("network domain={}", req.domain);
         Ok(Response::new(()))
     }
 

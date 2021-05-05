@@ -22,7 +22,8 @@ pub struct KarlModuleSDK {
 
 impl KarlModuleSDK {
     pub fn new() -> Self {
-        let params = env::var("KARL_PARAMS").unwrap()
+        let params = if let Some(params) = env::var("KARL_PARAMS").ok() {
+            params
             .split(":")
             .map(|param| param.split(";"))
             .filter_map(|mut split| {
@@ -37,8 +38,12 @@ impl KarlModuleSDK {
                 }
             })
             .map(|(param, tag)| (param.to_string(), tag.to_string()))
-            .collect::<HashMap<_, _>>();
-        let returns = env::var("KARL_RETURNS").unwrap()
+            .collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
+        let returns = if let Some(returns) = env::var("KARL_RETURNS").ok() {
+            returns
             .split(":")
             .map(|param| param.split(";"))
             .filter_map(|mut split| {
@@ -56,7 +61,12 @@ impl KarlModuleSDK {
                 return_name.to_string(),
                 tags.split(",").map(|tag| tag.to_string()).collect(),
             ))
-            .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
+        println!("params: {:?}", params);
+        println!("params: {:?}", returns);
         Self {
             global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
             hook_id: env::var("HOOK_ID").unwrap(),
@@ -89,6 +99,8 @@ impl KarlModuleSDK {
         if let Some(tag) = self.params.get(param) {
             self._get_tag(tag, lower, upper).await
         } else {
+            println!("{:?}", param);
+            println!("{:?}", self.params);
             Err(Status::new(Code::Cancelled, "invalid param: either the \
                 user did not create an input edge to the param OR the \
                 module incorrectly registered its expected params. \
@@ -145,9 +157,11 @@ impl KarlModuleSDK {
             }
             Ok(())
         } else {
-            Err(Status::new(Code::Cancelled, "invalid param: either the \
-                user did not create an input edge to the param OR the \
-                module incorrectly registered its expected params. \
+            println!("{:?}", return_name);
+            println!("{:?}", self.returns);
+            Err(Status::new(Code::Cancelled, "invalid return: either the \
+                user did not create an output edge from the return OR the \
+                module incorrectly registered its expected returns. \
                 The validation will also fail on the host if allowed \
                 to proceed."))
         }
