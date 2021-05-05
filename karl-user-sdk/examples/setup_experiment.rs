@@ -111,7 +111,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //     .map(|hook_id| (hook_id.to_string(), hook_id.to_string()))
     //     .collect::<HashMap<String, String>>();
     let graph = generate_graph(hook_ids).await;
-    // println!("{}", graph.graphviz().unwrap());
+    println!("{}", graph.graphviz().unwrap());
     graph.send_to_controller(&api).await.unwrap();
     Ok(())
 }

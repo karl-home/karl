@@ -104,20 +104,20 @@ impl Graph {
         writeln!(g, "\n  edge [style=solid];")?;
         for ((m1, t1), (m2, t2), stateless) in &self.data_edges {
             if *stateless {
-                writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+                writeln!(g, "  {} -> {} [label=\"{}\"];", m1, m2, t2)?;
             }
         }
         // stateful data edges
         writeln!(g, "\n  edge [style=dashed];")?;
         for ((m1, t1), (m2, t2), stateless) in &self.data_edges {
             if !stateless {
-                writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, t1, t2)?;
+                writeln!(g, "  {} -> {} [label=\"{}\"];", m1, m2, t2)?;
             }
         }
         // state edges
         writeln!(g, "\n  edge [style=solid,color=orange];")?;
         for ((m1, tag), (m2, key)) in &self.state_edges {
-            writeln!(g, "  {} -> {} [label=\"{},{}\"];", m1, m2, tag, key)?;
+            writeln!(g, "  {} -> {} [label=\"#{}\"];", m1, m2, key)?;
         }
         // network edges
         writeln!(g, "\n  edge [style=solid,color=green];")?;
