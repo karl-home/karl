@@ -7,16 +7,16 @@ use clap::{Arg, App};
 use karl_user_sdk::{Graph, KarlUserSDK};
 
 // const GLOBAL_HOOK_IDS: [&'static str; 9] = [
-const GLOBAL_HOOK_IDS: [&'static str; 3] = [
+const GLOBAL_HOOK_IDS: [&'static str; 2] = [
     // "command_classifier",
     // "search",
     // "light_switch",
     // "firmware_update",
-    // "person_detection",
-    // "differential_privacy",
-    "targz",
-    "true",
-    "false",
+    "person_detection",
+    "differential_privacy",
+    // "targz",
+    // "true",
+    // "false",
 ];
 
 const SENSOR_IDS: [&'static str; 4] = [
@@ -52,27 +52,27 @@ async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
         // ("mic_1.sound", "command_classifier.sound"),
         // ("command_classifier.search", "search.query_intent"),
         // ("command_classifier.light", "light_switch.light_intent"),
-        // ("camera.motion", "person_detection.image"),
-        // ("person_detection.count", "differential_privacy.count"),
+        ("camera.motion", "person_detection.image"),
+        ("person_detection.count", "differential_privacy.count"),
     ];
     let data_edges_stateful = vec![
-        ("camera.streaming", "targz.files"),
+        // ("camera.streaming", "targz.files"),
     ];
     let state_edges = vec![
         // ("search.response", "mic.output"),
         // ("search.response", "mic_1.output"),
         // ("light_switch.state", "bulb.on"),
-        ("true.true", "camera.livestream"),
-        ("false.false", "camera.livestream"),
+        // ("true.true", "camera.livestream"),
+        // ("false.false", "camera.livestream"),
         // ("firmware_update.firmware", "camera.firmware"),
     ];
     let network_edges = vec![
         // ("search", "google.com"),
-        // ("differential_privacy", "metrics.com"),
+        ("differential_privacy", "metrics.com"),
         // ("firmware_update", "firmware.com"),
     ];
     let interval_modules = vec![
-        // ("firmware_update", 20),
+        // ("firmware_update", 300),
     ];
     let mut graph = Graph::new(
         SENSOR_IDS.to_vec(),

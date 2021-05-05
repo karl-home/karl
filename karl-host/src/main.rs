@@ -29,6 +29,8 @@ use tonic::{Request, Response, Status, Code};
 use tonic::transport::Server;
 use clap::{Arg, App};
 
+struct Lock {}
+
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
@@ -38,6 +40,8 @@ pub struct Host {
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
     /// Path manager.
     path_manager: Arc<PathManager>,
+    /// Only one compute at a time.
+    compute_lock: Arc<Mutex<Lock>>,
 }
 
 #[tonic::async_trait]
@@ -63,6 +67,7 @@ impl karl_host_server::KarlHost for Host {
             let path_manager = self.path_manager.clone();
             let process_tokens = self.process_tokens.clone();
             let process_token = process_token.clone();
+            let compute_lock = self.compute_lock.clone();
             tokio::spawn(async move {
                 if !req.triggered_tag.is_empty() {
                     req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
@@ -77,15 +82,19 @@ impl karl_host_server::KarlHost for Host {
                 if !req.returns.is_empty() {
                     req.envs.push(format!("KARL_RETURNS={}", &req.returns));
                 }
-                Host::handle_compute(
-                    path_manager,
-                    req.hook_id,
-                    req.cached,
-                    req.package,
-                    binary_path,
-                    req.args,
-                    req.envs,
-                ).unwrap();
+                {
+                    let lock = compute_lock.lock().unwrap();
+                    Host::handle_compute(
+                        path_manager,
+                        req.hook_id,
+                        req.cached,
+                        req.package,
+                        binary_path,
+                        req.args,
+                        req.envs,
+                    ).unwrap();
+                    drop(lock);
+                }
                 process_tokens.lock().unwrap().remove(&process_token);
                 api.notify_end(process_token).await.unwrap();
             });
@@ -275,6 +284,7 @@ impl Host {
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             path_manager: Arc::new(PathManager::new(karl_path, id)),
+            compute_lock: Arc::new(Mutex::new(Lock{})),
         }
     }
 
