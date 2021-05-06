@@ -315,12 +315,13 @@ impl Controller {
         password: &str,
         autoconfirm: bool,
         caching_enabled: bool,
+        pubsub_enabled: bool,
     ) -> Self {
         Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
-            runner: HookRunner::new(),
+            runner: HookRunner::new(pubsub_enabled),
             sensors: Arc::new(Mutex::new(HashMap::new())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,

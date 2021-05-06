@@ -52,6 +52,8 @@ pub struct Host {
     /// Whether caching is enabled
     cold_cache_enabled: bool,
     warm_cache_enabled: bool,
+    /// Whether to read triggered data locally or forward to the data sink
+    pubsub_enabled: bool,
     /// Whether to mock network access
     mock_network: bool,
 }
@@ -196,22 +198,23 @@ impl karl_host_server::KarlHost for Host {
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
             if perms.is_triggered(&req.tag) {
                 // cached the triggered file
-                let res = if req.lower != req.upper {
+                if req.lower != req.upper {
                     debug!("get: {} invalid triggered timestamps", req.process_token);
-                    GetDataResult::default()
+                    return Ok(Response::new(GetDataResult::default()))
+                } else if !self.pubsub_enabled {
+                    debug!("get: {} pubsub disabled, fallthrough to read from data sink", req.process_token);
+                    // fallthrough below
                 } else if let Some(data) = perms.read_triggered(&req.lower) {
                     debug!("get: {} reading triggered data", req.process_token);
-                    GetDataResult {
+                    return Ok(Response::new(GetDataResult {
                         timestamps: vec![req.lower],
                         data: vec![data],
-                    }
+                    }))
                 } else {
                     debug!("get: {} process was not triggered", req.process_token);
-                    GetDataResult::default()
-                };
-                return Ok(Response::new(res));
-            }
-            if !perms.can_read(&req.tag) {
+                    return Ok(Response::new(GetDataResult::default()))
+                }
+            } else if !perms.can_read(&req.tag) {
                 warn!("get: {} cannot read {}", req.process_token, req.tag);
                 return Err(Status::new(Code::Unauthenticated, "cannot read"));
             }
@@ -289,6 +292,7 @@ impl Host {
         controller: &str,
         cold_cache_enabled: bool,
         warm_cache_enabled: bool,
+        pubsub_enabled: bool,
         mock_network: bool,
     ) -> Self {
         use rand::Rng;
@@ -306,6 +310,7 @@ impl Host {
             compute_lock: Arc::new(Mutex::new(())),
             cold_cache_enabled,
             warm_cache_enabled,
+            pubsub_enabled,
             mock_network,
         };
 
@@ -575,6 +580,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long("warm-cache")
             .takes_value(true)
             .required(true))
+        .arg(Arg::with_name("pubsub")
+            .help("Whether pubsub optimization is enabled (0 or 1)")
+            .long("pubsub")
+            .takes_value(true)
+            .required(true))
         .arg(Arg::with_name("no-mock-network")
             .help("If the flag is included, uses the real network.")
             .long("no-mock-network"))
@@ -590,12 +600,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let password = matches.value_of("password").unwrap();
     let cold_cache_enabled = matches.value_of("cold-cache").unwrap() == "1";
     let warm_cache_enabled = matches.value_of("warm-cache").unwrap() == "1";
+    let pubsub_enabled = matches.value_of("pubsub").unwrap() == "1";
     let mock_network = !matches.is_present("no-mock-network");
     let mut host = Host::new(
         karl_path,
         &controller,
         cold_cache_enabled,
         warm_cache_enabled,
+        pubsub_enabled,
         mock_network,
     );
     host.start(port, password).await.unwrap();

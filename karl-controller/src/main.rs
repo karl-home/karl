@@ -53,6 +53,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long("caching-enabled")
             .takes_value(true)
             .required(true))
+        .arg(Arg::with_name("pubsub")
+            .help("Whether the pubsub optimization is enabled (0 or 1)")
+            .long("pubsub")
+            .takes_value(true)
+            .required(true))
         .get_matches();
 
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
@@ -60,12 +65,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let autoconfirm = matches.is_present("autoconfirm");
     let dashboard = matches.is_present("dashboard");
     let caching_enabled = matches.value_of("caching-enabled").unwrap() == "1";
+    let pubsub_enabled = matches.value_of("pubsub-enabled").unwrap() == "1";
     let password = matches.value_of("password").unwrap();
     let mut controller = Controller::new(
         karl_path,
         password,
         autoconfirm,
         caching_enabled,
+        pubsub_enabled,
     );
     controller.start(dashboard, port).await.unwrap();
     Server::builder()

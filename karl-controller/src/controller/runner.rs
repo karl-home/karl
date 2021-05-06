@@ -21,6 +21,8 @@ pub struct HookRunner {
     pub(crate) tag_counter: Arc<Mutex<AtomicUsize>>,
     /// Watched tags and the hooks they spawn.
     watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
+    /// Wether to include triggered data in the request.
+    pubsub_enabled: bool,
 }
 
 /// Converts the hook to a protobuf compute request.
@@ -66,12 +68,13 @@ fn gen_process_id() -> ProcessID {
 
 impl HookRunner {
     /// Create a new HookRunner.
-    pub fn new() -> Self {
+    pub fn new(pubsub_enabled: bool) -> Self {
         Self {
             tx: None,
             hooks: Arc::new(Mutex::new(HashMap::new())),
             tag_counter: Arc::new(Mutex::new(AtomicUsize::new(0))),
             watched_tags: Arc::new(RwLock::new(HashMap::new())),
+            pubsub_enabled,
         }
     }
 
@@ -182,9 +185,14 @@ impl HookRunner {
         // TODO: avoid cloning data unnecessarily.
         for hook_id in hook_ids {
             debug!("spawning {} from {}", hook_id, tag);
+            let data = if self.pubsub_enabled {
+                data.clone()
+            } else {
+                vec![]
+            };
             tx.send(QueuedHook {
                 id: hook_id,
-                trigger: Some((tag.clone(), timestamp.clone(), data.clone())),
+                trigger: Some((tag.clone(), timestamp.clone(), data)),
             }).await.unwrap();
         }
         spawned
