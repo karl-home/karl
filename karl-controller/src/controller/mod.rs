@@ -310,10 +310,15 @@ impl Controller {
     ///
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and sensor requests.
-    pub fn new(karl_path: PathBuf, password: &str, autoconfirm: bool) -> Self {
+    pub fn new(
+        karl_path: PathBuf,
+        password: &str,
+        autoconfirm: bool,
+        caching_disabled: bool,
+    ) -> Self {
         Controller {
             karl_path: karl_path.clone(),
-            scheduler: Arc::new(Mutex::new(HostScheduler::new(password))),
+            scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_disabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
             runner: HookRunner::new(),
             sensors: Arc::new(Mutex::new(HashMap::new())),

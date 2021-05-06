@@ -48,14 +48,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::with_name("dashboard")
             .help("If the flag is included, starts the dashboard.")
             .long("dashboard"))
+        .arg(Arg::with_name("caching-disabled")
+            .help("If the flag is included, disables caching.")
+            .long("caching-disabled"))
         .get_matches();
 
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let autoconfirm = matches.is_present("autoconfirm");
     let dashboard = matches.is_present("dashboard");
+    let caching_disabled = matches.is_present("caching-disabled");
     let password = matches.value_of("password").unwrap();
-    let mut controller = Controller::new(karl_path, password, autoconfirm);
+    let mut controller = Controller::new(
+        karl_path,
+        password,
+        autoconfirm,
+        caching_disabled,
+    );
     controller.start(dashboard, port).await.unwrap();
     Server::builder()
         .add_service(KarlControllerServer::new(controller))

@@ -29,8 +29,6 @@ use tonic::{Request, Response, Status, Code};
 use tonic::transport::Server;
 use clap::{Arg, App};
 
-struct Lock {}
-
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
@@ -41,7 +39,9 @@ pub struct Host {
     /// Path manager.
     path_manager: Arc<PathManager>,
     /// Only one compute at a time.
-    compute_lock: Arc<Mutex<Lock>>,
+    compute_lock: Arc<Mutex<()>>,
+    /// Whether caching is diabled
+    caching_disabled: bool,
 }
 
 #[tonic::async_trait]
@@ -68,6 +68,7 @@ impl karl_host_server::KarlHost for Host {
             let process_tokens = self.process_tokens.clone();
             let process_token = process_token.clone();
             let compute_lock = self.compute_lock.clone();
+            let caching_disabled = self.caching_disabled;
             tokio::spawn(async move {
                 if !req.triggered_tag.is_empty() {
                     req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
@@ -88,6 +89,7 @@ impl karl_host_server::KarlHost for Host {
                         path_manager,
                         req.hook_id,
                         req.cached,
+                        caching_disabled,
                         req.package,
                         binary_path,
                         req.args,
@@ -276,6 +278,7 @@ impl Host {
     pub fn new(
         karl_path: PathBuf,
         controller: &str,
+        caching_disabled: bool,
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
@@ -284,7 +287,8 @@ impl Host {
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             path_manager: Arc::new(PathManager::new(karl_path, id)),
-            compute_lock: Arc::new(Mutex::new(Lock{})),
+            compute_lock: Arc::new(Mutex::new(())),
+            caching_disabled,
         }
     }
 
@@ -324,16 +328,20 @@ impl Host {
         path_manager: Arc<PathManager>,
         hook_id: HookID,
         cached: bool,
+        caching_disabled: bool,
         package: Vec<u8>,
         binary_path: PathBuf,
         args: Vec<String>,
         envs: Vec<String>,
     ) -> Result<(), Error> {
         let now = Instant::now();
+        if cached && caching_disabled {
+            return Err(Error::CacheError("caching is disabled".to_string()));
+        }
         if cached && !path_manager.is_cached(&hook_id) {
             return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
         }
-        if !cached {
+        if !cached && !caching_disabled {
             path_manager.cache_hook(&hook_id, package)?;
         }
         debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
@@ -397,6 +405,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long("controller-port")
             .takes_value(true)
             .default_value("59582"))
+        .arg(Arg::with_name("caching-disabled")
+            .help("If the flag is included, disables caching.")
+            .long("caching-disabled"))
         .get_matches();
 
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
@@ -407,7 +418,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         matches.value_of("controller-port").unwrap(),
     );
     let password = matches.value_of("password").unwrap();
-    let mut host = Host::new(karl_path, &controller);
+    let caching_disabled = matches.is_present("caching-disabled");
+    let mut host = Host::new(karl_path, &controller, caching_disabled);
     host.start(port, password).await.unwrap();
     Server::builder()
         .add_service(KarlHostServer::new(host))
