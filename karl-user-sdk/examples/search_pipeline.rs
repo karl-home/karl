@@ -46,7 +46,7 @@ async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
         ("search.response", "microphone.response"),
     ];
     let network_edges = vec![
-        ("search", "google.com"),
+        ("search", "https://www.google.com"),
     ];
     let interval_modules = vec![
     ];

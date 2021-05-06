@@ -64,7 +64,7 @@ async fn audio_detection(
     let audio_bytes = fs::read(audio_path)?;
     let duration = Duration::from_secs(interval);
     let mut interval = tokio::time::interval(duration);
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
     loop {
         let tag = "sound".to_string();
         interval.tick().await;
@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .help("Audio detection interval, in seconds.")
             .takes_value(true)
             .long("interval")
-            .default_value("30"))
+            .default_value("10"))
         .arg(Arg::with_name("audio_path")
             .help("Path to the audio to send when audio is detected.")
             .takes_value(true)

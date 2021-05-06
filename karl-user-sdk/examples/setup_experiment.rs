@@ -67,7 +67,7 @@ async fn generate_graph(hook_ids: HashMap<String, String>) -> Graph {
         // ("firmware_update.firmware", "camera.firmware"),
     ];
     let network_edges = vec![
-        ("search", "google.com"),
+        ("search", "https://www.google.com"),
         // ("differential_privacy", "metrics.com"),
         // ("firmware_update", "firmware.com"),
     ];

@@ -91,7 +91,7 @@ impl DataSink {
         upper: String,
     ) -> Result<GetDataResult, Error> {
         debug!("get_data tag={} {}", tag, lower);
-        let path = self.data_path.join(tag);
+        let path = self.data_path.join(&tag);
         if !path.is_dir() {
             fs::create_dir_all(&path)?;
         }
@@ -109,9 +109,12 @@ impl DataSink {
             Ok(i) => i,
             Err(i) => i,
         };
-        let timestamps: Vec<String> = paths.drain(start_i..end_i).collect();
+        let timestamps: Vec<String> = paths.drain(start_i..end_i+1).collect();
         let data: Vec<Vec<u8>> =
-            timestamps.iter().map(|path| fs::read(path).unwrap()).collect();
+            timestamps.iter().map(|path| {
+                let path = self.data_path.join(&tag).join(&path);
+                fs::read(path).unwrap()
+            }).collect();
         Ok(GetDataResult {
             timestamps,
             labels: vec![], // TODO
