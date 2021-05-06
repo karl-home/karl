@@ -42,6 +42,8 @@ pub struct Host {
     compute_lock: Arc<Mutex<()>>,
     /// Whether caching is diabled
     caching_disabled: bool,
+    /// Whether to mock network access
+    mock_network: bool,
 }
 
 #[tonic::async_trait]
@@ -146,37 +148,45 @@ impl karl_host_server::KarlHost for Host {
             builder = builder.header(key, &header.value[..]);
         }
 
-        // Make the actual network access
-        let handle = tokio::spawn(async move {
-            let res = builder.send().await.map_err(|e| {
-                error!("{}", e);
-                Status::new(Code::Aborted, "http request failed")
-            })?;
-            let status_code = res.status().as_u16() as u32;
-            let headers = res
-                .headers()
-                .iter()
-                .map(|(key, value)| KeyValuePair {
-                    key: key.as_str().as_bytes().to_vec(),
-                    value: value.as_bytes().to_vec(),
-                })
-                .collect::<Vec<_>>();
-            let data = res.bytes().await.map_err(|e| {
-                error!("{}", e);
-                Status::new(Code::Unavailable, "error streaming response bytes")
-            })?;
-            Ok(Response::new(NetworkAccessResult {
-                status_code,
-                headers,
-                data: data.to_vec(),
-            }))
-        });
 
-        // Forward the network access to the controller.
-        self.api.forward_network(req).await?;
+        if self.mock_network {
+            // Forward the network access to the controller.
+            warn!("mock network request");
+            self.api.forward_network(req).await?;
+            Ok(Response::new(NetworkAccessResult::default()))
+        } else {
+            // Make the actual network access
+            let handle = tokio::spawn(async move {
+                let res = builder.send().await.map_err(|e| {
+                    error!("{}", e);
+                    Status::new(Code::Aborted, "http request failed")
+                })?;
+                let status_code = res.status().as_u16() as u32;
+                let headers = res
+                    .headers()
+                    .iter()
+                    .map(|(key, value)| KeyValuePair {
+                        key: key.as_str().as_bytes().to_vec(),
+                        value: value.as_bytes().to_vec(),
+                    })
+                    .collect::<Vec<_>>();
+                let data = res.bytes().await.map_err(|e| {
+                    error!("{}", e);
+                    Status::new(Code::Unavailable, "error streaming response bytes")
+                })?;
+                Ok(Response::new(NetworkAccessResult {
+                    status_code,
+                    headers,
+                    data: data.to_vec(),
+                }))
+            });
 
-        // Return the result of the HTTP request.
-        handle.await.map_err(|e| Status::new(Code::Internal, format!("{}", e)))?
+            // Forward the network access to the controller.
+            self.api.forward_network(req).await?;
+
+            // Return the result of the HTTP request.
+            handle.await.map_err(|e| Status::new(Code::Internal, format!("{}", e)))?
+        }
     }
 
     /// Validates the process is an existing process, and checks its
@@ -279,6 +289,7 @@ impl Host {
         karl_path: PathBuf,
         controller: &str,
         caching_disabled: bool,
+        mock_network: bool,
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
@@ -289,6 +300,7 @@ impl Host {
             path_manager: Arc::new(PathManager::new(karl_path, id)),
             compute_lock: Arc::new(Mutex::new(())),
             caching_disabled,
+            mock_network,
         }
     }
 
@@ -408,6 +420,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::with_name("caching-disabled")
             .help("If the flag is included, disables caching.")
             .long("caching-disabled"))
+        .arg(Arg::with_name("no-mock-network")
+            .help("If the flag is included, uses the real network.")
+            .long("no-mock-network"))
         .get_matches();
 
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
@@ -419,7 +434,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let password = matches.value_of("password").unwrap();
     let caching_disabled = matches.is_present("caching-disabled");
-    let mut host = Host::new(karl_path, &controller, caching_disabled);
+    let mock_network = !matches.is_present("no-mock-network");
+    let mut host = Host::new(
+        karl_path,
+        &controller,
+        caching_disabled,
+        mock_network,
+    );
     host.start(port, password).await.unwrap();
     Server::builder()
         .add_service(KarlHostServer::new(host))
