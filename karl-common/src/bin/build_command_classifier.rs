@@ -36,15 +36,18 @@ fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
 fn main() {
     let module_ids = vec![
         "command_classifier",
-        "person_detection",
+        "command_classifier_bulb",
+        "command_classifier_search",
     ];
     let params = vec![
         vec!["sound"],
-        vec!["image"],
+        vec!["sound"],
+        vec!["sound"],
     ];
     let returns = vec![
         vec!["light", "search"],
-        vec!["box", "all_count", "count"],
+        vec!["light", "search"],
+        vec!["light", "search"],
     ];
     let package_lines = vec![
         vec![
@@ -58,17 +61,30 @@ fn main() {
             "picovoice/karl.py karl.py",
         ],
         vec![
-            "person-detection/env env",
-            "person-detection/torch torch",
-            "person-detection/detect.py detect.py",
-            "person-detection/karl.py karl.py",
-            "person-detection/request_pb2.py request_pb2.py",
-            "person-detection/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/env env",
+            "picovoice/picovoice_bulb.py picovoice_bulb.py",
+            "picovoice/picovoice_linux.ppn picovoice_linux.ppn",
+            "picovoice/coffee_maker_linux.rhn coffee_maker_linux.rhn",
+            "picovoice/libsndfile.so.1 libsndfile.so.1",
+            "picovoice/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/request_pb2.py request_pb2.py",
+            "picovoice/karl.py karl.py",
+        ],
+        vec![
+            "picovoice/env env",
+            "picovoice/picovoice_search.py picovoice_search.py",
+            "picovoice/picovoice_linux.ppn picovoice_linux.ppn",
+            "picovoice/coffee_maker_linux.rhn coffee_maker_linux.rhn",
+            "picovoice/libsndfile.so.1 libsndfile.so.1",
+            "picovoice/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/request_pb2.py request_pb2.py",
+            "picovoice/karl.py karl.py",
         ],
     ];
     let args = vec![
         vec!["picovoice_demo_file.py"],
-        vec!["detect.py"],
+        vec!["picovoice_bulb.py"],
+        vec!["picovoice_search.py"],
     ];
 
     for i in 0..module_ids.len() {
