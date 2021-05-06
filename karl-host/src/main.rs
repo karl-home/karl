@@ -569,12 +569,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("Whether the cold cache is enabled (0 or 1)")
             .long("cold-cache")
             .takes_value(true)
-            .default_value("1"))
+            .required(true))
         .arg(Arg::with_name("warm-cache")
             .help("Whether the warm cache is enabled (0 or 1)")
             .long("warm-cache")
             .takes_value(true)
-            .default_value("0"))
+            .required(true))
         .arg(Arg::with_name("no-mock-network")
             .help("If the flag is included, uses the real network.")
             .long("no-mock-network"))
@@ -588,8 +588,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         matches.value_of("controller-port").unwrap(),
     );
     let password = matches.value_of("password").unwrap();
-    let cold_cache_enabled = matches.is_present("cold-cache");
-    let warm_cache_enabled = matches.is_present("warm-cache");
+    let cold_cache_enabled = matches.value_of("cold-cache").unwrap() == "1";
+    let warm_cache_enabled = matches.value_of("warm-cache").unwrap() == "1";
     let mock_network = !matches.is_present("no-mock-network");
     let mut host = Host::new(
         karl_path,

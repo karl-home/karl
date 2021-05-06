@@ -314,11 +314,11 @@ impl Controller {
         karl_path: PathBuf,
         password: &str,
         autoconfirm: bool,
-        caching_disabled: bool,
+        caching_enabled: bool,
     ) -> Self {
         Controller {
             karl_path: karl_path.clone(),
-            scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_disabled))),
+            scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
             runner: HookRunner::new(),
             sensors: Arc::new(Mutex::new(HashMap::new())),

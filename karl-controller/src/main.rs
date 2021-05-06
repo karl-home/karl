@@ -48,22 +48,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::with_name("dashboard")
             .help("If the flag is included, starts the dashboard.")
             .long("dashboard"))
-        .arg(Arg::with_name("caching-disabled")
-            .help("If the flag is included, disables caching.")
-            .long("caching-disabled"))
+        .arg(Arg::with_name("caching-enabled")
+            .help("Whether caching is enabled (0 or 1)")
+            .long("caching-enabled")
+            .takes_value(true)
+            .required(true))
         .get_matches();
 
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let autoconfirm = matches.is_present("autoconfirm");
     let dashboard = matches.is_present("dashboard");
-    let caching_disabled = matches.is_present("caching-disabled");
+    let caching_enabled = matches.value_of("caching-enabled").unwrap() == "1";
     let password = matches.value_of("password").unwrap();
     let mut controller = Controller::new(
         karl_path,
         password,
         autoconfirm,
-        caching_disabled,
+        caching_enabled,
     );
     controller.start(dashboard, port).await.unwrap();
     Server::builder()

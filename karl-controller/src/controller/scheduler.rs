@@ -13,8 +13,8 @@ pub struct HostScheduler {
     password: String,
     /// Enforces unique host names.
     hosts: HashMap<HostToken, Host>,
-    /// Whether caching is diabled.
-    caching_disabled: bool,
+    /// Whether caching is enabled.
+    caching_enabled: bool,
 }
 
 /// Data structure so the controller knows how to contact the host.
@@ -36,11 +36,11 @@ impl HostScheduler {
         &self.hosts.get(id).unwrap().md
     }
 
-    pub fn new(password: &str, caching_disabled: bool) -> Self {
+    pub fn new(password: &str, caching_enabled: bool) -> Self {
         Self {
             password: password.to_string(),
             hosts: HashMap::new(),
-            caching_disabled,
+            caching_enabled,
         }
     }
 
@@ -152,7 +152,7 @@ impl HostScheduler {
         if let Some(host) = self.hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.insert(process_token);
-            if !self.caching_disabled {
+            if self.caching_enabled {
                 host.md.cached_hooks.insert(hook_id);
             }
             trace!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
