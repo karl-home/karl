@@ -69,8 +69,8 @@ async fn motion_detection(
 ) -> Result<(), Box<dyn Error>> {
     let image_bytes = fs::read(image_path)?;
     let duration = Duration::from_secs(interval);
-    let mut interval = tokio::time::interval(duration);
     tokio::time::sleep(Duration::from_secs(10)).await;
+    let mut interval = tokio::time::interval(duration);
     loop {
         let tag = "motion".to_string();
         interval.tick().await;
