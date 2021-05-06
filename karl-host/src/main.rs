@@ -35,6 +35,7 @@ struct WarmProcess {
     tx: mpsc::Sender<()>,
 }
 
+#[derive(Clone)]
 pub struct Host {
     /// Host ID (unique among hosts)
     id: u32,
@@ -43,6 +44,7 @@ pub struct Host {
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
     warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
+    warm_cache_tx: mpsc::Sender<ComputeRequest>,
     /// Path manager.
     path_manager: Arc<PathManager>,
     /// Only one compute at a time.
@@ -68,17 +70,11 @@ impl karl_host_server::KarlHost for Host {
             let triggered_timestamp = req.triggered_timestamp.drain(..).collect();
             let is_warm = false;
             let process_token = Host::spawn_new_process(
+                self.clone(),
                 req,
                 is_warm,
                 triggered_tag,
                 triggered_timestamp,
-                self.api.clone(),
-                self.path_manager.clone(),
-                self.process_tokens.clone(),
-                self.warm_processes.clone(),
-                self.compute_lock.clone(),
-                self.cold_cache_enabled,
-                self.warm_cache_enabled,
             ).await;
             Ok(Response::new(NotifyStart { process_token }))
         }
@@ -298,17 +294,38 @@ impl Host {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
         assert!(cold_cache_enabled || !warm_cache_enabled);
-        Self {
+        // TODO: buffer size
+        let (tx, mut rx) = mpsc::channel::<ComputeRequest>(100);
+        let original_host = Self {
             id,
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             warm_processes: Arc::new(Mutex::new(HashMap::new())),
+            warm_cache_tx: tx,
             path_manager: Arc::new(PathManager::new(karl_path, id)),
             compute_lock: Arc::new(Mutex::new(())),
             cold_cache_enabled,
             warm_cache_enabled,
             mock_network,
-        }
+        };
+
+        let host = original_host.clone();
+        tokio::spawn(async move {
+            loop {
+                let req: ComputeRequest = rx.recv().await.unwrap();
+                let is_warm = true;
+                info!("spawning a warm process for {}", req.hook_id);
+                Host::spawn_new_process(
+                    host.clone(),
+                    req,
+                    is_warm,
+                    TRIGGERED_KEY.to_string(),  // special value
+                    TRIGGERED_KEY.to_string(),  // special value
+                ).await;
+            }
+        });
+
+        original_host
     }
 
     /// Spawns a background process that sends heartbeats to the controller
@@ -367,17 +384,11 @@ impl Host {
     }
 
     async fn spawn_new_process(
+        host: Host,
         mut req: ComputeRequest,
         is_warm: bool,
         triggered_tag: String,
         triggered_timestamp: String,
-        api: crate::net::KarlHostAPI,
-        path_manager: Arc<PathManager>,
-        process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
-        warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
-        compute_lock: Arc<Mutex<()>>,
-        cold_cache_enabled: bool,
-        warm_cache_enabled: bool,
     ) -> ProcessToken {
         let process_token = Token::gen();
         let (perms, tx) = if is_warm {
@@ -389,7 +400,7 @@ impl Host {
 
         // Mark an active process
         {
-            let mut process_tokens = process_tokens.lock().unwrap();
+            let mut process_tokens = host.process_tokens.lock().unwrap();
             assert!(!process_tokens.contains_key(&process_token));
             process_tokens.insert(process_token.clone(), perms);
             info!("starting process {}", &process_token);
@@ -398,7 +409,7 @@ impl Host {
         // If it's warm insert a sending channel to eventually notify
         // this process it is ready to continue
         if let Some(tx) = tx {
-            warm_processes.lock().unwrap()
+            host.warm_processes.lock().unwrap()
                 .entry(req.hook_id.clone())
                 .or_insert(vec![])
                 .push(WarmProcess {
@@ -427,18 +438,18 @@ impl Host {
                     req.envs.push(format!("KARL_RETURNS={}", &req.returns));
                 }
                 let execution_time = Host::handle_compute(
-                    compute_lock.clone(),
-                    path_manager.clone(),
+                    host.compute_lock.clone(),
+                    host.path_manager.clone(),
                     req.hook_id,
                     req.cached,
-                    cold_cache_enabled,
+                    host.cold_cache_enabled,
                     req.package,
                     binary_path,
                     req.args,
                     req.envs,
                 ).unwrap();
-                process_tokens.lock().unwrap().remove(&process_token);
-                api.notify_end(process_token).await.unwrap();
+                host.process_tokens.lock().unwrap().remove(&process_token);
+                host.api.notify_end(process_token).await.unwrap();
 
                 // Now that the compute request is finished, evaluate its
                 // initialization time. If the initialization time was high,
@@ -446,21 +457,8 @@ impl Host {
                 // We assume initialization time is high if the warm cache
                 // is enabled.
                 let long_init_time = execution_time > Duration::from_secs(5);
-                if warm_cache_enabled && long_init_time {
-                    let is_warm = true;
-                    Host::spawn_new_process(
-                        original_req,
-                        is_warm,
-                        TRIGGERED_KEY.to_string(),  // special value
-                        TRIGGERED_KEY.to_string(),  // special value
-                        api,
-                        path_manager,
-                        process_tokens,
-                        warm_processes,
-                        compute_lock,
-                        cold_cache_enabled,
-                        warm_cache_enabled,
-                    ).await;
+                if host.warm_cache_enabled && long_init_time {
+                    host.warm_cache_tx.send(original_req).await.unwrap();
                 }
             });
         }
