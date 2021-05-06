@@ -3,22 +3,25 @@
 //! Runtime for arbitrary Linux executables that mounts the appropriate
 //! directories, configures environment variables, and otherwise manages
 //! the sandbox for offloading compute requests.
-use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
 use karl_common::Error;
 
-fn run_cmd(bin: PathBuf, envs: Vec<String>, args: Vec<String>) -> Output {
+fn run_cmd(
+    root_path: &Path,
+    bin: PathBuf,
+    envs: Vec<String>,
+    args: Vec<String>,
+) -> Output {
     trace!("bin: {:?}", bin);
     trace!("envs: {:?}", envs);
     trace!("args: {:?}", args);
 
     let mut cmd = Command::new("firejail");
     cmd.arg("--quiet");
-    cmd.arg("--private=.");
+    cmd.arg(format!("--private={}", root_path.to_str().unwrap()));
     cmd.arg("--netfilter=/etc/firejail/karl.net");
     for env in envs {
         cmd.arg(format!("--env={}", env));
@@ -101,9 +104,7 @@ pub fn run(
     //
     // * indicates the directory must exist ahead of time
 
-    let previous_dir = fs::canonicalize(".").unwrap();
     assert!(root_path.is_dir());
-    env::set_current_dir(&root_path).unwrap();
 
     /*
     // Create a symlink to persistent storage.
@@ -115,12 +116,11 @@ pub fn run(
     }*/
 
     let now = Instant::now();
-    let output = run_cmd(binary_path, envs, args);
+    let output = run_cmd(root_path, binary_path, envs, args);
     info!("=> execution: {} s", now.elapsed().as_secs_f32());
 
     // Return the requested results.
     debug!("\n{}", String::from_utf8_lossy(&output.stdout));
     debug!("{}", String::from_utf8_lossy(&output.stderr));
-    env::set_current_dir(&previous_dir).unwrap();
     Ok(())
 }

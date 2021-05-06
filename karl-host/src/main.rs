@@ -85,20 +85,17 @@ impl karl_host_server::KarlHost for Host {
                 if !req.returns.is_empty() {
                     req.envs.push(format!("KARL_RETURNS={}", &req.returns));
                 }
-                {
-                    let lock = compute_lock.lock().unwrap();
-                    Host::handle_compute(
-                        path_manager,
-                        req.hook_id,
-                        req.cached,
-                        caching_disabled,
-                        req.package,
-                        binary_path,
-                        req.args,
-                        req.envs,
-                    ).unwrap();
-                    drop(lock);
-                }
+                Host::handle_compute(
+                    compute_lock,
+                    path_manager,
+                    req.hook_id,
+                    req.cached,
+                    caching_disabled,
+                    req.package,
+                    binary_path,
+                    req.args,
+                    req.envs,
+                ).unwrap();
                 process_tokens.lock().unwrap().remove(&process_token);
                 api.notify_end(process_token).await.unwrap();
             });
@@ -337,6 +334,7 @@ impl Host {
     ///
     /// The client must be verified by the caller.
     fn handle_compute(
+        lock: Arc<Mutex<()>>,
         path_manager: Arc<PathManager>,
         hook_id: HookID,
         cached: bool,
@@ -350,17 +348,30 @@ impl Host {
         if cached && caching_disabled {
             return Err(Error::CacheError("caching is disabled".to_string()));
         }
-        if cached && !path_manager.is_cached(&hook_id) {
-            return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
-        }
-        if !cached && !caching_disabled {
-            path_manager.cache_hook(&hook_id, package)?;
-        }
-        debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
-        let now = Instant::now();
-        let (mount, paths) = path_manager.new_request(&hook_id);
-        // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
-        debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
+        // TODO: lock on finer granularity, just the specific module
+        // But gets a lock around the filesystem so multiple people
+        // aren't handling compute requests that could be cached.
+        // And so that each request can create a directory for its process.
+        let (mount, paths) = {
+            let lock = lock.lock().unwrap();
+            debug!("cached={} caching_disabled={}", cached, caching_disabled);
+            if cached && !path_manager.is_cached(&hook_id) {
+                // TODO: controller needs to handle this error
+                // what if a second request gets here before the first
+                // request caches the module? race condition
+                return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
+            }
+            if !cached && !caching_disabled {
+                path_manager.cache_hook(&hook_id, package)?;
+            }
+            debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
+            let now = Instant::now();
+            let (mount, paths) = path_manager.new_request(&hook_id);
+            // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
+            debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
+            drop(lock);
+            (mount, paths)
+        };
 
         let now = Instant::now();
         let _res = runtime::run(
