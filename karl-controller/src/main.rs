@@ -53,9 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long("caching-enabled")
             .takes_value(true)
             .required(true))
-        .arg(Arg::with_name("pubsub")
+        .arg(Arg::with_name("pubsub-enabled")
             .help("Whether the pubsub optimization is enabled (0 or 1)")
-            .long("pubsub")
+            .long("pubsub-enabled")
             .takes_value(true)
             .required(true))
         .get_matches();
