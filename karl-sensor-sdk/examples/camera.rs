@@ -44,6 +44,7 @@ async fn handle_state_changes(
         if msg.key == "firmware" {
             info!("firmware update!");
         } else if msg.key == "livestream" {
+            warn!("finish true_pipeline: {:?}", Instant::now());
             if msg.value == "on".as_bytes() {
                 info!("turning livestream on");
                 // TODO: send livestream messages
@@ -75,6 +76,7 @@ async fn motion_detection(
         let tag = "motion".to_string();
         interval.tick().await;
         // warn!("START step 1: pushing image");
+        warn!("start diff_priv_pipeline or person_detection_pipeline: {:?}", Instant::now());
         info!("pushing {} byte image", image_bytes.len());
         // let now = Instant::now();
         api.push(tag, image_bytes.clone()).await.unwrap();

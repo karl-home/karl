@@ -41,7 +41,10 @@ async fn handle_state_changes(
     while let Some(msg) = conn.message().await? {
         if msg.key == "response" {
             match std::str::from_utf8(&msg.value[..]) {
-                Ok(string) => info!("Playing: {}", string),
+                Ok(string) => {
+                    warn!("finish search_pipeline: {:?}", Instant::now());
+                    info!("Playing: {}", string);
+                },
                 Err(e) => error!("{}", e),
             }
         } else {
@@ -65,6 +68,7 @@ async fn audio_detection(
     loop {
         let tag = "sound".to_string();
         interval.tick().await;
+        warn!("start search_pipeline: {:?}", Instant::now());
         info!("pushing {} bytes of audio", audio_bytes.len());
         api.push(tag, audio_bytes.clone()).await.unwrap();
     }

@@ -149,6 +149,7 @@ impl HookRunner {
             let mut interval = time::interval(duration);
             loop {
                 interval.tick().await;
+                warn!("start true_pipeline: {:?}", Instant::now());
                 tx.send(QueuedHook{
                     id: hook_id.clone(),
                     trigger: None,

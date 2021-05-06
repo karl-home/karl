@@ -126,7 +126,7 @@ impl ProcessPerms {
     // Returns a receiving channel to wait on if it's a warm cache.
     pub fn touch(&mut self) -> Option<mpsc::Receiver<()>> {
         if self.count == 0 {
-            debug!("initializing process took {:?}", Instant::now() - self.start);
+            debug!("initializing took {:?} until first perm used", Instant::now() - self.start);
         }
         self.count += 1;
         self.warm_cache_notify.take()

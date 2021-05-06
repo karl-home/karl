@@ -44,7 +44,7 @@ pub struct Host {
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
     warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
-    warm_cache_tx: mpsc::Sender<ComputeRequest>,
+    warm_cache_tx: Option<mpsc::Sender<ComputeRequest>>,
     /// Path manager.
     path_manager: Arc<PathManager>,
     /// Only one compute at a time.
@@ -85,6 +85,7 @@ impl karl_host_server::KarlHost for Host {
     async fn network(
         &self, req: Request<NetworkAccess>,
     ) -> Result<Response<NetworkAccessResult>, Status> {
+        debug!("network");
         // Validate the process is valid and has permissions to access the network.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
@@ -97,6 +98,7 @@ impl karl_host_server::KarlHost for Host {
             }
         };
         if let Some(mut rx) = rx {
+            debug!("warm process awaiting...");
             rx.recv().await;
         }
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
@@ -135,6 +137,7 @@ impl karl_host_server::KarlHost for Host {
         if self.mock_network {
             // Forward the network access to the controller.
             warn!("mock network request");
+            warn!("finish diff_priv_pipeline (statistics sent): {:?}", Instant::now());
             self.api.forward_network(req).await?;
             Ok(Response::new(NetworkAccessResult::default()))
         } else {
@@ -181,6 +184,7 @@ impl karl_host_server::KarlHost for Host {
     async fn get(
         &self, req: Request<GetData>,
     ) -> Result<Response<GetDataResult>, Status> {
+        debug!("get");
         // Validate the process is valid and has permissions to read the tag.
         // No serializability guarantees from other requests from the same process.
         let req = req.into_inner();
@@ -193,6 +197,7 @@ impl karl_host_server::KarlHost for Host {
             }
         };
         if let Some(mut rx) = rx {
+            debug!("warm process awaiting...");
             rx.recv().await;
         }
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
@@ -235,6 +240,7 @@ impl karl_host_server::KarlHost for Host {
     async fn push(
         &self, req: Request<PushData>,
     ) -> Result<Response<()>, Status> {
+        debug!("push");
         // Validate the process is valid and has permissions to write the file.
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
@@ -247,6 +253,7 @@ impl karl_host_server::KarlHost for Host {
             }
         };
         if let Some(mut rx) = rx {
+            debug!("warm process awaiting...");
             rx.recv().await;
         }
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
@@ -299,38 +306,19 @@ impl Host {
         let id: u32 = rand::thread_rng().gen();
         assert!(cold_cache_enabled || !warm_cache_enabled);
         // TODO: buffer size
-        let (tx, mut rx) = mpsc::channel::<ComputeRequest>(100);
-        let original_host = Self {
+        Self {
             id,
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             warm_processes: Arc::new(Mutex::new(HashMap::new())),
-            warm_cache_tx: tx,
+            warm_cache_tx: None, // wish this didn't have to be wrapped
             path_manager: Arc::new(PathManager::new(karl_path, id)),
             compute_lock: Arc::new(Mutex::new(())),
             cold_cache_enabled,
             warm_cache_enabled,
             pubsub_enabled,
             mock_network,
-        };
-
-        let host = original_host.clone();
-        tokio::spawn(async move {
-            loop {
-                let req: ComputeRequest = rx.recv().await.unwrap();
-                let is_warm = true;
-                info!("spawning a warm process for {}", req.hook_id);
-                Host::spawn_new_process(
-                    host.clone(),
-                    req,
-                    is_warm,
-                    TRIGGERED_KEY.to_string(),  // special value
-                    TRIGGERED_KEY.to_string(),  // special value
-                ).await;
-            }
-        });
-
-        original_host
+        }
     }
 
     /// Spawns a background process that sends heartbeats to the controller
@@ -359,6 +347,25 @@ impl Host {
                 };
             }
         });
+
+        // listener for spawning warm processes
+        let (tx, mut rx) = mpsc::channel::<ComputeRequest>(100);
+        self.warm_cache_tx = Some(tx);
+        let host = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let req: ComputeRequest = rx.recv().await.unwrap();
+                let is_warm = true;
+                info!("spawning a warm process for {}", req.hook_id);
+                Host::spawn_new_process(
+                    host.clone(),
+                    req,
+                    is_warm,
+                    TRIGGERED_KEY.to_string(),  // special value
+                    TRIGGERED_KEY.to_string(),  // special value
+                ).await;
+            }
+        });
         Ok(())
     }
 
@@ -384,6 +391,7 @@ impl Host {
             }
         };
         // permissions are set and warm process can continue
+        info!("attaching warm process {}", warm_process.process_token);
         warm_process.tx.send(()).await.unwrap();
         Some(warm_process.process_token)
     }
@@ -396,9 +404,11 @@ impl Host {
         triggered_timestamp: String,
     ) -> ProcessToken {
         let process_token = Token::gen();
-        let (perms, tx) = if is_warm {
+        let (perms, tx) = if !is_warm {
+            debug!("spawning cold process");
             (ProcessPerms::new(&mut req), None)
         } else {
+            debug!("spawning warm process");
             let (perms, tx) = ProcessPerms::new_warm_cache();
             (perms, Some(tx))
         };
@@ -461,9 +471,10 @@ impl Host {
                 // recursively call this function but as a warm cache module.
                 // We assume initialization time is high if the warm cache
                 // is enabled.
-                let long_init_time = execution_time > Duration::from_secs(5);
-                if host.warm_cache_enabled && long_init_time {
-                    host.warm_cache_tx.send(original_req).await.unwrap();
+                let _long_init_time = execution_time > Duration::from_secs(5);
+                if host.warm_cache_enabled {
+                    debug!("execution_time was {:?}, spawning warm modules anyway", execution_time);
+                    host.warm_cache_tx.as_ref().unwrap().send(original_req).await.unwrap();
                 }
             });
         }
@@ -502,7 +513,7 @@ impl Host {
                 // request caches the module? race condition
                 return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
             }
-            if !cached && cold_cache_enabled {
+            if !cached {
                 path_manager.cache_hook(&hook_id, package)?;
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
