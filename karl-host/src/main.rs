@@ -111,7 +111,8 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let req = req.into_inner();
-        if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+        if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+            perms.touch();
             if !perms.can_access_domain(&req.domain) {
                 return Err(Status::new(Code::Unauthenticated, "invalid network access"));
             }
@@ -199,6 +200,7 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         let req = req.into_inner();
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+            perms.touch();
             if perms.is_triggered(&req.tag) {
                 // cached the triggered file
                 let res = if req.lower != req.upper {
@@ -244,7 +246,8 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let req = req.into_inner();
-        let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get(&req.process_token) {
+        let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+            perms.touch();
             if !perms.can_write(&req.tag) {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));

@@ -1,10 +1,13 @@
 use std::collections::HashSet;
+use std::time::Instant;
 
 use crate::protos::*;
 
 /// Permissions of an active process
 #[derive(Debug)]
 pub struct ProcessPerms {
+    start: Instant,
+    count: usize,
     /// Triggered tag
     triggered_tag: String,
     triggered_timestamp: String,
@@ -51,6 +54,8 @@ impl ProcessPerms {
             .collect::<HashSet<String>>();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         Self {
+            start: Instant::now(),
+            count: 0,
             triggered_tag: req.triggered_tag.clone(),
             triggered_timestamp: req.triggered_timestamp.clone(),
             triggered_data,
@@ -82,5 +87,12 @@ impl ProcessPerms {
 
     pub fn can_write(&self, tag: &str) -> bool {
         self.write_perms.contains(tag)
+    }
+
+    pub fn touch(&mut self) {
+        if self.count == 0 {
+            debug!("initializing process took {:?}", Instant::now() - self.start);
+        }
+        self.count += 1;
     }
 }
