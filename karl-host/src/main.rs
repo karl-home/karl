@@ -9,7 +9,7 @@ mod runtime;
 mod cache;
 mod perms;
 use cache::PathManager;
-use perms::ProcessPerms;
+use perms::*;
 
 pub mod protos {
 	tonic::include_proto!("request");
@@ -23,11 +23,17 @@ use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 
 use tokio;
+use tokio::sync::mpsc;
 use karl_common::*;
 use reqwest::{self, Method, header::HeaderName};
 use tonic::{Request, Response, Status, Code};
 use tonic::transport::Server;
 use clap::{Arg, App};
+
+struct WarmProcess {
+    process_token: ProcessToken,
+    tx: mpsc::Sender<()>,
+}
 
 pub struct Host {
     /// Host ID (unique among hosts)
@@ -36,12 +42,14 @@ pub struct Host {
     api: crate::net::KarlHostAPI,
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
+    warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
     /// Path manager.
     path_manager: Arc<PathManager>,
     /// Only one compute at a time.
     compute_lock: Arc<Mutex<()>>,
-    /// Whether caching is diabled
-    caching_disabled: bool,
+    /// Whether caching is enabled
+    cold_cache_enabled: bool,
+    warm_cache_enabled: bool,
     /// Whether to mock network access
     mock_network: bool,
 }
@@ -53,55 +61,27 @@ impl karl_host_server::KarlHost for Host {
     ) -> Result<Response<NotifyStart>, Status> {
         let mut req = req.into_inner();
         info!("HANDLE_COMPUTE START {}", req.hook_id);
-        let process_token = Token::gen();
-        let perms = ProcessPerms::new(&mut req);
-
-        // Mark an active process
-        let mut process_tokens = self.process_tokens.lock().unwrap();
-        assert!(!process_tokens.contains_key(&process_token));
-        process_tokens.insert(process_token.clone(), perms);
-        info!("starting process {}", &process_token);
-
-        // Handle the process asynchronously
-        {
-            let binary_path = Path::new(&req.binary_path).to_path_buf();
-            let api = self.api.clone();
-            let path_manager = self.path_manager.clone();
-            let process_tokens = self.process_tokens.clone();
-            let process_token = process_token.clone();
-            let compute_lock = self.compute_lock.clone();
-            let caching_disabled = self.caching_disabled;
-            tokio::spawn(async move {
-                if !req.triggered_tag.is_empty() {
-                    req.envs.push(format!("TRIGGERED_TAG={}", &req.triggered_tag));
-                }
-                if !req.triggered_timestamp.is_empty() {
-                    req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &req.triggered_timestamp));
-                }
-                req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
-                if !req.params.is_empty() {
-                    req.envs.push(format!("KARL_PARAMS={}", &req.params));
-                }
-                if !req.returns.is_empty() {
-                    req.envs.push(format!("KARL_RETURNS={}", &req.returns));
-                }
-                Host::handle_compute(
-                    compute_lock,
-                    path_manager,
-                    req.hook_id,
-                    req.cached,
-                    caching_disabled,
-                    req.package,
-                    binary_path,
-                    req.args,
-                    req.envs,
-                ).unwrap();
-                process_tokens.lock().unwrap().remove(&process_token);
-                api.notify_end(process_token).await.unwrap();
-            });
+        if let Some(process_token) = self.attach_warm_process(&mut req).await {
+            Ok(Response::new(NotifyStart { process_token }))
+        } else {
+            let triggered_tag = req.triggered_tag.drain(..).collect();
+            let triggered_timestamp = req.triggered_timestamp.drain(..).collect();
+            let is_warm = false;
+            let process_token = Host::spawn_new_process(
+                req,
+                is_warm,
+                triggered_tag,
+                triggered_timestamp,
+                self.api.clone(),
+                self.path_manager.clone(),
+                self.process_tokens.clone(),
+                self.warm_processes.clone(),
+                self.compute_lock.clone(),
+                self.cold_cache_enabled,
+                self.warm_cache_enabled,
+            ).await;
+            Ok(Response::new(NotifyStart { process_token }))
         }
-
-        Ok(Response::new(NotifyStart { process_token }))
     }
 
     async fn network(
@@ -111,13 +91,20 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let req = req.into_inner();
+        let rx = {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+                perms.touch()
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            }
+        };
+        if let Some(mut rx) = rx {
+            rx.recv().await;
+        }
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
-            perms.touch();
             if !perms.can_access_domain(&req.domain) {
                 return Err(Status::new(Code::Unauthenticated, "invalid network access"));
             }
-        } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
 
         // Build the network request
@@ -199,8 +186,18 @@ impl karl_host_server::KarlHost for Host {
         // Validate the process is valid and has permissions to read the tag.
         // No serializability guarantees from other requests from the same process.
         let req = req.into_inner();
+        let rx = {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+                perms.touch()
+            } else {
+                warn!("get: invalid token {}", req.process_token);
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            }
+        };
+        if let Some(mut rx) = rx {
+            rx.recv().await;
+        }
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
-            perms.touch();
             if perms.is_triggered(&req.tag) {
                 // cached the triggered file
                 let res = if req.lower != req.upper {
@@ -222,9 +219,6 @@ impl karl_host_server::KarlHost for Host {
                 warn!("get: {} cannot read {}", req.process_token, req.tag);
                 return Err(Status::new(Code::Unauthenticated, "cannot read"));
             }
-        } else {
-            warn!("get: invalid token {}", req.process_token);
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
         }
         // Forward the file access to the controller and return the result
         debug!("get: {} forwarding tag={}", req.process_token, req.tag);
@@ -246,8 +240,17 @@ impl karl_host_server::KarlHost for Host {
         // No serializability guarantees from other requests from the same process.
         // Sanitizes the path.
         let req = req.into_inner();
+        let rx = {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+                perms.touch()
+            } else {
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            }
+        };
+        if let Some(mut rx) = rx {
+            rx.recv().await;
+        }
         let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
-            perms.touch();
             if !perms.can_write(&req.tag) {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));
@@ -261,7 +264,7 @@ impl karl_host_server::KarlHost for Host {
                 None
             }
         } else {
-            return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            unreachable!()
         };
 
         if let Some((sensor, key)) = sensor_key {
@@ -288,18 +291,22 @@ impl Host {
     pub fn new(
         karl_path: PathBuf,
         controller: &str,
-        caching_disabled: bool,
+        cold_cache_enabled: bool,
+        warm_cache_enabled: bool,
         mock_network: bool,
     ) -> Self {
         use rand::Rng;
         let id: u32 = rand::thread_rng().gen();
+        assert!(cold_cache_enabled || !warm_cache_enabled);
         Self {
             id,
             api: crate::net::KarlHostAPI::new(controller),
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
+            warm_processes: Arc::new(Mutex::new(HashMap::new())),
             path_manager: Arc::new(PathManager::new(karl_path, id)),
             compute_lock: Arc::new(Mutex::new(())),
-            caching_disabled,
+            cold_cache_enabled,
+            warm_cache_enabled,
             mock_network,
         }
     }
@@ -333,22 +340,150 @@ impl Host {
         Ok(())
     }
 
+    async fn attach_warm_process(
+        &self,
+        req: &mut ComputeRequest,
+    ) -> Option<ProcessToken> {
+        let warm_process = {
+            let mut warm_processes = self.warm_processes.lock().unwrap();
+            let mut process_tokens = self.process_tokens.lock().unwrap();
+            let mut process: Option<WarmProcess> = None;
+            if let Some(processes) = warm_processes.get_mut(&req.hook_id) {
+                // reserve the process token
+                process = processes.pop();
+            }
+            if let Some(process) = process {
+                process_tokens
+                    .get_mut(&process.process_token).unwrap()
+                    .set_compute_request(req);
+                process
+            } else {
+                return None;
+            }
+        };
+        // permissions are set and warm process can continue
+        warm_process.tx.send(()).await.unwrap();
+        Some(warm_process.process_token)
+    }
+
+    async fn spawn_new_process(
+        mut req: ComputeRequest,
+        is_warm: bool,
+        triggered_tag: String,
+        triggered_timestamp: String,
+        api: crate::net::KarlHostAPI,
+        path_manager: Arc<PathManager>,
+        process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
+        warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
+        compute_lock: Arc<Mutex<()>>,
+        cold_cache_enabled: bool,
+        warm_cache_enabled: bool,
+    ) -> ProcessToken {
+        let process_token = Token::gen();
+        let (perms, tx) = if is_warm {
+            (ProcessPerms::new(&mut req), None)
+        } else {
+            let (perms, tx) = ProcessPerms::new_warm_cache();
+            (perms, Some(tx))
+        };
+
+        // Mark an active process
+        {
+            let mut process_tokens = process_tokens.lock().unwrap();
+            assert!(!process_tokens.contains_key(&process_token));
+            process_tokens.insert(process_token.clone(), perms);
+            info!("starting process {}", &process_token);
+        }
+
+        // If it's warm insert a sending channel to eventually notify
+        // this process it is ready to continue
+        if let Some(tx) = tx {
+            warm_processes.lock().unwrap()
+                .entry(req.hook_id.clone())
+                .or_insert(vec![])
+                .push(WarmProcess {
+                    process_token: process_token.clone(),
+                    tx,
+                });
+        }
+
+        // Handle the process asynchronously
+        {
+            let binary_path = Path::new(&req.binary_path).to_path_buf();
+            let process_token = process_token.clone();
+            tokio::spawn(async move {
+                let original_req = req.clone();
+                if !triggered_tag.is_empty() {
+                    req.envs.push(format!("TRIGGERED_TAG={}", &triggered_tag));
+                }
+                if !triggered_timestamp.is_empty() {
+                    req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &triggered_timestamp));
+                }
+                req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
+                if !req.params.is_empty() {
+                    req.envs.push(format!("KARL_PARAMS={}", &req.params));
+                }
+                if !req.returns.is_empty() {
+                    req.envs.push(format!("KARL_RETURNS={}", &req.returns));
+                }
+                let execution_time = Host::handle_compute(
+                    compute_lock.clone(),
+                    path_manager.clone(),
+                    req.hook_id,
+                    req.cached,
+                    cold_cache_enabled,
+                    req.package,
+                    binary_path,
+                    req.args,
+                    req.envs,
+                ).unwrap();
+                process_tokens.lock().unwrap().remove(&process_token);
+                api.notify_end(process_token).await.unwrap();
+
+                // Now that the compute request is finished, evaluate its
+                // initialization time. If the initialization time was high,
+                // recursively call this function but as a warm cache module.
+                // We assume initialization time is high if the warm cache
+                // is enabled.
+                let long_init_time = execution_time > Duration::from_secs(5);
+                if warm_cache_enabled && long_init_time {
+                    let is_warm = true;
+                    Host::spawn_new_process(
+                        original_req,
+                        is_warm,
+                        TRIGGERED_KEY.to_string(),  // special value
+                        TRIGGERED_KEY.to_string(),  // special value
+                        api,
+                        path_manager,
+                        process_tokens,
+                        warm_processes,
+                        compute_lock,
+                        cold_cache_enabled,
+                        warm_cache_enabled,
+                    ).await;
+                }
+            });
+        }
+
+        process_token
+    }
+
     /// Handle a compute request.
     ///
-    /// The client must be verified by the caller.
+    /// Returns the execution time.
     fn handle_compute(
         lock: Arc<Mutex<()>>,
         path_manager: Arc<PathManager>,
         hook_id: HookID,
         cached: bool,
-        caching_disabled: bool,
+        cold_cache_enabled: bool,
         package: Vec<u8>,
         binary_path: PathBuf,
         args: Vec<String>,
         envs: Vec<String>,
-    ) -> Result<(), Error> {
+    ) -> Result<Duration, Error> {
         let now = Instant::now();
-        if cached && caching_disabled {
+        if cached && !cold_cache_enabled {
             return Err(Error::CacheError("caching is disabled".to_string()));
         }
         // TODO: lock on finer granularity, just the specific module
@@ -357,14 +492,14 @@ impl Host {
         // And so that each request can create a directory for its process.
         let (mount, paths) = {
             let lock = lock.lock().unwrap();
-            debug!("cached={} caching_disabled={}", cached, caching_disabled);
+            debug!("cached={} cold_cache_enabled={}", cached, cold_cache_enabled);
             if cached && !path_manager.is_cached(&hook_id) {
                 // TODO: controller needs to handle this error
                 // what if a second request gets here before the first
                 // request caches the module? race condition
                 return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
             }
-            if !cached && !caching_disabled {
+            if !cached && cold_cache_enabled {
                 path_manager.cache_hook(&hook_id, package)?;
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
@@ -376,14 +511,15 @@ impl Host {
             (mount, paths)
         };
 
-        let now = Instant::now();
+        let start = Instant::now();
         let _res = runtime::run(
             &paths.root_path,
             binary_path,
             args,
             envs,
         )?;
-        debug!("invoked binary => {} s", now.elapsed().as_secs_f32());
+        let execution_time = start.elapsed();
+        debug!("invoked binary => {} s", execution_time.as_secs_f32());
         info!("HANDLE_COMPUTE FINISH {}", hook_id);
 
         // Reset the root for the next computation.
@@ -397,7 +533,7 @@ impl Host {
             &paths.request_path,
             now.elapsed().as_secs_f32(),
         );
-        Ok(())
+        Ok(execution_time)
     }
 }
 
@@ -431,9 +567,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .long("controller-port")
             .takes_value(true)
             .default_value("59582"))
-        .arg(Arg::with_name("caching-disabled")
-            .help("If the flag is included, disables caching.")
-            .long("caching-disabled"))
+        .arg(Arg::with_name("cold-cache")
+            .help("Whether the cold cache is enabled (0 or 1)")
+            .long("cold-cache")
+            .takes_value(true)
+            .default_value("1"))
+        .arg(Arg::with_name("warm-cache")
+            .help("Whether the warm cache is enabled (0 or 1)")
+            .long("warm-cache")
+            .takes_value(true)
+            .default_value("0"))
         .arg(Arg::with_name("no-mock-network")
             .help("If the flag is included, uses the real network.")
             .long("no-mock-network"))
@@ -447,12 +590,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         matches.value_of("controller-port").unwrap(),
     );
     let password = matches.value_of("password").unwrap();
-    let caching_disabled = matches.is_present("caching-disabled");
+    let cold_cache_enabled = matches.is_present("cold-cache");
+    let warm_cache_enabled = matches.is_present("warm-cache");
     let mock_network = !matches.is_present("no-mock-network");
     let mut host = Host::new(
         karl_path,
         &controller,
-        caching_disabled,
+        cold_cache_enabled,
+        warm_cache_enabled,
         mock_network,
     );
     host.start(port, password).await.unwrap();

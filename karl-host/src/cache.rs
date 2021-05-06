@@ -79,6 +79,7 @@ impl PathManager {
         }
     }
 
+    /********************** COLD CACHE FUNCTIONALITY **********************/
     /// Returns path to cached hook.
     pub fn get_hook_path(&self, hook_id: &HookID) -> PathBuf {
         self.cache_path.join(hook_id)
