@@ -8,7 +8,6 @@ extern crate rocket;
 extern crate rocket_contrib;
 
 mod dashboard;
-mod old_dashboard;
 pub mod net;
 pub mod controller;
 pub use controller::Controller;

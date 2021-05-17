@@ -16,7 +16,7 @@ use tonic::{Request, Response, Status, Code};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
-use crate::old_dashboard;
+use crate::dashboard;
 use karl_common::*;
 
 pub fn to_status(e: Error) -> Status {
@@ -376,11 +376,7 @@ impl Controller {
 
         // Start the dashboard.
         if use_dashboard {
-            old_dashboard::start(
-                self.karl_path.clone(),
-                self.scheduler.clone(),
-                self.sensors.clone(),
-            );
+            dashboard::start();
         }
         // Start the hook runner.
         self.runner.start(self.scheduler.clone(), false);
