@@ -41,10 +41,29 @@ pub struct ModuleJson {
 }
 
 #[get("/graph")]
-pub fn get_graph() -> Result<Json<GraphJson>, Status> {
+pub fn get_graph(
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+) -> Result<Json<GraphJson>, Status> {
     // TODO: unimplemented
     info!("get_graph");
-    Ok(Json(GraphJson::default()))
+    let mut graph = GraphJson::default();
+    let sensors = sensors.lock().unwrap();
+    graph.sensors = sensors.values()
+        .filter(|sensor| sensor.confirmed)
+        .map(|sensor| {
+            // TODO: descriptions
+            let state_keys = sensor.keys.iter()
+                .map(|key| (key.clone(), "-".to_string())).collect();
+            let returns = sensor.returns.keys()
+                .map(|ret| (ret.clone(), "-".to_string())).collect();
+            SensorJson {
+                id: sensor.id.clone(),
+                stateKeys: state_keys,
+                returns,
+            }
+        })
+        .collect();
+    Ok(Json(graph))
 }
 
 #[post("/graph", format = "json", data = "<graph>")]
