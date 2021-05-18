@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[cfg(target_os = "linux")]
 use sys_mount::{SupportedFilesystems, Mount, MountFlags, Unmount, UnmountFlags};
 
 use flate2::read::GzDecoder;
@@ -29,7 +30,14 @@ impl Drop for PathManager {
 impl PathManager {
     /// Creates paths that do not already exist.
     pub fn new(karl_path: PathBuf, id: u32) -> Self {
-        assert!(SupportedFilesystems::new().unwrap().is_supported("aufs"));
+        #[cfg(target_os = "linux")]
+        {
+            assert!(SupportedFilesystems::new().unwrap().is_supported("aufs"));
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            warn!("sys_mount is not supported on non-linux distributions");
+        }
         let host_path = karl_path.join(id.to_string());
         let cache_path = karl_path.join("cache");
         fs::create_dir_all(&host_path).unwrap();
@@ -43,6 +51,7 @@ impl PathManager {
     }
 
     /// Create a new directory for a request.
+    #[cfg(target_os = "linux")]
     pub fn new_request(&self, hook_id: &HookID) -> (Mount, RequestPath) {
         use rand::Rng;
         let random: u32 = rand::thread_rng().gen();
@@ -70,6 +79,7 @@ impl PathManager {
         (mount, RequestPath { request_path, root_path })
     }
 
+    #[cfg(target_os = "linux")]
     pub fn unmount(&self, mount: Mount) {
         // Note that a filesystem cannot be unmounted when it is 'busy' - for
         // example, when there are open files on it, or when some process has

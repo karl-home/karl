@@ -434,6 +434,7 @@ impl Host {
         }
 
         // Handle the process asynchronously
+        #[cfg(target_os = "linux")]
         {
             let binary_path = Path::new(&req.binary_path).to_path_buf();
             let process_token = process_token.clone();
@@ -478,6 +479,10 @@ impl Host {
                 }
             });
         }
+        #[cfg(not(target_os = "linux"))]
+        {
+            unimplemented!()
+        }
 
         process_token
     }
@@ -485,6 +490,7 @@ impl Host {
     /// Handle a compute request.
     ///
     /// Returns the execution time.
+    #[cfg(target_os = "linux")]
     fn handle_compute(
         lock: Arc<Mutex<()>>,
         path_manager: Arc<PathManager>,
