@@ -1,0 +1,3 @@
+[submodule "karl-ui"]
+	path = karl-ui
+	url = git@github.com:karl-lab/karl-ui.git

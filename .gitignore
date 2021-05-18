@@ -26,6 +26,3 @@ request_pb2_grpc.py
 # Protobuf
 protos/js/
 protos/rust/
-
-# UI
-karl-controller/dist/
