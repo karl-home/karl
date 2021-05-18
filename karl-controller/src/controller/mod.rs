@@ -376,7 +376,10 @@ impl Controller {
 
         // Start the dashboard.
         if use_dashboard {
-            dashboard::start();
+            dashboard::start(
+                self.scheduler.clone(),
+                self.sensors.clone(),
+            );
         }
         // Start the hook runner.
         self.runner.start(self.scheduler.clone(), false);

@@ -1,5 +1,8 @@
+use std::sync::{Arc, Mutex};
+use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
+use crate::controller::HostScheduler;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -92,16 +95,41 @@ pub struct HostJson {
 }
 
 #[post("/host/confirm/<id>")]
-pub fn confirm_host(id: String) -> Status {
-    Status::NotImplemented
+pub fn confirm_host(
+    id: String,
+    hosts: State<Arc<Mutex<HostScheduler>>>,
+) {
+    hosts.lock().unwrap().confirm_host(&id);
 }
 
 #[post("/host/cancel/<id>")]
-pub fn cancel_host(id: String) -> Status {
-    Status::NotImplemented
+pub fn cancel_host(
+    id: String,
+    hosts: State<Arc<Mutex<HostScheduler>>>,
+) -> Status {
+    if hosts.lock().unwrap().remove_host(&id) {
+        Status::Ok
+    } else {
+        Status::NotFound
+    }
 }
 
 #[get("/hosts")]
-pub fn get_hosts() -> Result<Json<HostResultJson>, Status> {
-    Ok(Json(HostResultJson::default()))
+pub fn get_hosts(
+    hosts: State<Arc<Mutex<HostScheduler>>>,
+) -> Result<Json<HostResultJson>, Status> {
+    let mut res = HostResultJson::default();
+    for host in hosts.lock().unwrap().hosts() {
+        if host.confirmed {
+            res.confirmed.push(HostJson {
+                id: host.id,
+                activeModules: host.md.active_requests.len() as _,
+                online: host.md.last_msg.elapsed().as_secs() <=
+                    2 * karl_common::HEARTBEAT_INTERVAL,
+            })
+        } else {
+            res.unconfirmed.push(host.id)
+        }
+    }
+    Ok(Json(res))
 }

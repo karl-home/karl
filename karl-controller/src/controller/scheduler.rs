@@ -92,11 +92,20 @@ impl HostScheduler {
         }
     }
 
-    pub fn remove_host(&mut self, _id: &str) -> bool {
-        /*
-        self.hosts.remove(id).is_some()
-        */
-        unimplemented!()
+    pub fn remove_host(&mut self, id: &str) -> bool {
+        let hosts = self.hosts.iter()
+            .filter(|(_, host)| &host.id == id)
+            .map(|(token, _)| token.clone())
+            .collect::<Vec<_>>();
+        if !hosts.is_empty() {
+            for token in hosts {
+                info!("removed host {:?}", self.hosts.remove(&token));
+            }
+            true
+        } else {
+            warn!("cannot remove host with id {}: does not exist", id);
+            false
+        }
     }
 
     /// Find a host to connect.
@@ -198,7 +207,10 @@ impl HostScheduler {
 
     /// Confirms a host. Authenticated in the web dashboard.
     pub fn confirm_host(&mut self, id: &HostID) {
-        if let Some(host) = self.hosts.get_mut(id) {
+        let mut hosts = self.hosts.iter_mut()
+            .map(|(_, host)| host)
+            .filter(|host| &host.id == id);
+        if let Some(host) = hosts.next() {
             if host.is_confirmed() {
                 warn!("attempted to confirm already confirmed host: {:?}", id);
             } else {

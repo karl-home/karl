@@ -1,11 +1,20 @@
 //! Controller dashboard.
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use rocket_contrib::serve::StaticFiles;
+use karl_common::{SensorToken, Client};
+use crate::controller::HostScheduler;
 
 mod endpoint;
 
-pub fn start() {
+pub fn start(
+    hosts: Arc<Mutex<HostScheduler>>,
+    sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
+) {
     tokio::spawn(async move {
         rocket::ignite()
+        .manage(hosts)
+        .manage(sensors)
         .mount("/", StaticFiles::from("../karl-ui/dist"))
         .mount("/", routes![
             endpoint::get_graph,
