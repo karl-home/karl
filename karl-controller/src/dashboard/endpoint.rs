@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap};
+use std::sync::{Arc, Mutex, RwLock};
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
-use karl_common::{SensorToken, Client};
-use crate::controller::HostScheduler;
+use karl_common::*;
+use crate::controller::{HookRunner, HostScheduler};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -43,11 +43,14 @@ pub struct ModuleJson {
 #[get("/graph")]
 pub fn get_graph(
     sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+    modules: State<Arc<Mutex<HashMap<HookID, Hook>>>>,
+    watched_tags: State<Arc<RwLock<HashMap<String, Vec<HookID>>>>>,
 ) -> Result<Json<GraphJson>, Status> {
     // TODO: unimplemented
     info!("get_graph");
     let mut graph = GraphJson::default();
     let sensors = sensors.lock().unwrap();
+    let modules = modules.lock().unwrap();
     graph.sensors = sensors.values()
         .filter(|sensor| sensor.confirmed)
         .map(|sensor| {
@@ -63,14 +66,68 @@ pub fn get_graph(
             }
         })
         .collect();
+    graph.moduleIds = modules.iter()
+        .map(|(hook_id, hook)| {
+            ModuleJson {
+                localId: hook_id.to_string(),
+                globalId: hook.global_hook_id.clone(),
+                params: hook.params.keys().map(|x| x.to_string()).collect(),
+                returns: hook.returns.keys().map(|x| x.to_string()).collect(),
+            }
+        })
+        .collect();
     Ok(Json(graph))
 }
 
 #[post("/graph", format = "json", data = "<graph>")]
-pub fn save_graph(graph: Json<GraphJson>) -> Status {
+pub fn save_graph(
+    mut graph: Json<GraphJson>,
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+    modules: State<Arc<Mutex<HashMap<HookID, Hook>>>>,
+    watched_tags: State<Arc<RwLock<HashMap<String, Vec<HookID>>>>>,
+) -> Status {
     info!("save_graph");
     info!("{:?}", graph);
-    Status::NotImplemented
+    // TODO: sensors
+    let mut sensors = sensors.lock().unwrap();
+    let mut modules = modules.lock().unwrap();
+    let mut watched_tags = watched_tags.write().unwrap();
+
+    {
+        let new_modules: HashMap<_, _> =
+            graph.moduleIds.drain(..).map(|m| (m.localId, m.globalId)).collect();
+        let modules_to_remove: Vec<_> = modules.keys()
+            .filter(|&m| !new_modules.contains_key(m))
+            .map(|m| m.to_string())
+            .collect();
+        let modules_to_add: Vec<_> = new_modules.keys()
+            .filter(|&m| !modules.contains_key(m))
+            .map(|m| m.to_string())
+            .collect();
+        for hook_id in &modules_to_remove {
+            if let Err(e) = HookRunner::remove_hook(
+                &mut modules,
+                &mut watched_tags,
+                hook_id.to_string(),
+            ) {
+                error!("error removing {}: {:?}", hook_id, e);
+                return Status::BadRequest;
+            }
+
+        }
+        for hook_id in &modules_to_add {
+            if let Err(e) = HookRunner::register_hook(
+                &mut modules,
+                new_modules.get(hook_id).unwrap().clone(),
+                hook_id.to_string(),
+            ) {
+                error!("error registering {}: {:?}", hook_id, e);
+                return Status::BadRequest;
+            }
+        }
+    }
+    // Status::NotImplemented
+    Status::Ok
 }
 
 #[post("/module/<id>")]

@@ -31,8 +31,8 @@ pub enum Error {
     InvalidPacketType(i32),
     /// Received a ping result for a compute request or vice versa.
     InvalidResponseType,
-    /// Package does not contain a valid binary in its root or imports.
-    BinaryNotFound(String),
+    /// Something is not found,
+    NotFound,
     /// Failure to install an imported package.
     InstallImportError(String),
     /// Failure to use persistent storage for request.

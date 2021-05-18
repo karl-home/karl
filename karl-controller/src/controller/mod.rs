@@ -379,6 +379,8 @@ impl Controller {
             dashboard::start(
                 self.scheduler.clone(),
                 self.sensors.clone(),
+                self.runner.hooks.clone(),
+                self.runner.watched_tags.clone(),
             );
         }
         // Start the hook runner.
@@ -413,7 +415,11 @@ impl Controller {
         // }
 
         // Register the hook.
-        self.runner.register_hook(global_hook_id)
+        HookRunner::register_hook(
+            &mut self.runner.hooks.lock().unwrap(),
+            global_hook_id.clone(),
+            global_hook_id, // TODO: local id
+        )
     }
 
     /// Register a client.
@@ -655,6 +661,7 @@ impl Controller {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::*;
@@ -849,3 +856,4 @@ mod test {
         assert!(client2);
     }
 }
+*/

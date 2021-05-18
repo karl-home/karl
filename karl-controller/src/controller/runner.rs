@@ -20,7 +20,7 @@ pub struct HookRunner {
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     pub(crate) tag_counter: Arc<Mutex<AtomicUsize>>,
     /// Watched tags and the hooks they spawn.
-    watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
+    pub(crate) watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
     /// Wether to include triggered data in the request.
     pubsub_enabled: bool,
 }
@@ -115,27 +115,48 @@ impl HookRunner {
     /// IoError if error importing hook from filesystem.
     /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
-        &self,
+        hooks: &mut HashMap<HookID, Hook>,
         global_hook_id: StringID,
+        hook_id: StringID,
     ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?;
-        use rand::Rng;
         hook.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
-        let hook_id = loop {
-            // Loop to ensure a unique hook ID.
-            let id: u32 = rand::thread_rng().gen();
-            let hook_id = format!("{}-{}", &global_hook_id, id);
-            let mut hooks = self.hooks.lock().unwrap();
-            if !hooks.contains_key(&hook_id) {
-                hook.envs.push((String::from("HOOK_ID"), hook_id.clone()));
-                hooks.insert(hook_id.clone(), hook);
-                break hook_id;
-            }
-        };
+        if !hooks.contains_key(&hook_id) {
+            hook.envs.push((String::from("HOOK_ID"), hook_id.clone()));
+            hooks.insert(hook_id.clone(), hook);
+            info!("registered hook {}", &hook_id);
+            Ok(hook_id)
+        } else {
+            error!("hook id already exists: {} ({})", hook_id, global_hook_id);
+            Err(Error::HookInstallError("hook id already exists".to_string()))
+        }
+    }
 
-        // Create directories for its output tags.
-        info!("registered hook {}", &hook_id);
-        Ok(hook_id)
+    pub fn remove_hook(
+        hooks: &mut HashMap<HookID, Hook>,
+        watched_tags: &mut HashMap<String, Vec<HookID>>,
+        hook_id: StringID,
+    ) -> Result<(), Error> {
+        if let Some(_) = hooks.remove(&hook_id) {
+            let mut tags = 0;
+            for hook_ids in watched_tags.values_mut() {
+                let indexes = hook_ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, id)| *id == &hook_id)
+                    .map(|(index, _)| index)
+                    .collect::<Vec<_>>();
+                for index in indexes {
+                    hook_ids.remove(index);
+                    tags += 1;
+                }
+            }
+            info!("removed hook {} with {} tags", &hook_id, tags);
+            Ok(())
+        } else {
+            error!("cannot remove hook, does not exist: {}", hook_id);
+            Err(Error::NotFound)
+        }
     }
 
     pub fn clear_intervals(&self) {
@@ -277,6 +298,7 @@ impl HookRunner {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::*;
@@ -340,7 +362,6 @@ mod test {
         ).is_err());
     }
 
-    /*
     #[tokio::test]
     async fn test_register_hook_propagates_fields() {
         let audit_log = init_audit_log();
@@ -451,5 +472,5 @@ mod test {
         assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "queuing existing hook id ran out of hosts");
     }
-    */
 }
+*/
