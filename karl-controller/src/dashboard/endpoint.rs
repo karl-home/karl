@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
+use karl_common::{SensorToken, Client};
 use crate::controller::HostScheduler;
 
 #[allow(non_snake_case)]
@@ -65,18 +67,73 @@ pub struct SensorResultJson {
 }
 
 #[post("/sensor/confirm/<id>")]
-pub fn confirm_sensor(id: String) -> Status {
-    Status::NotImplemented
+pub fn confirm_sensor(
+    id: String,
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+) -> Status {
+    let mut handle = sensors.lock().unwrap();
+    let mut sensors = handle.iter_mut()
+        .map(|(_, sensor)| sensor)
+        .filter(|sensor| sensor.id == id);
+    if let Some(sensor) = sensors.next() {
+        if sensor.confirmed {
+            warn!("attempted to confirm already confirmed sensor: {:?}", id);
+            Status::Conflict
+        } else {
+            info!("confirmed sensor {:?}", id);
+            sensor.confirmed = true;
+            Status::Ok
+        }
+    } else {
+        warn!("attempted to confirm nonexistent sensor: {:?}", id);
+        Status::NotFound
+    }
 }
 
 #[post("/sensor/cancel/<id>")]
-pub fn cancel_sensor(id: String) -> Status {
-    Status::NotImplemented
+pub fn cancel_sensor(
+    id: String,
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+) -> Status {
+    let mut handle = sensors.lock().unwrap();
+    let sensors = handle.iter()
+        .filter(|(_, sensor)| sensor.id == id)
+        .map(|(token, _)| token.clone())
+        .collect::<Vec<_>>();
+    if !sensors.is_empty() {
+        for token in sensors {
+            info!("removed sensor {:?}", handle.remove(&token));
+        }
+        Status::Ok
+    } else {
+        warn!("cannot remove sensor with id {}: does not exist", id);
+        Status::NotFound
+    }
 }
 
 #[get("/sensors")]
-pub fn get_sensors() -> Result<Json<Vec<SensorResultJson>>, Status> {
-    Ok(Json(vec![]))
+pub fn get_sensors(
+    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
+) -> Result<Json<Vec<SensorResultJson>>, Status> {
+    Ok(Json(sensors.lock().unwrap().values()
+        .filter(|sensor| !sensor.confirmed)
+        .map(|sensor| SensorResultJson {
+            sensor: {
+                // TODO: descriptions
+                let state_keys = sensor.keys.iter()
+                    .map(|key| (key.clone(), "-".to_string())).collect();
+                let returns = sensor.returns.keys()
+                    .map(|ret| (ret.clone(), "-".to_string())).collect();
+                SensorJson {
+                    id: sensor.id.clone(),
+                    stateKeys: state_keys,
+                    returns,
+                }
+            },
+            attestation: "QWERTY1234".to_string(), // TODO
+        })
+        .collect()
+    ))
 }
 
 #[allow(non_snake_case)]
