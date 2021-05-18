@@ -1,14 +1,53 @@
 use rocket::http::Status;
+use rocket_contrib::json::Json;
 
-#[get("/graph")]
-pub fn get_graph() -> Result<Vec<u8>, Status> {
-    Ok(vec![])
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct GraphJson {
+    // sensors indexed 0 to n-1, where n is the number of sensors
+    sensors: Vec<SensorJson>,
+    // modules indexed n to n+m-1, where m is the number of modules
+    moduleIds: Vec<ModuleJson>,
+    // stateless, out_id, out_red, module_id, module_param
+    dataEdges: Vec<(bool, u32, u32, u32, u32)>,
+    // module_id, module_ret, sensor_id, sensor_key
+    stateEdges: Vec<(u32, u32, u32, u32)>,
+    // module_id, domain
+    networkEdges: Vec<(u32, String)>,
+    // module_id, duration_s
+    intervals: Vec<(u32, u32)>,
 }
 
-// export function getGraph(): GraphFormat {
-// console.error('unimplemented: get graph from mock network')
-// return undefined
-// }
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SensorJson {
+    id: String,
+    stateKeys: Vec<(String, String)>,
+    returns: Vec<(String, String)>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ModuleJson {
+    localId: String,
+    globalId: String,
+    params: Vec<String>,
+    returns: Vec<String>,
+}
+
+#[get("/graph")]
+pub fn get_graph() -> Result<Json<GraphJson>, Status> {
+    // TODO: unimplemented
+    info!("get_graph");
+    Ok(Json(GraphJson::default()))
+}
+
+#[post("/graph", format = "json", data = "<graph>")]
+pub fn save_graph(graph: Json<GraphJson>) -> Status {
+    info!("save_graph");
+    info!("{:?}", graph);
+    Status::NotImplemented
+}
 
 // // POST /graph (data: graph)
 // export function saveGraph(format: GraphFormat) {

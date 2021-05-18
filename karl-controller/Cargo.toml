@@ -11,6 +11,7 @@ default = []
 env_logger = "0.7"
 log = "0.4"
 serde = { version = "1.0",  features = ["derive"] }
+serde_derive = "1.0"
 tokio = { version = "1.4", features = ["rt", "macros", "sync", "time", "rt-multi-thread"] }
 tokio-stream = { version =  "0.1", features = ["net"] }
 clap = "2.33.3"
@@ -26,7 +27,7 @@ karl-common = { path = "../karl-common" }
 [dependencies.rocket_contrib]
 version = "0.4.6"
 default-features = false
-features = ["handlebars_templates", "serve"]
+features = ["handlebars_templates", "serve", "json"]
 
 [build-dependencies]
 tonic-build = "0.4"

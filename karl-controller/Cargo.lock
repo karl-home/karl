@@ -901,6 +901,7 @@ dependencies = [
  "rocket",
  "rocket_contrib",
  "serde",
+ "serde_derive",
  "serde_json",
  "tempdir",
  "tokio",
