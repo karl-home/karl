@@ -635,13 +635,19 @@ impl Controller {
 
     /// Set a module to be spawned at a regular interval.
     fn add_interval(
-        &self, req: Interval, hooks: &HashMap<HookID, Hook>,
+        &self, req: Interval, hooks: &mut HashMap<HookID, Hook>,
     ) -> Result<(), Status> {
         debug!("interval {} = {}s", req.module_id, req.seconds);
-        if hooks.contains_key(&req.module_id) {
-            let duration = std::time::Duration::from_secs(req.seconds.into());
-            self.runner.set_interval(req.module_id, duration);
-            Ok(())
+        if let Some(hook) = hooks.get_mut(&req.module_id) {
+            if let Some(interval) = hook.interval {
+                error!("module {} already has an interval set: {}", req.module_id, interval);
+                Err(Status::new(Code::InvalidArgument, "interval already set"))
+            } else {
+                hook.interval = Some(req.seconds);
+                let duration = std::time::Duration::from_secs(req.seconds.into());
+                self.runner.set_interval(req.module_id, duration);
+                Ok(())
+            }
         } else {
             Err(Status::new(Code::NotFound, "module id not found"))
         }

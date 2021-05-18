@@ -32,6 +32,8 @@ pub struct Hook {
     pub returns: HashMap<String, Vec<String>>,
     /// Network permissions
     pub network_perm: Vec<DomainName>,
+    /// Intervals
+    pub interval: Option<u32>,
     /// Environment variables
     pub envs: Vec<(String, String)>,
 }
@@ -55,6 +57,7 @@ impl Hook {
             params: params.into_iter().map(|p| (p, None)).collect(),
             returns: returns.into_iter().map(|r| (r, vec![])).collect(),
             network_perm: vec![],
+            interval: None,
             envs: vec![],
         }
     }
