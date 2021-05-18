@@ -49,50 +49,59 @@ pub fn save_graph(graph: Json<GraphJson>) -> Status {
     Status::NotImplemented
 }
 
-// // POST /graph (data: graph)
-// export function saveGraph(format: GraphFormat) {
-// console.error('unimplemented: save graph to mock network')
-// console.log(format)
-// }
+#[post("/module/<id>")]
+pub fn spawn_module(id: String) -> Status {
+    Status::NotImplemented
+}
 
-// // POST /module/<id>
-// export function spawnModule(moduleId: string) {
-// console.error(`unimplemented: spawn module ${moduleId}`)
-// }
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SensorResultJson {
+    sensor: SensorJson,
+    attestation: String,
+}
 
-// // POST /host/confirm/<id>
-// export function confirmHost(hostId: string) {
-// console.error(`unimplemented: confirm host in mock network ${hostId}`)
-// }
+#[post("/sensor/confirm/<id>")]
+pub fn confirm_sensor(id: String) -> Status {
+    Status::NotImplemented
+}
 
-// // POST /host/cancel/<id>
-// export function cancelHost(hostId: string) {
-// console.error(`unimplemented: cancel host in mock network ${hostId}`)
-// }
+#[post("/sensor/cancel/<id>")]
+pub fn cancel_sensor(id: String) -> Status {
+    Status::NotImplemented
+}
 
-// // POST /sensor/confirm/<id>
-// export function confirmSensor(sensorId: string) {
-// console.error(`unimplemented: confirm sensor in mock network ${sensorId}`)
-// }
+#[get("/sensors")]
+pub fn get_sensors() -> Result<Json<Vec<SensorResultJson>>, Status> {
+    Ok(Json(vec![]))
+}
 
-// // POST /sensor/cancel/<id>
-// export function cancelSensor(sensorId: string) {
-// console.error(`unimplemented: cancel sensor in mock network ${sensorId}`)
-// }
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct HostResultJson {
+    confirmed: Vec<HostJson>,
+    unconfirmed: Vec<String>,
+}
 
-// // GET /sensors
-// export function getSensors(): { sensor: Sensor, attestation: string }[] {
-// return []
-// }
+#[allow(non_snake_case)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct HostJson {
+    id: String,
+    activeModules: u32,
+    online: bool,
+}
 
-// // GET /hosts
-// export function getHosts(): { confirmed: Host[], unconfirmed: string[] } {
-// return { confirmed: [], unconfirmed: [] }
+#[post("/host/confirm/<id>")]
+pub fn confirm_host(id: String) -> Status {
+    Status::NotImplemented
+}
 
-// #[post("/confirm/host/<service_name>")]
-// fn confirm_host(
-//     host_header: HostHeader,
-//     service_name: String,
-// ) {
-//     // sdfasdfa
-// }
+#[post("/host/cancel/<id>")]
+pub fn cancel_host(id: String) -> Status {
+    Status::NotImplemented
+}
+
+#[get("/hosts")]
+pub fn get_hosts() -> Result<Json<HostResultJson>, Status> {
+    Ok(Json(HostResultJson::default()))
+}
