@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
     let autoconfirm = matches.is_present("autoconfirm");
-    let dashboard = matches.is_present("dashboard");
+    let use_dashboard = matches.is_present("dashboard");
     let caching_enabled = matches.value_of("caching-enabled").unwrap() == "1";
     let pubsub_enabled = matches.value_of("pubsub-enabled").unwrap() == "1";
     let password = matches.value_of("password").unwrap();
@@ -76,7 +76,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         caching_enabled,
         pubsub_enabled,
     );
-    controller.start(dashboard, port).await.unwrap();
+    controller.start(port).await.unwrap();
+    if use_dashboard {
+        dashboard::start(controller.clone());
+    }
     Server::builder()
         .add_service(KarlControllerServer::new(controller))
         .serve(format!("0.0.0.0:{}", port).parse()?)

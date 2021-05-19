@@ -15,6 +15,7 @@ pub struct QueuedHook {
     trigger: Option<(String, String, Vec<u8>)>,
 }
 
+#[derive(Clone)]
 pub struct HookRunner {
     pub(crate) tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
@@ -116,12 +117,13 @@ impl HookRunner {
     /// IoError if error importing hook from filesystem.
     /// HookInstallError if environment variables are formatted incorrectly.
     pub fn register_hook(
-        hooks: &mut HashMap<HookID, Hook>,
+        &self,
         global_hook_id: StringID,
         hook_id: StringID,
     ) -> Result<HookID, Error> {
         let mut hook = Hook::import(&global_hook_id)?;
         hook.envs.push((String::from("GLOBAL_HOOK_ID"), global_hook_id.clone()));
+        let mut hooks = self.hooks.lock().unwrap();
         if !hooks.contains_key(&hook_id) {
             hook.envs.push((String::from("HOOK_ID"), hook_id.clone()));
             hooks.insert(hook_id.clone(), hook);
@@ -133,14 +135,48 @@ impl HookRunner {
         }
     }
 
-    pub fn remove_hook(
-        hooks: &mut HashMap<HookID, Hook>,
-        watched_tags: &mut HashMap<String, Vec<HookID>>,
-        hook_id: StringID,
-    ) -> Result<(), Error> {
+    /// Sets the registered modules to the ones provided, removing modules
+    /// that are not included and installing new ones.
+    ///
+    /// Parameters:
+    /// - new_modules: map from local hook ID to global hook ID
+    pub fn set_hooks(&self, new_modules: HashMap<String, String>) -> bool {
+        let (modules_to_remove, modules_to_add) = {
+            let modules = self.hooks.lock().unwrap();
+            let modules_to_remove: Vec<_> = modules.keys()
+                .filter(|&m| !new_modules.contains_key(m))
+                .map(|m| m.to_string())
+                .collect();
+            let modules_to_add: Vec<_> = new_modules.keys()
+                .filter(|&m| !modules.contains_key(m))
+                .map(|m| m.to_string())
+                .collect();
+            (modules_to_remove, modules_to_add)
+        };
+        for hook_id in &modules_to_remove {
+            if let Err(e) = self.remove_hook(hook_id.to_string()) {
+                error!("error removing {}: {:?}", hook_id, e);
+                return false;
+            }
+
+        }
+        for hook_id in &modules_to_add {
+            if let Err(e) = self.register_hook(
+                new_modules.get(hook_id).unwrap().clone(),
+                hook_id.to_string(),
+            ) {
+                error!("error registering {}: {:?}", hook_id, e);
+                return false;
+            }
+        }
+        true
+    }
+
+    fn remove_hook(&self, hook_id: StringID) -> Result<(), Error> {
+        let mut hooks = self.hooks.lock().unwrap();
         if let Some(_) = hooks.remove(&hook_id) {
             let mut tags = 0;
-            for hook_ids in watched_tags.values_mut() {
+            for hook_ids in self.watched_tags.write().unwrap().values_mut() {
                 let indexes = hook_ids
                     .iter()
                     .enumerate()
@@ -166,11 +202,12 @@ impl HookRunner {
     }
 
     pub fn set_interval(
-        tx: mpsc::Sender<QueuedHook>,
-        hooks: &mut HashMap<HookID, Hook>,
+        &self,
         module_id: HookID,
         seconds: u32,
     ) -> Result<(), Status> {
+        let tx = self.tx.as_ref().unwrap().clone();
+        let mut hooks = self.hooks.lock().unwrap();
         if let Some(hook) = hooks.get_mut(&module_id) {
             if let Some(interval) = hook.interval {
                 error!("module {} already has an interval set: {}", module_id, interval);
@@ -235,6 +272,13 @@ impl HookRunner {
             }).await.unwrap();
         }
         spawned
+    }
+
+    pub async fn spawn_module_id(&self, module_id: String) {
+        self.tx.as_ref().unwrap().send(QueuedHook {
+            id: module_id,
+            trigger: None,
+        }).await.unwrap();
     }
 
     async fn start_queue_manager(

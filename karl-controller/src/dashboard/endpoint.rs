@@ -3,9 +3,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
-use tokio::sync::mpsc;
 use karl_common::*;
-use crate::controller::{QueuedHook, HookRunner, HostScheduler};
+use crate::controller::{Controller, HostScheduler};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -111,7 +110,7 @@ pub fn get_graph(
                     let mut split = in_tag.split(".");
                     let sensor = split.next().unwrap();
                     let key = split.next().unwrap();
-                    let sensor_id = *entity_index.get(sensor).unwrap();
+                    let sensor_id = *entity_index.get(&sensor[1..]).unwrap();
                     let sensor_index = graph.sensors[sensor_id].stateKeys
                         .iter()
                         .enumerate()
@@ -180,20 +179,139 @@ pub fn get_graph(
     Ok(Json(graph))
 }
 
+#[derive(Default)]
+struct Edges {
+    data: HashMap<String, HashMap<String, Vec<(bool, String, String)>>>,
+    state: HashMap<String, HashMap<String, Vec<(String, String)>>>,
+}
+
+impl Edges {
+    pub fn add_data_edge(
+        &mut self,
+        stateless: bool,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) {
+        if !self.data.contains_key(out_id) {
+            self.data.insert(out_id.to_string(), HashMap::new());
+        }
+        if !self.data.get(out_id).unwrap().contains_key(out_name) {
+            self.data.get_mut(out_id).unwrap().insert(out_name.to_string(), vec![]);
+        }
+        self.data
+            .get_mut(out_id).unwrap()
+            .get_mut(out_name).unwrap()
+            .push((stateless, in_id.to_string(), in_name.to_string()));
+    }
+
+    pub fn add_state_edge(
+        &mut self,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) {
+        if !self.state.contains_key(out_id) {
+            self.state.insert(out_id.to_string(), HashMap::new());
+        }
+        if !self.state.get(out_id).unwrap().contains_key(out_name) {
+            self.state.get_mut(out_id).unwrap().insert(out_name.to_string(), vec![]);
+        }
+        self.state
+            .get_mut(out_id).unwrap()
+            .get_mut(out_name).unwrap()
+            .push((in_id.to_string(), in_name.to_string()));
+    }
+
+    pub fn remove_data_edge(
+        &mut self,
+        stateless: bool,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) {
+        let index = self.data_edge_index(stateless, out_id, out_name, in_id, in_name).unwrap();
+        self.data.get_mut(out_id).unwrap().get_mut(out_name).unwrap().remove(index);
+        if self.data.get(out_id).unwrap().get(out_name).unwrap().is_empty() {
+            self.data.get_mut(out_id).unwrap().remove(out_name);
+        }
+        if self.data.get(out_id).unwrap().is_empty() {
+            self.data.remove(out_id);
+        }
+    }
+
+    pub fn remove_state_edge(
+        &mut self,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) {
+        let index = self.state_edge_index(out_id, out_name, in_id, in_name).unwrap();
+        self.data.get_mut(out_id).unwrap().get_mut(out_name).unwrap().remove(index);
+        if self.data.get(out_id).unwrap().get(out_name).unwrap().is_empty() {
+            self.data.get_mut(out_id).unwrap().remove(out_name);
+        }
+        if self.data.get(out_id).unwrap().is_empty() {
+            self.data.remove(out_id);
+        }
+    }
+
+    pub fn data_edge_index(
+        &mut self,
+        stateless: bool,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) -> Option<usize> {
+        let edges = self.data.get(out_id).unwrap().get(out_name).unwrap();
+        for i in 0..edges.len() {
+            let (a, b, c) = edges.get(i).unwrap();
+            if *a == stateless && b == in_id && c == in_name {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub fn state_edge_index(
+        &mut self,
+        out_id: &str,
+        out_name: &str,
+        in_id: &str,
+        in_name: &str,
+    ) -> Option<usize> {
+        let edges = self.state.get(out_id).unwrap().get(out_name).unwrap();
+        for i in 0..edges.len() {
+            let (b, c) = edges.get(i).unwrap();
+            if b == in_id && c == in_name {
+                return Some(i);
+            }
+        }
+        None
+    }
+}
+
 #[post("/graph", format = "json", data = "<graph>")]
 pub fn save_graph(
     mut graph: Json<GraphJson>,
-    sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
-    modules: State<Arc<Mutex<HashMap<HookID, Hook>>>>,
-    watched_tags: State<Arc<RwLock<HashMap<String, Vec<HookID>>>>>,
-    hook_tx: State<mpsc::Sender<QueuedHook>>,
+    controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
     info!("save_graph");
     info!("{:?}", graph);
     // TODO: sensors
-    let _sensors = sensors.lock().unwrap();
-    let mut modules = modules.lock().unwrap();
-    let mut watched_tags = watched_tags.write().unwrap();
+    let controller = controller.lock().unwrap();
+
+    // Register the same modules
+    let new_modules: HashMap<_, _> =
+        graph.moduleIds.drain(..).map(|m| (m.localId, m.globalId)).collect();
+    if !controller.runner.set_hooks(new_modules) {
+        return Status::BadRequest;
+    }
 
     // entity ID, input names, output names
     let mut entity_map: HashMap<u32, (String, Vec<String>, Vec<String>)> = HashMap::new();
@@ -216,42 +334,130 @@ pub fn save_graph(
         entity_map.insert(index, (module.localId.to_string(), inputs, outputs));
     }
 
-    {
-        // Register the same modules
-        let new_modules: HashMap<_, _> =
-            graph.moduleIds.drain(..).map(|m| (m.localId, m.globalId)).collect();
-        let modules_to_remove: Vec<_> = modules.keys()
-            .filter(|&m| !new_modules.contains_key(m))
-            .map(|m| m.to_string())
-            .collect();
-        let modules_to_add: Vec<_> = new_modules.keys()
-            .filter(|&m| !modules.contains_key(m))
-            .map(|m| m.to_string())
-            .collect();
-        for hook_id in &modules_to_remove {
-            if let Err(e) = HookRunner::remove_hook(
-                &mut modules,
-                &mut watched_tags,
-                hook_id.to_string(),
-            ) {
-                error!("error removing {}: {:?}", hook_id, e);
-                return Status::BadRequest;
-            }
-
+    let (edges_to_add, edges_to_remove) = {
+        let modules = controller.runner.hooks.lock().unwrap();
+        let sensors = controller.sensors.lock().unwrap();
+        let watched_tags = controller.runner.watched_tags.read().unwrap();
+        let mut edges_to_add: Edges = Default::default();
+        let mut edges_to_remove: Edges = Default::default();
+        for (stateless, out_id, out_index, in_id, in_index) in graph.dataEdges.drain(..) {
+            let (out_id, _, outputs) = entity_map.get(&out_id).unwrap();
+            let (in_id, inputs, _) = entity_map.get(&in_id).unwrap();
+            let output = &outputs[out_index as usize];
+            let input = &inputs[in_index as usize];
+            edges_to_add.add_data_edge(stateless, out_id, output, in_id, input);
         }
-        for hook_id in &modules_to_add {
-            if let Err(e) = HookRunner::register_hook(
-                &mut modules,
-                new_modules.get(hook_id).unwrap().clone(),
-                hook_id.to_string(),
-            ) {
-                error!("error registering {}: {:?}", hook_id, e);
-                return Status::BadRequest;
+        for (out_id, out_index, in_id, in_index) in graph.stateEdges.drain(..) {
+            let (out_id, _, outputs) = entity_map.get(&out_id).unwrap();
+            let (in_id, inputs, _) = entity_map.get(&in_id).unwrap();
+            let output = &outputs[out_index as usize];
+            let input = &inputs[in_index as usize];
+            edges_to_add.add_state_edge(out_id, output, in_id, input);
+        }
+
+        let mut tag_map: HashMap<String, (String, String)> = HashMap::new();
+        for (module_id, module) in modules.iter() {
+            for (param, tag) in module.params.iter() {
+                if let Some(tag) = tag {
+                    tag_map.insert(tag.to_string(), (module_id.to_string(), param.to_string()));
+                }
+            }
+        }
+        for (o1, module) in modules.iter() {
+            for (o2, tags) in module.returns.iter() {
+                for tag in tags {
+                    if let Some((i1, i2)) = tag_map.get(tag) {
+                        let stateless = watched_tags
+                            .get(tag)
+                            .map(|hook_ids| hook_ids.contains(&i1))
+                            .unwrap_or(false);
+                        if edges_to_add.data_edge_index(stateless, o1, o2, i1, i2).is_some() {
+                            edges_to_add.remove_data_edge(stateless, o1, o2, i1, i2);
+                        } else {
+                            edges_to_remove.add_data_edge(stateless, o1, o2, i1, i2);
+                        }
+                    } else {
+                        let mut split = tag.split(".");
+                        let i1 = split.next().unwrap();
+                        let i2 = split.next().unwrap();
+                        if edges_to_add.state_edge_index(o1, o2, &i1[1..], i2).is_some() {
+                            edges_to_add.remove_state_edge(o1, o2, &i1[1..], i2);
+                        } else {
+                            edges_to_remove.add_state_edge(o1, o2, &i1[1..], i2);
+                        }
+                    }
+                }
+            }
+        }
+        for sensor in sensors.values() {
+            let o1 = &sensor.id;
+            for (o2, tags) in sensor.returns.iter() {
+                for tag in tags {
+                    let (i1, i2) = tag_map.get(tag).unwrap();
+                    let stateless = watched_tags
+                        .get(tag)
+                        .map(|hook_ids| hook_ids.contains(&i1))
+                        .unwrap_or(false);
+                    if edges_to_add.data_edge_index(stateless, o1, o2, i1, i2).is_some() {
+                        edges_to_add.remove_data_edge(stateless, o1, o2, i1, i2);
+                    } else {
+                        edges_to_remove.add_data_edge(stateless, o1, o2, i1, i2);
+                    }
+                }
+            }
+        }
+        (edges_to_add, edges_to_remove)
+    };
+
+    {
+        let mut modules = controller.runner.hooks.lock().unwrap();
+        let mut sensors = controller.sensors.lock().unwrap();
+        for (o1, map) in edges_to_remove.data.into_iter() {
+            for (o2, array) in map.into_iter() {
+                for (stateless, i1, i2) in array.into_iter() {
+                    warn!("unimplemented: remove data edge {} {}.{} -> {}.{}",
+                        stateless, o1, o2, i1, i2);
+                }
+            }
+        }
+        for (o1, map) in edges_to_remove.state.into_iter() {
+            for (o2, array) in map.into_iter() {
+                for (i1, i2) in array.into_iter() {
+                    warn!("unimplemented: remove state edge {}.{} -> {}.{}",
+                        o1, o2, i1, i2);
+                }
+            }
+        }
+        for (o1, map) in edges_to_add.data.into_iter() {
+            for (o2, array) in map.into_iter() {
+                for (stateless, i1, i2) in array.into_iter() {
+                    if let Err(e) = controller.add_data_edge(
+                        stateless, o1.clone(), o2.clone(), i1, i2,
+                        &mut modules, &mut sensors,
+                    ) {
+                        error!("error adding data edge: {:?}", e);
+                        return Status::BadRequest;
+                    }
+                }
+            }
+        }
+        for (o1, map) in edges_to_add.state.into_iter() {
+            for (o2, array) in map.into_iter() {
+                for (i1, i2) in array.into_iter() {
+                    if let Err(e) = controller.add_state_edge(
+                        o1.clone(), o2.clone(), i1, i2,
+                        &mut modules, &mut sensors,
+                    ) {
+                        error!("error adding state edge: {:?}", e);
+                        return Status::BadRequest;
+                    }
+                }
             }
         }
     }
 
-    {
+    let (intervals_to_add, intervals_to_remove) = {
+        let mut modules = controller.runner.hooks.lock().unwrap();
         // Set module network edges
         for module in modules.values_mut() {
             module.network_perm = vec![];
@@ -282,21 +488,20 @@ pub fn save_graph(
                 }
             }
         }
+        (intervals_to_add, intervals_to_remove)
+    };
 
-        for module_id in intervals_to_remove {
-            // TODO: remove interval
-            warn!("unimplemented: remove interval {}", module_id);
-        }
-        for (module_id, duration) in intervals_to_add {
-            if let Err(e) = HookRunner::set_interval(
-                hook_tx.inner().clone(),
-                &mut modules,
-                module_id.to_string(),
-                duration,
-            ) {
-                error!("error setting interval {}: {:?}", module_id, e);
-                return Status::BadRequest;
-            }
+    for module_id in intervals_to_remove {
+        // TODO: remove interval
+        warn!("unimplemented: remove interval {}", module_id);
+    }
+    for (module_id, duration) in intervals_to_add {
+        if let Err(e) = controller.runner.set_interval(
+            module_id.to_string(),
+            duration,
+        ) {
+            error!("error setting interval {}: {:?}", module_id, e);
+            return Status::BadRequest;
         }
     }
 
@@ -304,8 +509,13 @@ pub fn save_graph(
 }
 
 #[post("/module/<id>")]
-pub fn spawn_module(id: String) -> Status {
-    Status::NotImplemented
+pub fn spawn_module(
+    id: String,
+    controller: State<Arc<Mutex<Controller>>>,
+) -> Status {
+    // controller.lock().unwrap().runner.spawn_module_id(id).await.unwrap();
+    // Status:: Ok
+    unimplemented!()
 }
 
 #[allow(non_snake_case)]

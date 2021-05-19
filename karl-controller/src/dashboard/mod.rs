@@ -1,27 +1,19 @@
 //! Controller dashboard.
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
-use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use rocket_contrib::serve::StaticFiles;
-use karl_common::*;
-use crate::controller::{QueuedHook, HostScheduler};
+use crate::controller::Controller;
 
 mod endpoint;
 
-pub fn start(
-    hosts: Arc<Mutex<HostScheduler>>,
-    sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
-    modules: Arc<Mutex<HashMap<HookID, Hook>>>,
-    watched_tags: Arc<RwLock<HashMap<String, Vec<HookID>>>>,
-    hook_tx: mpsc::Sender<QueuedHook>,
-) {
+pub fn start(controller: Controller) {
+    let hosts = controller.scheduler.clone();
+    let sensors = controller.sensors.clone();
+    let controller = Arc::new(Mutex::new(controller));
     tokio::spawn(async move {
         rocket::ignite()
         .manage(hosts)
         .manage(sensors)
-        .manage(modules)
-        .manage(watched_tags)
-        .manage(hook_tx)
+        .manage(controller)
         .mount("/", StaticFiles::from("../karl-ui/dist"))
         .mount("/", routes![
             endpoint::get_graph,

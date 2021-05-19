@@ -16,7 +16,6 @@ use tonic::{Request, Response, Status, Code};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
-use crate::dashboard;
 use karl_common::*;
 
 pub fn to_status(e: Error) -> Status {
@@ -28,20 +27,21 @@ pub fn to_status(e: Error) -> Status {
 
 /// Controller used for discovering available Karl services and coordinating
 /// client requests among available services.
+#[derive(Clone)]
 pub struct Controller {
-    karl_path: PathBuf,
+    pub karl_path: PathBuf,
     /// Data structure for adding and allocating hosts
-    scheduler: Arc<Mutex<HostScheduler>>,
+    pub scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
-    data_sink: Arc<RwLock<DataSink>>,
+    pub data_sink: Arc<RwLock<DataSink>>,
     /// Data structure for queueing and spawning processes from hooks.
-    runner: HookRunner,
+    pub runner: HookRunner,
     /// Map from client token to client.
     ///
     /// Unique identifier for the sensor, known only by the controller
     /// and the sensor itself. Generated on registration. All host
     /// requests from the sensor to the controller must include this token.
-    sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
+    pub sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
     /// Sender channels to forward state changes to the sender's
     /// streaming connection.
     state: Arc<RwLock<HashMap<SensorID, mpsc::Sender<StateChangePair>>>>,
@@ -291,21 +291,25 @@ impl karl_controller_server::KarlController for Controller {
         let mut hooks = self.runner.hooks.lock().unwrap();
         self.clear_graph(&mut hooks);
         for data_edge in req.data_edges {
-            self.add_data_edge(data_edge, &mut hooks, &mut sensors)?;
+            self.add_data_edge(
+                data_edge.stateless,
+                data_edge.out_id, data_edge.out_return,
+                data_edge.in_id, data_edge.in_param,
+                &mut hooks, &mut sensors,
+            )?;
         }
         for state_edge in req.state_edges {
-            self.add_state_edge(state_edge, &mut hooks, &sensors)?;
+            self.add_state_edge(
+                state_edge.out_id, state_edge.out_return,
+                state_edge.sensor_id, state_edge.sensor_key,
+                &mut hooks, &sensors,
+            )?;
         }
         for network_edge in req.network_edges {
             self.add_network_edge(network_edge, &mut hooks)?;
         }
         for interval in req.intervals {
-            let tx = self.runner.tx.as_ref().unwrap().clone();
-            HookRunner::set_interval(
-                tx, &mut hooks,
-                interval.module_id,
-                interval.seconds,
-            )?;
+            self.runner.set_interval(interval.module_id, interval.seconds)?;
         }
         Ok(Response::new(()))
     }
@@ -334,13 +338,8 @@ impl Controller {
         }
     }
 
-    /// Initializes sensors based on the `<KARL_PATH>/clients.txt` file and
-    /// starts the web dashboard.
-    pub async fn start(
-        &mut self,
-        use_dashboard: bool,
-        port: u16,
-    ) -> Result<(), Error> {
+    /// Initializes sensors based on the `<KARL_PATH>/clients.txt` file.
+    pub async fn start(&mut self, port: u16) -> Result<(), Error> {
         // Make the karl path if it doesn't already exist.
         fs::create_dir_all(&self.karl_path).unwrap();
 
@@ -379,16 +378,6 @@ impl Controller {
         }
         */
 
-        // Start the dashboard.
-        if use_dashboard {
-            dashboard::start(
-                self.scheduler.clone(),
-                self.sensors.clone(),
-                self.runner.hooks.clone(),
-                self.runner.watched_tags.clone(),
-                self.runner.tx.as_ref().unwrap().clone(),
-            );
-        }
         // Start the hook runner.
         self.runner.start(self.scheduler.clone(), false);
 
@@ -404,7 +393,7 @@ impl Controller {
     /// IoError if error importing hook from filesystem.
     /// HookInstallError if environment variables are formatted incorrectly.
     /// AuthError if not a valid client token.
-    fn register_hook(
+    pub fn register_hook(
         &self,
         _token: &SensorToken,
         global_hook_id: String,
@@ -421,8 +410,7 @@ impl Controller {
         // }
 
         // Register the hook.
-        HookRunner::register_hook(
-            &mut self.runner.hooks.lock().unwrap(),
+        self.runner.register_hook(
             global_hook_id.clone(),
             global_hook_id, // TODO: local id
         )
@@ -525,17 +513,21 @@ impl Controller {
     /// then tell the runner to watch the tag.
     ///
     /// Updates how new data labels are assigned relative to the new graph.
-    fn add_data_edge(
+    pub fn add_data_edge(
         &self,
-        req: DataEdge,
+        stateless: bool,
+        out_id: String,
+        out_return: String,
+        in_id: String,
+        in_param: String,
         hooks: &mut HashMap<HookID, Hook>,
         sensors: &mut HashMap<SensorToken, Client>,
     ) -> Result<(), Status> {
         debug!("data_edge {}.{} -> {}.{} stateless={}",
-            req.out_id, req.out_return, req.in_id, req.in_param, req.stateless);
+            out_id, out_return, in_id, in_param, stateless);
         // assign a tag name to the input node, if it doesn't already have one.
-        let tag = if let Some(in_module) = hooks.get_mut(&req.in_id) {
-            if let Some(maybe_tag) = in_module.params.get_mut(&req.in_param) {
+        let tag = if let Some(in_module) = hooks.get_mut(&in_id) {
+            if let Some(maybe_tag) = in_module.params.get_mut(&in_param) {
                 if maybe_tag.is_none() {
                     *maybe_tag = Some(self.runner.next_tag());
                 }
@@ -550,8 +542,8 @@ impl Controller {
         };
 
         // add that tag name to the output node.
-        if let Some(out_module) = hooks.get_mut(&req.out_id) {
-            if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
+        if let Some(out_module) = hooks.get_mut(&out_id) {
+            if let Some(out_tags) = out_module.returns.get_mut(&out_return) {
                 out_tags.push(tag.to_string());
             } else {
                 error!("output module does not have output return name");
@@ -561,8 +553,8 @@ impl Controller {
             // maybe a sensor
             let mut changed = false;
             for (_, sensor) in sensors.iter_mut() {
-                if sensor.id == req.out_id {
-                    if let Some(out_tags) = sensor.returns.get_mut(&req.out_return) {
+                if sensor.id == out_id {
+                    if let Some(out_tags) = sensor.returns.get_mut(&out_return) {
                         out_tags.push(tag.to_string());
                     } else {
                         error!("output sensor does not have output return name");
@@ -579,8 +571,8 @@ impl Controller {
         }
 
         // if the edge is stateless, tell the runner to watch that tag.
-        if req.stateless {
-            self.runner.watch_tag(req.in_id, tag.to_string());
+        if stateless {
+            self.runner.watch_tag(in_id, tag.to_string());
         }
         Ok(())
     }
@@ -589,20 +581,23 @@ impl Controller {
     /// node.
     ///
     /// Updates how new data labels are assigned relative to the new graph.
-    fn add_state_edge(
+    pub fn add_state_edge(
         &self,
-        req: StateEdge,
+        out_id: String,
+        out_return: String,
+        sensor_id: String,
+        sensor_key: String,
         hooks: &mut HashMap<HookID, Hook>,
         sensors: &HashMap<SensorToken, Client>,
     ) -> Result<(), Status> {
         debug!("state_edge {}.{} -> {}.{}",
-            req.out_id, req.out_return, req.sensor_id, req.sensor_key);
+            out_id, out_return, sensor_id, sensor_key);
         // check that the sensor has that key
         if let Some(sensor) = sensors.iter()
                 .map(|(_, sensor)| sensor)
-                .filter(|sensor| sensor.id == req.sensor_id)
+                .filter(|sensor| sensor.id == sensor_id)
                 .next() {
-            if !sensor.keys.contains(&req.sensor_key) {
+            if !sensor.keys.contains(&sensor_key) {
                 error!("sensor does not have input key {:?}", sensor.keys);
                 return Ok(());
             }
@@ -612,9 +607,9 @@ impl Controller {
         }
 
         // add the state tag to the output module
-        if let Some(out_module) = hooks.get_mut(&req.out_id) {
-            let state_tag = format!("#{}.{}", req.sensor_id, req.sensor_key);
-            if let Some(out_tags) = out_module.returns.get_mut(&req.out_return) {
+        if let Some(out_module) = hooks.get_mut(&out_id) {
+            let state_tag = format!("#{}.{}", sensor_id, sensor_key);
+            if let Some(out_tags) = out_module.returns.get_mut(&out_return) {
                 out_tags.push(state_tag);
             } else {
                 error!("output module does not have output return name");
