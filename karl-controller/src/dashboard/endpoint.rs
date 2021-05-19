@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
+use tokio::sync::mpsc;
 use karl_common::*;
-use crate::controller::{HookRunner, HostScheduler};
+use crate::controller::{QueuedHook, HookRunner, HostScheduler};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -185,6 +186,7 @@ pub fn save_graph(
     sensors: State<Arc<Mutex<HashMap<SensorToken, Client>>>>,
     modules: State<Arc<Mutex<HashMap<HookID, Hook>>>>,
     watched_tags: State<Arc<RwLock<HashMap<String, Vec<HookID>>>>>,
+    hook_tx: State<mpsc::Sender<QueuedHook>>,
 ) -> Status {
     info!("save_graph");
     info!("{:?}", graph);
@@ -193,7 +195,29 @@ pub fn save_graph(
     let mut modules = modules.lock().unwrap();
     let mut watched_tags = watched_tags.write().unwrap();
 
+    // entity ID, input names, output names
+    let mut entity_map: HashMap<u32, (String, Vec<String>, Vec<String>)> = HashMap::new();
+    for i in 0..graph.sensors.len() {
+        let index = i as u32;
+        let sensor = graph.sensors.get(i).unwrap();
+        let inputs: Vec<_> = sensor.stateKeys.iter()
+            .map(|(key, _)| format!("#{}.{}", sensor.id, key)).collect();
+        let outputs: Vec<_> = sensor.returns.iter()
+            .map(|(ret, _)| ret.to_string()).collect();
+        entity_map.insert(index, (sensor.id.to_string(), inputs, outputs));
+    }
+    for i in 0..graph.moduleIds.len() {
+        let index = (i + graph.sensors.len()) as u32;
+        let module = graph.moduleIds.get(i).unwrap();
+        let inputs: Vec<_> = module.params.iter()
+            .map(|param| format!("#{}.{}", module.localId, param)).collect();
+        let outputs: Vec<_> = module.returns.iter()
+            .map(|ret| ret.to_string()).collect();
+        entity_map.insert(index, (module.localId.to_string(), inputs, outputs));
+    }
+
     {
+        // Register the same modules
         let new_modules: HashMap<_, _> =
             graph.moduleIds.drain(..).map(|m| (m.localId, m.globalId)).collect();
         let modules_to_remove: Vec<_> = modules.keys()
@@ -226,7 +250,56 @@ pub fn save_graph(
             }
         }
     }
-    // Status::NotImplemented
+
+    {
+        // Set module network edges
+        for module in modules.values_mut() {
+            module.network_perm = vec![];
+        }
+        for (module_index, domain) in graph.networkEdges.drain(..) {
+            let (module_id, _, _) = entity_map.get(&module_index).unwrap();
+            modules.get_mut(module_id).unwrap().network_perm.push(domain);
+        }
+
+        // Set module intervals
+        let mut intervals_to_add = graph.intervals.drain(..)
+            .map(|(module_index, seconds)| {
+                let (module_id, _, _) = entity_map.get(&module_index).unwrap();
+                (module_id.to_string(), seconds)
+            })
+            .collect::<HashMap<_, _>>();
+        let mut intervals_to_remove: Vec<String> = vec![];
+        for (module_id, module) in modules.iter() {
+            if let Some(old_duration) = module.interval {
+                if let Some(new_duration) = intervals_to_add.get(module_id) {
+                    if old_duration == *new_duration {
+                        intervals_to_add.remove(module_id);
+                    } else {
+                        intervals_to_remove.push(module_id.to_string());
+                    }
+                } else {
+                    intervals_to_remove.push(module_id.to_string());
+                }
+            }
+        }
+
+        for module_id in intervals_to_remove {
+            // TODO: remove interval
+            warn!("unimplemented: remove interval {}", module_id);
+        }
+        for (module_id, duration) in intervals_to_add {
+            if let Err(e) = HookRunner::set_interval(
+                hook_tx.inner().clone(),
+                &mut modules,
+                module_id.to_string(),
+                duration,
+            ) {
+                error!("error setting interval {}: {:?}", module_id, e);
+                return Status::BadRequest;
+            }
+        }
+    }
+
     Status::Ok
 }
 

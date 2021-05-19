@@ -2,20 +2,21 @@ use std::sync::{Arc, Mutex, RwLock, atomic::AtomicUsize};
 use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use std::time::Instant;
+use tonic::{Status, Code};
 use tokio::time::{self, Duration};
 use crate::controller::HostScheduler;
 use crate::protos::ComputeRequest;
 use karl_common::*;
 
 #[derive(Debug)]
-struct QueuedHook {
+pub struct QueuedHook {
     id: HookID,
     /// Tag, timestamp, data
     trigger: Option<(String, String, Vec<u8>)>,
 }
 
 pub struct HookRunner {
-    tx: Option<mpsc::Sender<QueuedHook>>,
+    pub(crate) tx: Option<mpsc::Sender<QueuedHook>>,
     /// Registered hooks and their local hook IDs.
     pub(crate) hooks: Arc<Mutex<HashMap<HookID, Hook>>>,
     pub(crate) tag_counter: Arc<Mutex<AtomicUsize>>,
@@ -164,19 +165,35 @@ impl HookRunner {
         // to cancel them if necessary.
     }
 
-    pub fn set_interval(&self, hook_id: HookID, duration: Duration) {
-        let tx = self.tx.as_ref().unwrap().clone();
-        tokio::spawn(async move {
-            let mut interval = time::interval(duration);
-            loop {
-                interval.tick().await;
-                warn!("start true_pipeline: {:?}", Instant::now());
-                tx.send(QueuedHook{
-                    id: hook_id.clone(),
-                    trigger: None,
-                }).await.unwrap();
+    pub fn set_interval(
+        tx: mpsc::Sender<QueuedHook>,
+        hooks: &mut HashMap<HookID, Hook>,
+        module_id: HookID,
+        seconds: u32,
+    ) -> Result<(), Status> {
+        if let Some(hook) = hooks.get_mut(&module_id) {
+            if let Some(interval) = hook.interval {
+                error!("module {} already has an interval set: {}", module_id, interval);
+                Err(Status::new(Code::InvalidArgument, "interval already set"))
+            } else {
+                hook.interval = Some(seconds);
+                let duration = Duration::from_secs(seconds.into());
+                tokio::spawn(async move {
+                    let mut interval = time::interval(duration);
+                    loop {
+                        interval.tick().await;
+                        warn!("start true_pipeline: {:?}", Instant::now());
+                        tx.send(QueuedHook{
+                            id: module_id.clone(),
+                            trigger: None,
+                        }).await.unwrap();
+                    }
+                });
+                Ok(())
             }
-        });
+        } else {
+            Err(Status::new(Code::NotFound, "module id not found"))
+        }
     }
 
     pub fn watch_tag(&self, hook_id: HookID, tag: String) {

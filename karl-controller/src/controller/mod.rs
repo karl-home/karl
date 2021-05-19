@@ -3,7 +3,7 @@ mod data;
 mod runner;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
-pub use runner::HookRunner;
+pub use runner::{QueuedHook, HookRunner};
 
 use std::collections::{HashSet, HashMap};
 use std::path::PathBuf;
@@ -300,7 +300,12 @@ impl karl_controller_server::KarlController for Controller {
             self.add_network_edge(network_edge, &mut hooks)?;
         }
         for interval in req.intervals {
-            self.add_interval(interval, &mut hooks)?;
+            let tx = self.runner.tx.as_ref().unwrap().clone();
+            HookRunner::set_interval(
+                tx, &mut hooks,
+                interval.module_id,
+                interval.seconds,
+            )?;
         }
         Ok(Response::new(()))
     }
@@ -381,6 +386,7 @@ impl Controller {
                 self.sensors.clone(),
                 self.runner.hooks.clone(),
                 self.runner.watched_tags.clone(),
+                self.runner.tx.as_ref().unwrap().clone(),
             );
         }
         // Start the hook runner.
@@ -628,26 +634,6 @@ impl Controller {
         if let Some(hook) = hooks.get_mut(&req.module_id) {
             hook.network_perm.push(req.domain);
             Ok(())
-        } else {
-            Err(Status::new(Code::NotFound, "module id not found"))
-        }
-    }
-
-    /// Set a module to be spawned at a regular interval.
-    fn add_interval(
-        &self, req: Interval, hooks: &mut HashMap<HookID, Hook>,
-    ) -> Result<(), Status> {
-        debug!("interval {} = {}s", req.module_id, req.seconds);
-        if let Some(hook) = hooks.get_mut(&req.module_id) {
-            if let Some(interval) = hook.interval {
-                error!("module {} already has an interval set: {}", req.module_id, interval);
-                Err(Status::new(Code::InvalidArgument, "interval already set"))
-            } else {
-                hook.interval = Some(req.seconds);
-                let duration = std::time::Duration::from_secs(req.seconds.into());
-                self.runner.set_interval(req.module_id, duration);
-                Ok(())
-            }
         } else {
             Err(Status::new(Code::NotFound, "module id not found"))
         }
