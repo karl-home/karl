@@ -7,7 +7,7 @@ use std::time::{Instant, Duration};
 
 use tokio;
 use clap::{Arg, App};
-use karl_module_sdk::KarlSensorSDK;
+use karl_sensor_sdk::KarlSensorSDK;
 
 /// Register the sensor with the controller.
 ///
