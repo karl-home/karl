@@ -16,7 +16,7 @@ tokio = { version = "1.4", features = ["rt", "macros", "sync", "time", "rt-multi
 tokio-stream = { version =  "0.1", features = ["net"] }
 clap = "2.33.3"
 rand = "0.8"
-rocket = "0.4.6"
+rocket = "0.4.9"
 handlebars = "1.0"
 reqwest = { version = "0.11", features = ["blocking"] }
 tonic = "0.4"
@@ -25,9 +25,9 @@ chrono = "0.4"
 karl-common = { path = "../karl-common" }
 
 [dependencies.rocket_contrib]
-version = "0.4.6"
+version = "0.4.9"
 default-features = false
-features = ["handlebars_templates", "serve", "json"]
+features = ["serve", "json"]
 
 [build-dependencies]
 tonic-build = "0.4"
