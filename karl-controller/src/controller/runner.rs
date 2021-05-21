@@ -1,8 +1,7 @@
-use std::sync::{Arc, Mutex, RwLock, atomic::AtomicUsize};
+use std::sync::{Arc, Mutex, RwLock};
 use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use std::time::Instant;
-use tonic::{Status, Code};
 use tokio::time::{self, Duration};
 use karl_common::*;
 use crate::controller::HostScheduler;
@@ -26,8 +25,6 @@ struct QueuedModule {
 #[derive(Clone)]
 pub struct Runner {
     tx: Option<mpsc::Sender<QueuedModule>>,
-    /// Registered modules and their local module IDs.
-    modules: Arc<Mutex<Modules>>,
     /// Watched tags and the modules they spawn.
     watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     /// Wether to include triggered data in the request.
@@ -46,15 +43,15 @@ pub struct ModuleConfig {
 
 #[derive(Default, Clone)]
 pub struct Modules {
-    tag_counter: Arc<Mutex<AtomicUsize>>,
+    tag_counter: usize,
     modules: HashMap<ModuleID, Module>,
     tags_inner: HashMap<ModuleID, Tags>,
     config_inner: HashMap<ModuleID, ModuleConfig>,
 }
 
 impl ModuleConfig {
-    pub fn add_network_perm(&mut self, domain: &str) {
-        self.network_perm.insert(domain.to_string());
+    pub fn set_network_perm(&mut self, domains: Vec<String>) {
+        self.network_perm = domains.into_iter().collect();
     }
 
     pub fn get_network_perms(&self) -> &HashSet<String> {
@@ -92,11 +89,31 @@ impl Modules {
         }
     }
 
-    pub fn next_tag(&self) -> String {
-        let mut tag_counter = self.tag_counter.lock().unwrap();
-        let tag = tag_counter.get_mut();
-        let old_tag = *tag;
-        *tag = old_tag + 1;
+    /// Removes the module. Checks if all outgoing edges are removed, and
+    /// that the network edges and intervals are reset, but does not check
+    /// incoming edges or watched tags.
+    pub fn remove_module(&mut self, module_id: StringID) -> Result<(), Error> {
+        if let Some(module) = self.modules.remove(&module_id) {
+            let tags = self.tags_inner.remove(&module_id).unwrap();
+            let config = self.config_inner.remove(&module_id).unwrap();
+            for output in module.returns {
+                if !tags.get_output_tags(&output)?.is_empty() {
+                    return Err(Error::BadRequest);
+                }
+            }
+            if config.interval.is_some() || !config.network_perm.is_empty() {
+                Err(Error::BadRequest)
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(Error::NotFound)
+        }
+    }
+
+    pub fn next_tag(&mut self) -> String {
+        let old_tag = self.tag_counter;
+        self.tag_counter = old_tag + 1;
         format!("t{}", old_tag)
     }
 
@@ -112,59 +129,41 @@ impl Modules {
         self.modules.contains_key(id)
     }
 
-    pub fn tags(&self, id: &ModuleID) -> Result<&Tags, Status> {
+    pub fn tags(&self, id: &ModuleID) -> Result<&Tags, Error> {
         if let Some(tags) = self.tags_inner.get(id) {
             Ok(tags)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "module {} does not exist", id)))
+            debug!("module {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn tags_mut(&mut self, id: &ModuleID) -> Result<&mut Tags, Status> {
+    pub fn tags_mut(&mut self, id: &ModuleID) -> Result<&mut Tags, Error> {
         if let Some(tags) = self.tags_inner.get_mut(id) {
             Ok(tags)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "module {} does not exist", id)))
+            debug!("module {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn config(&self, id: &ModuleID) -> Result<&ModuleConfig, Status> {
+    pub fn config(&self, id: &ModuleID) -> Result<&ModuleConfig, Error> {
         if let Some(config) = self.config_inner.get(id) {
             Ok(config)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "module {} does not exist", id)))
+            debug!("module {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn config_mut(&mut self, id: &ModuleID) -> Result<&mut ModuleConfig, Status> {
+    pub fn config_mut(&mut self, id: &ModuleID) -> Result<&mut ModuleConfig, Error> {
         if let Some(config) = self.config_inner.get_mut(id) {
             Ok(config)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "module {} does not exist", id)))
+            debug!("module {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
-
-    // @params map from `module_id` to global_module_id` of desired modules
-    // @returns module ids of modules_to_remove and modules_to_add
-    pub fn delta(
-        &self,
-        new_modules: HashMap<ModuleID, GlobalModuleID>,
-    ) -> (Vec<ModuleID>, Vec<ModuleID>) {
-        let modules_to_remove: Vec<_> = self.modules.keys()
-            .filter(|&m| !new_modules.contains_key(m))
-            .map(|m| m.to_string())
-            .collect();
-        let modules_to_add: Vec<_> = new_modules.keys()
-            .filter(|&m| !self.modules.contains_key(m))
-            .map(|m| m.to_string())
-            .collect();
-        (modules_to_remove, modules_to_add)
-    }
-
 
     /// Converts the module to a protobuf compute request.
     ///
@@ -175,7 +174,7 @@ impl Modules {
         module_id: String,
         host_token: HostToken,
         cached: bool,
-    ) -> Result<ComputeRequest, Status> {
+    ) -> Result<ComputeRequest, Error> {
         let module = self.get_module(&module_id).unwrap();
         let config = self.config(&module_id)?;
         let package = if cached {
@@ -214,12 +213,10 @@ impl Runner {
     /// Create a new Runner.
     pub fn new(
         pubsub_enabled: bool,
-        modules: Arc<Mutex<Modules>>,
         watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     ) -> Self {
         Self {
             tx: None,
-            modules,
             watched_tags,
             pubsub_enabled,
         }
@@ -229,13 +226,13 @@ impl Runner {
     /// are read to be scheduled. Add modules to the queue via `queue_module()`.
     pub fn start(
         &mut self,
+        modules: Arc<Mutex<Modules>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
         let buffer = 100;  // TODO: tune
         let (tx, rx) = mpsc::channel::<QueuedModule>(buffer);
         self.tx = Some(tx);
-        let modules = self.modules.clone();
         tokio::spawn(async move {
             Self::start_queue_manager(
                 rx,
@@ -246,46 +243,32 @@ impl Runner {
         });
     }
 
-    // fn remove_module(&self, module_id: StringID) -> Result<(), Error> {
-    //     let mut modules = self.modules.lock().unwrap();
-    //     if let Some(_) = modules.remove(&module_id) {
-    //         let mut tags = 0;
-    //         for module_ids in self.watched_tags.write().unwrap().values_mut() {
-    //             let indexes = module_ids
-    //                 .iter()
-    //                 .enumerate()
-    //                 .filter(|(_, id)| *id == &module_id)
-    //                 .map(|(index, _)| index)
-    //                 .collect::<Vec<_>>();
-    //             for index in indexes {
-    //                 module_ids.remove(index);
-    //                 tags += 1;
-    //             }
-    //         }
-    //         info!("removed module {} with {} tags", &module_id, tags);
-    //         Ok(())
-    //     } else {
-    //         error!("cannot remove module, does not exist: {}", module_id);
-    //         Err(Error::NotFound)
-    //     }
-    // }
-
-    // pub fn clear_intervals(&self) {
-    //     // TODO: keep handles for every interval schedule and be able
-    //     // to cancel them if necessary.
-    // }
+    fn remove_interval(
+        &self,
+        module_id: &ModuleID,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
+        if let Some((_, abort_handle)) = &modules.config(module_id)?.interval {
+            abort_handle.abort();
+        } else {
+            error!("module {} does not have an interval", module_id);
+            return Err(Error::InvalidArgument);
+        }
+        modules.config_mut(module_id)?.interval = None;
+        Ok(())
+    }
 
     pub fn set_interval(
         &self,
         module_id: ModuleID,
-        seconds: u32,
-    ) -> Result<(), Status> {
+        seconds: Option<u32>,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
         let tx = self.tx.as_ref().unwrap().clone();
-        let mut modules = self.modules.lock().unwrap();
-        if let Some((duration, _)) = modules.config(&module_id)?.interval {
-            error!("module {} already has an interval set: {}", module_id, duration);
-            Err(Status::new(Code::InvalidArgument, "interval already set"))
-        } else {
+        if modules.config(&module_id)?.interval.is_some() {
+            self.remove_interval(&module_id, modules)?;
+        }
+        if let Some(seconds) = seconds {
             let duration = Duration::from_secs(seconds.into());
             let config = modules.config_mut(&module_id)?;
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
@@ -302,8 +285,8 @@ impl Runner {
             }, abort_registration);
             tokio::spawn(async move { future.await });
             config.set_interval(seconds, abort_handle);
-            Ok(())
         }
+        Ok(())
     }
 
     pub fn watch_tag(&self, module_id: ModuleID, tag: String) {
@@ -311,6 +294,20 @@ impl Runner {
             .entry(tag)
             .or_insert(vec![])
             .push(module_id.clone());
+    }
+
+    pub fn unwatch_tag(&self, module_id: ModuleID, tag: &String) -> Result<(), Error> {
+        let mut watched_tags = self.watched_tags.write().unwrap();
+        if let Some(module_ids) = watched_tags.get_mut(tag) {
+            if let Some(index) = module_ids.iter().position(|id| id == &module_id) {
+                module_ids.remove(index);
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
+        } else {
+            Err(Error::NotFound)
+        }
     }
 
     pub async fn spawn_module_if_watched(

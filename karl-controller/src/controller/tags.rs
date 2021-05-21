@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use tonic::{Status, Code};
 use itertools::Itertools;
 use crate::controller::sensors::Sensor;
 use karl_common::*;
@@ -43,36 +42,55 @@ impl Tags {
         self.outputs.contains_key(output)
     }
 
-    pub fn get_output_tags(&self, output: &Output) -> Result<&Vec<Tag>, Status> {
+    pub fn get_output_tags(&self, output: &Output) -> Result<&Vec<Tag>, Error> {
         if let Some(tags) = self.outputs.get(output) {
             Ok(tags)
         } else {
-            Err(Status::new(Code::NotFound, format!("output {} does not exist", output)))
+            debug!("output {} does not exist", output);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn add_output_tag(&mut self, output: &Output, tag: &Tag) -> Result<(), Status> {
+    pub fn add_output_tag(&mut self, output: &Output, tag: &Tag) -> Result<(), Error> {
         if let Some(tags) = self.outputs.get_mut(output) {
             if !tags.contains(tag) {
                 tags.push(tag.to_string());
                 Ok(())
             } else {
-                Err(Status::new(Code::AlreadyExists, format!("tag {} already exists", tag)))
+                debug!("tag {} already exists", tag);
+                Err(Error::AlreadyExists)
             }
         } else {
-            Err(Status::new(Code::NotFound, format!("output {} does not exist", output)))
+            debug!("output {} does not exist", output);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn get_input_tag(&self, input: &Output) -> Result<&Option<Tag>, Status> {
+    pub fn remove_output_tag(&mut self, output: &Output, tag: &Tag) -> Result<(), Error> {
+        if let Some(tags) = self.outputs.get_mut(output) {
+            if let Some(index) = tags.iter().position(|t| t == tag) {
+                tags.remove(index);
+                Ok(())
+            } else {
+                debug!("tag {} already exists", tag);
+                Err(Error::AlreadyExists)
+            }
+        } else {
+            debug!("output {} does not exist", output);
+            Err(Error::NotFound)
+        }
+    }
+
+    pub fn get_input_tag(&self, input: &Output) -> Result<&Option<Tag>, Error> {
         if let Some(tag) = self.inputs.get(input) {
             Ok(tag)
         } else {
-            Err(Status::new(Code::NotFound, format!("input {} does not exist", input)))
+            debug!("input {} does not exist", input);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn set_input_tag(&mut self, input: &Output, tag: &Tag) -> Result<(), Status> {
+    pub fn set_input_tag(&mut self, input: &Output, tag: &Tag) -> Result<(), Error> {
         if let Some(current_tag) = self.inputs.get_mut(input) {
             if current_tag.is_some() {
                 warn!("replacing current tag {:?} with {}", current_tag, tag);
@@ -80,7 +98,8 @@ impl Tags {
             *current_tag = Some(tag.to_string());
             Ok(())
         } else {
-            Err(Status::new(Code::NotFound, format!("input {} does not exist", input)))
+            debug!("input {} does not exist", input);
+            Err(Error::NotFound)
         }
     }
 

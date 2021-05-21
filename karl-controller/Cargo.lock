@@ -929,6 +929,7 @@ dependencies = [
  "rand 0.8.2",
  "serde",
  "tar",
+ "tonic",
 ]
 
 [[package]]

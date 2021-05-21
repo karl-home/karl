@@ -4,6 +4,7 @@ use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
 use crate::controller::{Controller, HostScheduler};
+use karl_common::Error;
 use super::graph::*;
 
 #[get("/graph")]
@@ -13,16 +14,70 @@ pub fn get_graph(
     Json(GraphJson::new(&controller.lock().unwrap()))
 }
 
+fn apply_deltas(
+    c: &mut Controller,
+    deltas: Vec<Delta>,
+) -> Result<(), Error> {
+    let mut modules = c.modules.lock().unwrap();
+    let mut sensors = c.sensors.lock().unwrap();
+    for delta in deltas {
+        match delta {
+        Delta::AddModule { global_id, id } => {
+            c.add_module(&global_id, &id, &mut modules)?;
+        }
+        Delta::RemoveModule { id } => {
+            c.remove_module(id, &mut modules)?;
+        }
+        Delta::AddDataEdge { stateless, src_id, src_name, dst_id, dst_name } => {
+            c.add_data_edge(
+                stateless, src_id, src_name, dst_id, dst_name,
+                &mut modules, &mut sensors,
+            )?;
+        }
+        Delta::RemoveDataEdge { stateless, src_id, src_name, dst_id, dst_name } => {
+            c.remove_data_edge(
+                stateless, src_id, src_name, dst_id, dst_name,
+                &mut modules, &mut sensors,
+            )?;
+        }
+        Delta::AddStateEdge { src_id, src_name, dst_id, dst_name } => {
+            c.add_state_edge(
+                src_id, src_name, dst_id, dst_name,
+                &mut modules, &sensors,
+            )?;
+        }
+        Delta::RemoveStateEdge { src_id, src_name, dst_id, dst_name } => {
+            c.remove_state_edge(
+                src_id, src_name, dst_id, dst_name,
+                &mut modules,
+            )?;
+        }
+        Delta::SetNetworkEdges { id, domains } => {
+            c.set_network_edges(id, domains, &mut modules)?;
+        }
+        Delta::SetInterval { id, duration } => {
+            c.set_interval(id, duration, &mut modules)?;
+        }
+        }
+    }
+    Ok(())
+}
+
 #[post("/graph", format = "json", data = "<graph>")]
 pub fn save_graph(
     graph: Json<GraphJson>,
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
-	let controller = controller.lock().unwrap();
-	let old_graph = GraphJson::new(&controller);
+	let mut c = controller.lock().unwrap();
+	let old_graph = GraphJson::new(&c);
 	let deltas = old_graph.calculate_delta(&graph);
-	debug!("{:?}", deltas);
-	Status::Ok
+    match apply_deltas(&mut c, deltas) {
+        Ok(()) => Status::Ok,
+        Err(e) => {
+            error!("error saving graph: {:?}", e);
+            Status::BadRequest
+        }
+    }
 }
 
 #[post("/module/<id>")]

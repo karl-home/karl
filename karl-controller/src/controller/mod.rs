@@ -189,8 +189,10 @@ impl karl_controller_server::KarlController for Controller {
         let req = req.into_inner();
         let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
-            let id = sensors.authenticate(&req.sensor_token)?.to_string();
-            let tags = sensors.tags(&id)?.get_output_tags(&req.param)?.clone();
+            let id = sensors.authenticate(&req.sensor_token)
+                .map_err(|e| e.to_tonic())?.to_string();
+            let tags = sensors.tags(&id).map_err(|e| e.to_tonic())?
+                .get_output_tags(&req.param).map_err(|e| e.to_tonic())?.clone();
             (id, tags.clone())
         };
         for tag in tags {
@@ -213,7 +215,9 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<Self::StateChangesStream>, Status> {
         let req = req.into_inner();
         let sensor_id = self.sensors.lock().unwrap()
-            .authenticate(&req.sensor_token)?.to_string();
+            .authenticate(&req.sensor_token)
+            .map_err(|e| e.to_tonic())?
+            .to_string();
 
         let (internal_tx, mut internal_rx) = mpsc::channel::<StateChangePair>(10);
         let (tx, rx) = mpsc::channel::<Result<StateChangePair, Status>>(10);
@@ -240,14 +244,13 @@ impl Controller {
         caching_enabled: bool,
         pubsub_enabled: bool,
     ) -> Self {
-        let modules = Arc::new(Mutex::new(Modules::default()));
         let watched_tags = Arc::new(RwLock::new(HashMap::new()));
         Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
-            runner: Runner::new(pubsub_enabled, modules.clone(), watched_tags.clone()),
-            modules,
+            runner: Runner::new(pubsub_enabled, watched_tags.clone()),
+            modules: Arc::new(Mutex::new(Modules::default())),
             watched_tags,
             sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
@@ -296,7 +299,7 @@ impl Controller {
         */
 
         // Start the hook runner.
-        self.runner.start(self.scheduler.clone(), false);
+        self.runner.start(self.modules.clone(), self.scheduler.clone(), false);
 
         info!("Karl controller listening on port {}", port);
         Ok(())
@@ -361,6 +364,33 @@ impl Controller {
         }
     }
 
+    pub fn add_module(
+        &self,
+        global_module_id: &String,
+        module_id: &String,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
+        debug!("add module {} ({})", module_id, global_module_id);
+        modules.add_module(global_module_id, module_id).map_err(|e| {
+            error!("error adding module: {:?}", e);
+            Error::BadRequest
+        })?;
+        Ok(())
+    }
+
+    /// Removes the module if all edges have been removed,
+    /// and all intervals and network edges have been removed.
+    pub fn remove_module(
+        &self,
+        module_id: String,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
+        debug!("remove module {}", module_id);
+        modules.remove_module(module_id)?;
+        Ok(())
+
+    }
+
     /// Assigns a tag name to the input node, if it doesn't already have one.
     /// Adds that tag name to the output node. If the output node is a sensor,
     /// track the return mapping for that output node. If the edge is stateless,
@@ -370,39 +400,79 @@ impl Controller {
     pub fn add_data_edge(
         &self,
         stateless: bool,
-        out_id: String,
-        out_return: String,
-        in_id: String,
-        in_param: String,
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
         modules: &mut Modules,
         sensors: &mut Sensors,
-    ) -> Result<(), Status> {
-        debug!("data_edge {}.{} -> {}.{} stateless={}",
-            out_id, out_return, in_id, in_param, stateless);
+    ) -> Result<(), Error> {
+        debug!("add data edge {}.{} -> {}.{} stateless={}",
+            src_id, src_name, dst_id, dst_name, stateless);
         // assign a tag name to the input node, if it doesn't already have one.
         let tag = {
-            if let Some(maybe_tag) = modules.tags_mut(&in_id)?.get_input_tag(&in_param)? {
+            if let Some(maybe_tag) = modules.tags_mut(&dst_id)?.get_input_tag(&dst_name)? {
                 maybe_tag.clone()
             } else {
                 let tag = modules.next_tag();
-                modules.tags_mut(&in_id)?.set_input_tag(&in_param, &tag)?;
+                modules.tags_mut(&dst_id)?.set_input_tag(&dst_name, &tag)?;
                 tag
             }
         };
 
         // add that tag name to the output node.
-        if modules.module_exists(&out_id) {
-            modules.tags_mut(&out_id)?.add_output_tag(&out_return, &tag)?;
-        } else if sensors.sensor_exists(&out_id) {
-            sensors.tags_mut(&out_id)?.add_output_tag(&out_return, &tag)?;
+        if modules.module_exists(&src_id) {
+            modules.tags_mut(&src_id)?.add_output_tag(&src_name, &tag)?;
+        } else if sensors.sensor_exists(&src_id) {
+            sensors.tags_mut(&src_id)?.add_output_tag(&src_name, &tag)?;
         } else {
             error!("output sensor nor module exists");
-            return Ok(());
+            return Err(Error::NotFound);
         }
 
         // if the edge is stateless, tell the runner to watch that tag.
         if stateless {
-            self.runner.watch_tag(in_id, tag.to_string());
+            self.runner.watch_tag(dst_id, tag.to_string());
+        }
+        Ok(())
+    }
+
+    /// Removes the association from the return value to the tag for the
+    /// edge. Does not remove the input tag if there are no more incoming
+    /// edges. If stateless, removes the watched tag.
+    pub fn remove_data_edge(
+        &self,
+        stateless: bool,
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
+        modules: &mut Modules,
+        sensors: &mut Sensors,
+    ) -> Result<(), Error> {
+        debug!("remove data edge {}.{} -> {}.{} stateless={}",
+            src_id, src_name, dst_id, dst_name, stateless);
+        let tag = {
+            if let Some(tag) = modules.tags(&dst_id)?.get_input_tag(&dst_name)? {
+                tag.clone()
+            } else {
+                debug!("input tag {}.{} is not set, meaning edges does not exist",
+                    dst_id, dst_name);
+                return Err(Error::NotFound);
+            }
+        };
+
+        if modules.module_exists(&src_id) {
+            modules.tags_mut(&src_id)?.remove_output_tag(&src_name, &tag)?;
+        } else if sensors.sensor_exists(&src_id) {
+            sensors.tags_mut(&src_id)?.remove_output_tag(&src_name, &tag)?;
+        } else {
+            error!("output sensor nor module exists");
+            return Err(Error::NotFound);
+        }
+
+        if stateless {
+            self.runner.unwatch_tag(dst_id, &tag)?;
         }
         Ok(())
     }
@@ -413,44 +483,73 @@ impl Controller {
     /// Updates how new data labels are assigned relative to the new graph.
     pub fn add_state_edge(
         &self,
-        out_id: String,
-        out_return: String,
+        src_id: String,
+        src_name: String,
         sensor_id: String,
         sensor_key: String,
         modules: &mut Modules,
         sensors: &Sensors,
-    ) -> Result<(), Status> {
-        debug!("state_edge {}.{} -> {}.{}",
-            out_id, out_return, sensor_id, sensor_key);
+    ) -> Result<(), Error> {
+        debug!("add state_edge {}.{} -> {}.{}",
+            src_id, src_name, sensor_id, sensor_key);
         // check that the sensor has that key
         if let Some(sensor) = sensors.get_sensor(&sensor_id) {
             if !sensor.keys.contains(&sensor_key) {
                 error!("sensor does not have input key {:?}", sensor.keys);
-                return Ok(());
+                return Err(Error::NotFound);
             }
         } else {
             error!("output sensor does not exist");
-            return Ok(());
+            return Err(Error::NotFound);
         }
 
         // add the state tag to the output module
         let state_tag = tags::to_state_tag(&sensor_id, &sensor_key);
-        modules.tags_mut(&out_return)?.set_input_tag(&sensor_key, &state_tag)?;
+        modules.tags_mut(&src_id)?.add_output_tag(&src_name, &state_tag)?;
+        Ok(())
+    }
+
+    pub fn remove_state_edge(
+        &self,
+        src_id: String,
+        src_name: String,
+        sensor_id: String,
+        sensor_key: String,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
+        debug!("remove state_edge {}.{} -> {}.{}",
+            src_id, src_name, sensor_id, sensor_key);
+        let state_tag = tags::to_state_tag(&sensor_id, &sensor_key);
+        modules.tags_mut(&src_id)?.remove_output_tag(&src_name, &state_tag)?;
         Ok(())
     }
 
     /// Permits a specific module to access the network.
     /// Updates how data labels are assigned relative to the new graph.
-    pub fn add_network_edge(
+    pub fn set_network_edges(
         &self,
         module_id: String,
-        domain: String,
+        domains: Vec<String>,
         modules: &mut Modules,
-    ) -> Result<(), Status> {
-        debug!("network_edge {} -> {}", module_id, domain);
-        modules.config_mut(&module_id)?.add_network_perm(&domain);
+    ) -> Result<(), Error> {
+        debug!("network_edge {} -> {:?}", module_id, domains);
+        modules.config_mut(&module_id)?.set_network_perm(domains);
         Ok(())
     }
+
+    /// Set the module interval, aborting any previous interval threads
+    /// if they already exist.
+    pub fn set_interval(
+        &self,
+        module_id: String,
+        duration: Option<u32>,
+        modules: &mut Modules,
+    ) -> Result<(), Error> {
+        debug!("interval {} -> {:?}", module_id, duration);
+        self.runner.set_interval(module_id, duration, modules)?;
+        Ok(())
+    }
+
 }
 
 /*

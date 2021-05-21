@@ -520,6 +520,7 @@ impl GraphJson {
                 });
             }
         }
+        debug!("{:?}", deltas);
         deltas
     }
 }

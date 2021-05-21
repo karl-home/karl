@@ -1,5 +1,6 @@
 //! Custom karl-related errors.
 use std::io;
+use tonic::{Status, Code};
 
 #[derive(Debug)]
 pub enum Error {
@@ -33,6 +34,10 @@ pub enum Error {
     InvalidResponseType,
     /// Something is not found,
     NotFound,
+    BadRequest,
+    AlreadyExists,
+    InvalidArgument,
+    Unauthenticated,
     /// Failure to install an imported package.
     InstallImportError(String),
     /// Failure to use persistent storage for request.
@@ -61,5 +66,19 @@ impl From<io::Error> for Error {
 impl From<String> for Error {
     fn from(error: String) -> Self {
         Error::UnknownError(error)
+    }
+}
+
+impl Error {
+    pub fn to_tonic(self) -> Status {
+        let code = match self {
+            Error::NotFound => Code::NotFound,
+            Error::BadRequest => Code::FailedPrecondition,
+            Error::AlreadyExists => Code::AlreadyExists,
+            Error::InvalidArgument => Code::InvalidArgument,
+            Error::Unauthenticated => Code::Unauthenticated,
+            _ => Code::Unknown,
+        };
+        Status::new(code, "".to_string())
     }
 }

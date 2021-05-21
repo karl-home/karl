@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use tonic::{Status, Code};
 use crate::controller::tags::Tags;
+use karl_common::Error;
 
 type SensorID = String;
 type SensorKey = String;
@@ -23,15 +23,17 @@ pub struct Sensors {
 }
 
 impl Sensors {
-    pub fn authenticate(&self, token: &SensorToken) -> Result<&SensorID, Status> {
+    pub fn authenticate(&self, token: &SensorToken) -> Result<&SensorID, Error> {
         if let Some(id) = self.tokens.get(token) {
             if self.values.get(id).unwrap().confirmed {
                 Ok(id)
             } else {
-                Err(Status::new(Code::Unauthenticated, "unconfirmed sensor"))
+                debug!("unconfirmed sensor {}", id);
+                Err(Error::Unauthenticated)
             }
         } else {
-            Err(Status::new(Code::Unauthenticated, "invalid sensor token"))
+            debug!("invalid sensor token {}", token);
+            Err(Error::Unauthenticated)
         }
     }
 
@@ -111,21 +113,21 @@ impl Sensors {
         self.values.contains_key(id)
     }
 
-    pub fn tags(&self, id: &SensorID) -> Result<&Tags, Status> {
+    pub fn tags(&self, id: &SensorID) -> Result<&Tags, Error> {
         if let Some(tags) = self.tags_inner.get(id) {
             Ok(tags)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "sensor {} does not exist", id)))
+            debug!("sensor {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
 
-    pub fn tags_mut(&mut self, id: &SensorID) -> Result<&mut Tags, Status> {
+    pub fn tags_mut(&mut self, id: &SensorID) -> Result<&mut Tags, Error> {
         if let Some(tags) = self.tags_inner.get_mut(id) {
             Ok(tags)
         } else {
-            Err(Status::new(Code::NotFound, format!(
-                "sensor {} does not exist", id)))
+            debug!("sensor {} does not exist", id);
+            Err(Error::NotFound)
         }
     }
 }
