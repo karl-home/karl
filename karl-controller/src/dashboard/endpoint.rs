@@ -1,5 +1,6 @@
 // use std::collections::{HashMap};
 use std::sync::{Arc, Mutex};
+use futures;
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
@@ -85,9 +86,8 @@ pub fn spawn_module(
     id: String,
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
-    // controller.lock().unwrap().runner.spawn_module_id(id).await.unwrap();
-    // Status:: Ok
-    unimplemented!()
+    futures::executor::block_on(controller.lock().unwrap().runner.spawn_module(id));
+    Status::Ok
 }
 
 #[allow(non_snake_case)]
