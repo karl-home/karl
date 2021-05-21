@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
 use tokio::task::JoinHandle;
+use tokio::runtime::Handle;
 use karl_common::*;
 use crate::controller::HostScheduler;
 use crate::protos::ComputeRequest;
@@ -24,6 +25,7 @@ struct QueuedModule {
 
 #[derive(Clone)]
 pub struct Runner {
+    handle: Handle,
     tx: Option<mpsc::Sender<QueuedModule>>,
     /// Watched tags and the modules they spawn.
     watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
@@ -212,10 +214,12 @@ fn gen_process_id() -> ProcessID {
 impl Runner {
     /// Create a new Runner.
     pub fn new(
+        handle: Handle,
         pubsub_enabled: bool,
         watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     ) -> Self {
         Self {
+            handle,
             tx: None,
             watched_tags,
             pubsub_enabled,
@@ -233,7 +237,7 @@ impl Runner {
         let buffer = 100;  // TODO: tune
         let (tx, rx) = mpsc::channel::<QueuedModule>(buffer);
         self.tx = Some(tx);
-        tokio::spawn(async move {
+        self.handle.spawn(async move {
             Self::start_queue_manager(
                 rx,
                 modules,
@@ -271,7 +275,7 @@ impl Runner {
         if let Some(seconds) = seconds {
             let duration = Duration::from_secs(seconds.into());
             let config = modules.config_mut(&module_id)?;
-            let handle = tokio::spawn(async move {
+            let handle = self.handle.spawn(async move {
                 let mut interval = time::interval(duration);
                 loop {
                     interval.tick().await;

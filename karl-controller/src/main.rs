@@ -23,8 +23,7 @@ use clap::{Arg, App};
 use tonic::transport::Server;
 use protos::karl_controller_server::KarlControllerServer;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::builder().init();
     let matches = App::new("Controller")
         .arg(Arg::with_name("karl-path")
@@ -69,21 +68,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let caching_enabled = matches.value_of("caching-enabled").unwrap() == "1";
     let pubsub_enabled = matches.value_of("pubsub-enabled").unwrap() == "1";
     let password = matches.value_of("password").unwrap();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let mut controller = Controller::new(
+        rt.handle().clone(),
         karl_path,
         password,
         autoconfirm,
         caching_enabled,
         pubsub_enabled,
     );
-    controller.start(port).await.unwrap();
-    if use_dashboard {
-        dashboard::start(controller.clone());
-    }
-    Server::builder()
-        .add_service(KarlControllerServer::new(controller))
-        .serve(format!("0.0.0.0:{}", port).parse()?)
-        .await
-        .unwrap();
+    rt.block_on(async {
+        controller.start(port).await.unwrap();
+        if use_dashboard {
+            dashboard::start(controller.clone());
+        }
+        Server::builder()
+            .add_service(KarlControllerServer::new(controller))
+            .serve(format!("0.0.0.0:{}", port).parse().unwrap())
+            .await
+            .unwrap();
+    });
     Ok(())
 }

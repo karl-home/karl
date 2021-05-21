@@ -16,6 +16,7 @@ use std::fs;
 
 use tonic::{Request, Response, Status, Code};
 use tokio::sync::mpsc;
+use tokio::runtime::Handle;
 use tokio_stream::wrappers::ReceiverStream;
 use crate::protos::*;
 use karl_common::*;
@@ -245,6 +246,7 @@ impl Controller {
     /// Call `start()` after constructing the controller to ensure it is
     /// listening for hosts and sensor requests.
     pub fn new(
+        handle: Handle,
         karl_path: PathBuf,
         password: &str,
         autoconfirm: bool,
@@ -256,7 +258,7 @@ impl Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
-            runner: Runner::new(pubsub_enabled, watched_tags.clone()),
+            runner: Runner::new(handle, pubsub_enabled, watched_tags.clone()),
             modules: Arc::new(Mutex::new(Modules::default())),
             watched_tags,
             sensors: Arc::new(Mutex::new(Sensors::default())),
