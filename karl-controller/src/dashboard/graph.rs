@@ -312,8 +312,8 @@ impl<'a> IndexedGraphJson<'a> {
             g.data_edges_src.insert(i, HashSet::new());
             g.state_edges_dst.insert(i, HashSet::new());
         }
-        for i in 0..(graph.sensors.len() + graph.moduleIds.len()) {
-            let i = i as u32;
+        for i in 0..graph.moduleIds.len() {
+            let i = (graph.sensors.len() + i) as u32;
             g.data_edges_src.insert(i, HashSet::new());
             g.data_edges_dst.insert(i, HashSet::new());
             g.state_edges_src.insert(i, HashSet::new());
