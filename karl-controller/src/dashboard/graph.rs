@@ -389,14 +389,20 @@ impl GraphJson {
         // Then remove the modules.
         for id in modules_to_remove {
             let i = old_entity_map.get(&id).unwrap();
-            deltas.push(Delta::SetNetworkEdges {
-                id: id.clone(),
-                domains: vec![],
-            });
-            deltas.push(Delta::SetInterval {
-                id: id.clone(),
-                duration: None,
-            });
+            let domains = g1.network_edges.remove(i).unwrap();
+            if !domains.is_empty() {
+                deltas.push(Delta::SetNetworkEdges {
+                    id: id.clone(),
+                    domains: vec![],
+                });
+            }
+            let duration = g1.intervals.remove(i).unwrap();
+            if duration.is_some() {
+                deltas.push(Delta::SetInterval {
+                    id: id.clone(),
+                    duration: None,
+                });
+            }
             for (stateless, a, b, c, d) in g1.data_edges_src.remove(i).unwrap() {
                 deltas.push(Delta::RemoveDataEdge {
                     stateless,
@@ -503,14 +509,20 @@ impl GraphJson {
         // set outgoing state edges
         for (id, _) in modules_to_add {
             let i = new_entity_map.get(&id).unwrap();
-            deltas.push(Delta::SetNetworkEdges {
-                id: id.clone(),
-                domains: g2.network_edges.remove(i).unwrap().into_iter().collect(),
-            });
-            deltas.push(Delta::SetInterval {
-                id,
-                duration: g2.intervals.remove(i).unwrap(),
-            });
+            let domains = g2.network_edges.remove(i).unwrap();
+            if !domains.is_empty() {
+                deltas.push(Delta::SetNetworkEdges {
+                    id: id.clone(),
+                    domains: domains.into_iter().collect(),
+                });
+            }
+            let duration = g2.intervals.remove(i).unwrap();
+            if duration.is_some() {
+                deltas.push(Delta::SetInterval {
+                    id,
+                    duration,
+                });
+            }
             for edge in g2.data_edges_src.remove(i).unwrap() {
                 deltas.push(Delta::AddDataEdge {
                     stateless: edge.0,
