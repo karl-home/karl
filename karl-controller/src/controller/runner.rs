@@ -10,10 +10,6 @@ use crate::protos::ComputeRequest;
 use crate::controller::tags::Tags;
 use futures::future::{Abortable, AbortHandle};
 
-type Tag = String;
-type GlobalModuleID = String;
-type ModuleID = String;
-
 #[derive(Debug)]
 struct Trigger {
     tag: String,
@@ -61,6 +57,14 @@ impl ModuleConfig {
         self.network_perm.insert(domain.to_string());
     }
 
+    pub fn get_network_perms(&self) -> &HashSet<String> {
+        &self.network_perm
+    }
+
+    pub fn get_interval(&self) -> Option<u32> {
+        self.interval.as_ref().map(|(duration, _)| *duration)
+    }
+
     fn set_interval(&mut self, duration_s: u32, handle: AbortHandle) {
         self.interval = Some((duration_s, handle));
     }
@@ -100,8 +104,8 @@ impl Modules {
         self.modules.get(id)
     }
 
-    pub fn list_modules(&self) -> Vec<&Module> {
-        self.modules.values().collect()
+    pub fn list_modules(&self) -> Vec<(&ModuleID, &Module)> {
+        self.modules.iter().collect()
     }
 
     pub fn module_exists(&self, id: &ModuleID) -> bool {
@@ -208,11 +212,15 @@ fn gen_process_id() -> ProcessID {
 
 impl Runner {
     /// Create a new Runner.
-    pub fn new(pubsub_enabled: bool, modules: Arc<Mutex<Modules>>) -> Self {
+    pub fn new(
+        pubsub_enabled: bool,
+        modules: Arc<Mutex<Modules>>,
+        watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
+    ) -> Self {
         Self {
             tx: None,
             modules,
-            watched_tags: Arc::new(RwLock::new(HashMap::new())),
+            watched_tags,
             pubsub_enabled,
         }
     }

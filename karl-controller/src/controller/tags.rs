@@ -2,11 +2,10 @@ use std::collections::HashMap;
 use tonic::{Status, Code};
 use itertools::Itertools;
 use crate::controller::sensors::Sensor;
-use karl_common::Module;
+use karl_common::*;
 
 type Input = String;
 type Output = String;
-type Tag = String;
 
 #[derive(Debug, Clone)]
 pub struct Tags {
@@ -100,8 +99,15 @@ impl Tags {
     }
 }
 
+pub fn is_state_tag(tag: &Tag) -> bool {
+    tag.chars().next() == Some('#')
+}
+
 pub fn parse_state_tag(tag: &Tag) -> (String, String) {
-    unimplemented!()
+    let mut split = tag.split(".");
+    let sensor = split.next().unwrap()[1..].to_string();
+    let key = split.next().unwrap().to_string();
+    (sensor, key)
 }
 
 pub fn to_state_tag(sensor: &str, key: &str) -> String {

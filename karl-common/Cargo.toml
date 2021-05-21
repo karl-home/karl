@@ -21,3 +21,15 @@ tempdir = "0.3"
 [[bin]]
 name = "hookgen"
 path = "src/bin/hookgen.rs"
+
+[[bin]]
+name = "build_command_classifier"
+path = "src/bin/build_command_classifier.rs"
+
+[[bin]]
+name = "build_person_detection"
+path = "src/bin/build_person_detection.rs"
+
+[[bin]]
+name = "build_static"
+path = "src/bin/build_static.rs"

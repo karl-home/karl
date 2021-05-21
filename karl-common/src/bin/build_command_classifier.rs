@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use bincode;
-use karl_common::{Hook, HOOK_STORE_PATH, TarBuilder};
+use karl_common::{Module, HOOK_STORE_PATH, TarBuilder};
 
 fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
     let mut builder = TarBuilder::new();
@@ -81,6 +81,11 @@ fn main() {
             "picovoice/karl.py karl.py",
         ],
     ];
+    let network_perm: Vec<Vec<String>> = vec![
+        vec![],
+        vec![],
+        vec![],
+    ];
     let args = vec![
         vec!["picovoice_demo_file.py"],
         vec!["picovoice_bulb.py"],
@@ -88,25 +93,27 @@ fn main() {
     ];
 
     for i in 0..module_ids.len() {
-        let global_hook_id = module_ids[i].to_string();
+        let global_id = module_ids[i].to_string();
         let params = params[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let returns = returns[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let network_perm = network_perm[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let package = read_tar_builder(package_lines[i].iter().map(|line| {
             format!("/home/gina/karl/data/{}", line)
         }).collect()).finalize().unwrap();
         let binary_path = "./env/bin/python".to_string();
         let args = args[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
-        let hook = Hook::new(
-            global_hook_id,
+        let hook = Module {
+            global_id,
             package,
-            &binary_path,
+            binary_path: Path::new(&binary_path).to_path_buf(),
             args,
             params,
             returns,
-        );
+            network_perm,
+        };
 
-        let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);
+        let path = Path::new(HOOK_STORE_PATH).join(&hook.global_id);
         println!("Writing hook to {:?}", path);
         let bytes = bincode::serialize(&hook).unwrap();
         println!("{} bytes", bytes.len());

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use bincode;
-use karl_common::{Hook, HOOK_STORE_PATH, TarBuilder};
+use karl_common::{Module, HOOK_STORE_PATH, TarBuilder};
 
 fn read_nonempty_line() -> String {
     loop {
@@ -76,7 +76,7 @@ fn read_invoke_command() -> (String, Vec<String>) {
 
 fn main() {
     println!("Global hook identifier:");
-    let global_hook_id = read_nonempty_line();
+    let global_id = read_nonempty_line();
     println!("Files (one per line):");
     let builder = read_tar_builder();
     let handle = std::thread::spawn(|| builder.finalize().unwrap());
@@ -86,19 +86,22 @@ fn main() {
     let params = read_vec_string();
     println!("Output returns (one per line):");
     let returns = read_vec_string();
+    println!("Requested network domains (one per line):");
+    let network_perm = read_vec_string();
 
     println!("Done configuring! Building...");
     let package = handle.join().expect("failed to build tar");
-    let hook = Hook::new(
-        global_hook_id,
+    let hook = Module {
+        global_id,
         package,
-        &binary_path,
+        binary_path: Path::new(&binary_path).to_path_buf(),
         args,
         params,
         returns,
-    );
+        network_perm,
+    };
 
-    let path = Path::new(HOOK_STORE_PATH).join(&hook.global_hook_id);
+    let path = Path::new(HOOK_STORE_PATH).join(&hook.global_id);
     if path.exists() {
         println!("Path already exists. Override? [y/n]");
         if read_nonempty_line() != "y" {

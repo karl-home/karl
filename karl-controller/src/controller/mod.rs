@@ -1,8 +1,8 @@
 mod scheduler;
 mod data;
-mod runner;
-mod sensors;
-mod tags;
+pub(crate) mod runner;
+pub(crate) mod sensors;
+pub(crate) mod tags;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
 pub use runner::{Modules, Runner};
@@ -39,6 +39,7 @@ pub struct Controller {
     /// Data structure for queueing and spawning processes from hooks.
     pub runner: Runner,
     pub modules: Arc<Mutex<Modules>>,
+    pub watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     /// Map from client token to client.
     ///
     /// Unique identifier for the sensor, known only by the controller
@@ -240,12 +241,14 @@ impl Controller {
         pubsub_enabled: bool,
     ) -> Self {
         let modules = Arc::new(Mutex::new(Modules::default()));
+        let watched_tags = Arc::new(RwLock::new(HashMap::new()));
         Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
-            runner: Runner::new(pubsub_enabled, modules.clone()),
+            runner: Runner::new(pubsub_enabled, modules.clone(), watched_tags.clone()),
             modules,
+            watched_tags,
             sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,

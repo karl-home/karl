@@ -52,7 +52,7 @@ impl PathManager {
 
     /// Create a new directory for a request.
     #[cfg(target_os = "linux")]
-    pub fn new_request(&self, hook_id: &HookID) -> (Mount, RequestPath) {
+    pub fn new_request(&self, hook_id: &ModuleID) -> (Mount, RequestPath) {
         use rand::Rng;
         let random: u32 = rand::thread_rng().gen();
         let request_path = self.host_path.join(random.to_string());
@@ -91,11 +91,11 @@ impl PathManager {
 
     /********************** COLD CACHE FUNCTIONALITY **********************/
     /// Returns path to cached hook.
-    pub fn get_hook_path(&self, hook_id: &HookID) -> PathBuf {
+    pub fn get_hook_path(&self, hook_id: &ModuleID) -> PathBuf {
         self.cache_path.join(hook_id)
     }
 
-    pub fn is_cached(&self, hook_id: &HookID) -> bool {
+    pub fn is_cached(&self, hook_id: &ModuleID) -> bool {
         self.get_hook_path(hook_id).exists()
     }
 
@@ -103,7 +103,7 @@ impl PathManager {
     /// Returns false if the hook already existed, so it didn't do anything.
     pub fn cache_hook(
         &self,
-        hook_id: &HookID,
+        hook_id: &ModuleID,
         package: Vec<u8>,
     ) -> Result<bool, Error> {
         let path = self.get_hook_path(hook_id);

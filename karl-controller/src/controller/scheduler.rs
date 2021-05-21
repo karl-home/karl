@@ -118,7 +118,7 @@ impl HostScheduler {
     /// those with the cached hook ID, unless has more than REQUEST_THRESHOLD
     /// requests. Set threshold based on average execution time of hook ID,
     /// but otherwise 10.
-    pub fn find_hosts(&mut self, hook_id: &HookID) -> Vec<HostResult> {
+    pub fn find_hosts(&mut self, hook_id: &ModuleID) -> Vec<HostResult> {
         let mut hosts = self.hosts.iter()
             .filter(|(_, host)| host.is_confirmed())
             .filter(|(_, host)| {
@@ -155,7 +155,7 @@ impl HostScheduler {
     pub fn notify_start(
         &mut self,
         host_token: HostToken,
-        hook_id: HookID,
+        hook_id: ModuleID,
         process_token: ProcessToken,
     ) {
         if let Some(host) = self.hosts.get_mut(&host_token) {

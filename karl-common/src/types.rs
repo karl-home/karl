@@ -13,9 +13,9 @@ pub type SensorID = String;
 /// ID uniquely identifying a host, assigned by the controller
 /// in incrementing order starting at 0.
 pub type ProcessID = u32;
-/// String ID uniquely identifying a hook, assigned by the controller
-/// on registration based on the global hook ID, and verified by a user.
-pub type HookID = String;
+pub type Tag = String;
+pub type GlobalModuleID = String;
+pub type ModuleID = String;
 
 /// Host status and information.
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub struct Host {
 #[derive(Debug, Clone)]
 pub struct HostMetadata {
     /// Cached hook IDs:
-    pub cached_hooks: HashSet<HookID>,
+    pub cached_hooks: HashSet<ModuleID>,
     /// All active requests.
     pub active_requests: HashSet<ProcessToken>,
     /// Time of last heartbeat, notify start, or notify end.

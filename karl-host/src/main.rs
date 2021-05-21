@@ -43,7 +43,7 @@ pub struct Host {
     api: crate::net::KarlHostAPI,
     /// Active process tokens.
     process_tokens: Arc<Mutex<HashMap<ProcessToken, ProcessPerms>>>,
-    warm_processes: Arc<Mutex<HashMap<HookID, Vec<WarmProcess>>>>,
+    warm_processes: Arc<Mutex<HashMap<ModuleID, Vec<WarmProcess>>>>,
     warm_cache_tx: Option<mpsc::Sender<ComputeRequest>>,
     /// Path manager.
     path_manager: Arc<PathManager>,
@@ -494,7 +494,7 @@ impl Host {
     fn handle_compute(
         lock: Arc<Mutex<()>>,
         path_manager: Arc<PathManager>,
-        hook_id: HookID,
+        hook_id: ModuleID,
         cached: bool,
         cold_cache_enabled: bool,
         package: Vec<u8>,
