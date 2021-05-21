@@ -322,22 +322,22 @@ impl<'a> IndexedGraphJson<'a> {
             g.intervals.insert(i, None);
         }
         for (stateless, a, b, c, d) in &graph.dataEdges {
-            let (src_id, inputs, _) = map.get(a).unwrap();
-            let src_name = inputs.get(*b as usize).unwrap().to_string();
-            let (dst_id, _, outputs) = map.get(c).unwrap();
-            let dst_name = outputs.get(*d as usize).unwrap().to_string();
+            let (src_id, _, outputs) = map.get(a).unwrap();
+            let src_name = outputs.get(*b as usize).unwrap().to_string();
+            let (dst_id, inputs, _) = map.get(c).unwrap();
+            let dst_name = inputs.get(*d as usize).unwrap().to_string();
             let edge = (*stateless, src_id.to_string(), src_name, dst_id.to_string(), dst_name);
             g.data_edges_src.get_mut(a).unwrap().insert(edge.clone());
-            g.data_edges_src.get_mut(c).unwrap().insert(edge);
+            g.data_edges_dst.get_mut(c).unwrap().insert(edge);
         }
         for (a, b, c, d) in &graph.stateEdges {
-            let (src_id, inputs, _) = map.get(a).unwrap();
-            let src_name = inputs.get(*b as usize).unwrap().to_string();
-            let (dst_id, _, outputs) = map.get(c).unwrap();
-            let dst_name = outputs.get(*d as usize).unwrap().to_string();
+            let (src_id, _, outputs) = map.get(a).unwrap();
+            let src_name = outputs.get(*b as usize).unwrap().to_string();
+            let (dst_id, inputs, _) = map.get(c).unwrap();
+            let dst_name = inputs.get(*d as usize).unwrap().to_string();
             let edge = (src_id.to_string(), src_name, dst_id.to_string(), dst_name);
             g.state_edges_src.get_mut(a).unwrap().insert(edge.clone());
-            g.state_edges_src.get_mut(c).unwrap().insert(edge);
+            g.state_edges_dst.get_mut(c).unwrap().insert(edge);
         }
         for (a, domain) in &graph.networkEdges {
             g.network_edges.get_mut(a).unwrap().insert(domain.clone());
