@@ -64,7 +64,7 @@ impl karl_host_server::KarlHost for Host {
         &self, req: Request<ComputeRequest>,
     ) -> Result<Response<NotifyStart>, Status> {
         let mut req = req.into_inner();
-        info!("HANDLE_COMPUTE START {}", req.hook_id);
+        info!("HANDLE_COMPUTE START {}", req.module_id);
         if let Some(process_token) = self.attach_warm_process(&mut req).await {
             Ok(Response::new(NotifyStart { process_token }))
         } else {
@@ -356,7 +356,7 @@ impl Host {
             loop {
                 let req: ComputeRequest = rx.recv().await.unwrap();
                 let is_warm = true;
-                info!("spawning a warm process for {}", req.hook_id);
+                info!("spawning a warm process for {}", req.module_id);
                 Host::spawn_new_process(
                     host.clone(),
                     req,
@@ -377,7 +377,7 @@ impl Host {
             let mut warm_processes = self.warm_processes.lock().unwrap();
             let mut process_tokens = self.process_tokens.lock().unwrap();
             let mut process: Option<WarmProcess> = None;
-            if let Some(processes) = warm_processes.get_mut(&req.hook_id) {
+            if let Some(processes) = warm_processes.get_mut(&req.module_id) {
                 // reserve the process token
                 process = processes.pop();
             }
@@ -425,7 +425,7 @@ impl Host {
         // this process it is ready to continue
         if let Some(tx) = tx {
             host.warm_processes.lock().unwrap()
-                .entry(req.hook_id.clone())
+                .entry(req.module_id.clone())
                 .or_insert(vec![])
                 .push(WarmProcess {
                     process_token: process_token.clone(),
@@ -456,7 +456,7 @@ impl Host {
                 let execution_time = Host::handle_compute(
                     host.compute_lock.clone(),
                     host.path_manager.clone(),
-                    req.hook_id,
+                    req.module_id,
                     req.cached,
                     host.cold_cache_enabled,
                     req.package,
@@ -494,7 +494,7 @@ impl Host {
     fn handle_compute(
         lock: Arc<Mutex<()>>,
         path_manager: Arc<PathManager>,
-        hook_id: ModuleID,
+        module_id: ModuleID,
         cached: bool,
         cold_cache_enabled: bool,
         package: Vec<u8>,
@@ -513,18 +513,18 @@ impl Host {
         let (mount, paths) = {
             let lock = lock.lock().unwrap();
             debug!("cached={} cold_cache_enabled={}", cached, cold_cache_enabled);
-            if cached && !path_manager.is_cached(&hook_id) {
+            if cached && !path_manager.is_cached(&module_id) {
                 // TODO: controller needs to handle this error
                 // what if a second request gets here before the first
                 // request caches the module? race condition
-                return Err(Error::CacheError(format!("hook {} is not cached", hook_id)));
+                return Err(Error::CacheError(format!("hook {} is not cached", module_id)));
             }
             if !cached {
-                path_manager.cache_hook(&hook_id, package)?;
+                path_manager.cache_hook(&module_id, package)?;
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
             let now = Instant::now();
-            let (mount, paths) = path_manager.new_request(&hook_id);
+            let (mount, paths) = path_manager.new_request(&module_id);
             // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
             debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
             drop(lock);
@@ -540,7 +540,7 @@ impl Host {
         )?;
         let execution_time = start.elapsed();
         debug!("invoked binary => {} s", execution_time.as_secs_f32());
-        info!("HANDLE_COMPUTE FINISH {}", hook_id);
+        info!("HANDLE_COMPUTE FINISH {}", module_id);
 
         // Reset the root for the next computation.
         path_manager.unmount(mount);
