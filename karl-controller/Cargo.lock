@@ -895,6 +895,7 @@ dependencies = [
  "clap",
  "env_logger",
  "handlebars",
+ "itertools 0.10.0",
  "karl-common",
  "log 0.4.11",
  "prost",

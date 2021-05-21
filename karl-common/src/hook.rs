@@ -1,106 +1,29 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use bincode;
-use itertools::Itertools;
 use serde::{Serialize, Deserialize};
-use std::time::Duration;
-use std::collections::HashMap;
 use crate::*;
 
 type DomainName = String;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum HookSchedule {
-    Interval(Duration),
-    WatchTag(String),
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Hook {
-    confirmed: bool,
-    /// The name of the module in the global repository.
-    pub global_hook_id: StringID,
-    /// The targz of the input filesystem.
+pub struct Module {
+    pub global_id: StringID,
     pub package: Vec<u8>,
-    /// Path to the binary within the input filesystem.
     pub binary_path: PathBuf,
-    /// Arguments to the binary path.
     pub args: Vec<String>,
-    /// Map from the module's expected parameters and the associated tags.
-    pub params: HashMap<String, Option<String>>,
-    /// Map from the module's expected return names and the associated tags.
-    pub returns: HashMap<String, Vec<String>>,
-    /// Network permissions
+    pub params: Vec<String>,
+    pub returns: Vec<String>,
     pub network_perm: Vec<DomainName>,
-    /// Intervals
-    pub interval: Option<u32>,
-    /// Environment variables
-    pub envs: Vec<(String, String)>,
 }
 
-impl Hook {
-    pub fn new(
-        global_hook_id: StringID,
-        package: Vec<u8>,
-        binary_path: &str,
-        args: Vec<String>,
-        params: Vec<String>,
-        returns: Vec<String>,
-    ) -> Self {
-        let binary_path = Path::new(binary_path).to_path_buf();
-        Self {
-            confirmed: false,
-            global_hook_id,
-            package,
-            binary_path,
-            args,
-            params: params.into_iter().map(|p| (p, None)).collect(),
-            returns: returns.into_iter().map(|r| (r, vec![])).collect(),
-            network_perm: vec![],
-            interval: None,
-            envs: vec![],
-        }
-    }
-
-    pub fn import(global_hook_id: &StringID) -> Result<Self, Error> {
-        let path = Path::new(HOOK_STORE_PATH).join(global_hook_id);
+impl Module {
+    pub fn import(global_id: &StringID) -> Result<Self, Error> {
+        let path = Path::new(HOOK_STORE_PATH).join(global_id);
         let bytes = fs::read(path)?;
-        let mut hook: Hook = bincode::deserialize(&bytes[..])
+        let hook: Module = bincode::deserialize(&bytes[..])
             .map_err(|e| Error::HookInstallError(e.to_string()))?;
-        hook.confirm(); // TODO
         Ok(hook)
-    }
-
-    /// `<KEY>=<VALUE>`
-    pub fn set_envs(mut self, envs: Vec<String>) -> Result<Self, Error> {
-        self.envs = vec![];
-        for env in envs {
-            let env = env.split("=").collect::<Vec<_>>();
-            if env.len() != 2 {
-                return Err(Error::HookInstallError(format!(
-                    "bad format for envvar: {:?}", env)));
-            }
-            self.envs.push((env[0].to_string(), env[1].to_string()));
-        }
-        Ok(self)
-    }
-
-    pub fn confirm(&mut self) {
-        self.confirmed = true;
-    }
-
-    pub fn params_string(&self) -> String {
-        self.params.iter()
-            .filter(|(_, tag)| tag.is_some())
-            .map(|(param, tag)| format!("{};{}", param, tag.as_ref().unwrap()))
-            .join(":")
-    }
-
-    pub fn returns_string(&self) -> String {
-        self.returns.iter()
-            .filter(|(_, tags)| !tags.is_empty())
-            .map(|(ret, tags)| format!("{};{}", ret, tags.iter().join(",")))
-            .join(":")
     }
 }
 
@@ -117,7 +40,7 @@ mod test {
         let state_perm = vec!["camera".to_string()];
         let network_perm = vec!["https://www.stanford.edu".to_string()];
 
-        let hook = Hook::new(
+        let hook = Module::new(
             "hook_id".to_string(),
             HookSchedule::Interval(Duration::from_secs(10)),
             state_perm.clone(),

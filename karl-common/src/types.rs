@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
-use std::net::{SocketAddr, IpAddr};
+use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::time::Instant;
 use serde::{Serialize, ser::{Serializer, SerializeStruct}};
 use crate::token::ProcessToken;
@@ -40,23 +40,6 @@ pub struct HostMetadata {
     pub last_msg: Instant,
     /// Total number of requests handled.
     pub total: usize,
-}
-
-/// Client status and information.
-#[derive(Serialize, Debug, Clone)]
-pub struct Client {
-    /// Whether the user has confirmed this client.
-    pub confirmed: bool,
-    /// The self-given lowercase alphanumeric and underscore ID of the client,
-    /// with _1, _2, etc. appended when duplicates are registered, like handling
-    /// duplicates in the filesystem.
-    pub id: SensorID,
-    /// State keys.
-    pub keys: Vec<String>,
-    /// Output returns to their tags.
-    pub returns: HashMap<String, Vec<String>>,
-    /// IP address for proxy requests.
-    pub addr: IpAddr,
 }
 
 /// Request information.

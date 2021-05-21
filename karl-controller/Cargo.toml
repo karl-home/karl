@@ -23,6 +23,7 @@ tonic = "0.4"
 prost = "0.7"
 chrono = "0.4"
 karl-common = { path = "../karl-common" }
+itertools = "0.10"
 
 [dependencies.rocket_contrib]
 version = "0.4.9"

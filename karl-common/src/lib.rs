@@ -7,7 +7,7 @@ mod label;
 
 pub use error::Error;
 pub use builder::TarBuilder;
-pub use hook::Hook;
+pub use hook::Module;
 pub use label::KarlLabel;
 pub use token::*;
 pub use types::*;

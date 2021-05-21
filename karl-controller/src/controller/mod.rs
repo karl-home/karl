@@ -1,13 +1,15 @@
 mod scheduler;
 mod data;
 mod runner;
+mod sensors;
+mod tags;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
-pub use runner::{QueuedHook, HookRunner};
+pub use runner::{Modules, Runner};
+use sensors::Sensors;
 
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::net::IpAddr;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 use std::fs;
@@ -35,13 +37,14 @@ pub struct Controller {
     /// Data structure for managing sensor data.
     pub data_sink: Arc<RwLock<DataSink>>,
     /// Data structure for queueing and spawning processes from hooks.
-    pub runner: HookRunner,
+    pub runner: Runner,
+    pub modules: Arc<Mutex<Modules>>,
     /// Map from client token to client.
     ///
     /// Unique identifier for the sensor, known only by the controller
     /// and the sensor itself. Generated on registration. All host
     /// requests from the sensor to the controller must include this token.
-    pub sensors: Arc<Mutex<HashMap<SensorToken, Client>>>,
+    pub sensors: Arc<Mutex<Sensors>>,
     /// Sender channels to forward state changes to the sender's
     /// streaming connection.
     state: Arc<RwLock<HashMap<SensorID, mpsc::Sender<StateChangePair>>>>,
@@ -167,11 +170,9 @@ impl karl_controller_server::KarlController for Controller {
         let req = req.into_inner();
         let res = self.sensor_register(
             req.global_sensor_id,
-            "0.0.0.0".parse().unwrap(), // TODO?
             req.keys,
             req.returns.clone(),
             &req.app[..],
-            false,
         );
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
@@ -187,15 +188,9 @@ impl karl_controller_server::KarlController for Controller {
         let req = req.into_inner();
         let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
-            if let Some(sensor) = sensors.get(&req.sensor_token) {
-                if let Some(tags) = sensor.returns.get(&req.param) {
-                    (sensor.id.clone(), tags.clone())
-                } else {
-                    return Err(Status::new(Code::NotFound, "invalid param name"));
-                }
-            } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid sensor token"));
-            }
+            let id = sensors.authenticate(&req.sensor_token)?.to_string();
+            let tags = sensors.tags(&id)?.get_output_tags(&req.param)?.clone();
+            (id, tags.clone())
         };
         for tag in tags {
             let res = self.data_sink.write().unwrap()
@@ -216,13 +211,8 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<StateChangeInit>,
     ) -> Result<Response<Self::StateChangesStream>, Status> {
         let req = req.into_inner();
-        let sensor_id = {
-            if let Some(sensor) = self.sensors.lock().unwrap().get(&req.sensor_token) {
-                sensor.id.clone()
-            } else {
-                return Err(Status::new(Code::Unauthenticated, "invalid token"));
-            }
-        };
+        let sensor_id = self.sensors.lock().unwrap()
+            .authenticate(&req.sensor_token)?.to_string();
 
         let (internal_tx, mut internal_rx) = mpsc::channel::<StateChangePair>(10);
         let (tx, rx) = mpsc::channel::<Result<StateChangePair, Status>>(10);
@@ -234,84 +224,6 @@ impl karl_controller_server::KarlController for Controller {
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))
-    }
-
-    // users
-
-    async fn audit(
-        &self, _req: Request<AuditRequest>,
-    ) -> Result<Response<AuditResult>, Status> {
-        // let req = req.into_inner();
-        // let entries = if !req.path.is_empty() {
-        //     let path = sanitize_path(&req.path);
-        //     self.audit_log.lock().unwrap().audit_file(Path::new(&path))
-        // } else if !req.sensor_id.is_empty() {
-        //     self.audit_log.lock().unwrap().audit_sensor(&req.sensor_id)
-        // } else {
-        //     self.audit_log.lock().unwrap().audit_process(req.pid)
-        // };
-        // let entries = entries.ok_or(Status::new(Code::NotFound, "not found"))?;
-        // Ok(Response::new(AuditResult { entries }))
-        unimplemented!()
-    }
-
-    async fn verify_sensor(
-        &self, _req: Request<VerifySensorRequest>,
-    ) -> Result<Response<()>, Status> {
-        unimplemented!()
-    }
-
-    async fn verify_host(
-        &self, _req: Request<VerifyHostRequest>,
-    ) -> Result<Response<()>, Status> {
-        unimplemented!()
-    }
-
-    async fn register_hook(
-        &self, req: Request<RegisterHookRequest>,
-    ) -> Result<Response<RegisterHookResult>, Status> {
-        let now = Instant::now();
-        let req = req.into_inner();
-        let hook_id = self.register_hook(
-            &req.token.to_string(),
-            req.global_hook_id.to_string(),
-        ).map_err(|e| to_status(e))?;
-        trace!("register_hook => {} s", now.elapsed().as_secs_f32());
-        Ok(Response::new(RegisterHookResult { hook_id }))
-    }
-
-    /// Clears the graph of all edges and schedules.
-    /// Then sets the appropriate stateless and stateful edges, network
-    /// edges, state edges, and interval schedules.
-    async fn set_graph(
-        &self, req: Request<GraphRequest>,
-    ) -> Result<Response<()>, Status> {
-        let req = req.into_inner();
-        let mut sensors = self.sensors.lock().unwrap();
-        let mut hooks = self.runner.hooks.lock().unwrap();
-        self.clear_graph(&mut hooks);
-        for data_edge in req.data_edges {
-            self.add_data_edge(
-                data_edge.stateless,
-                data_edge.out_id, data_edge.out_return,
-                data_edge.in_id, data_edge.in_param,
-                &mut hooks, &mut sensors,
-            )?;
-        }
-        for state_edge in req.state_edges {
-            self.add_state_edge(
-                state_edge.out_id, state_edge.out_return,
-                state_edge.sensor_id, state_edge.sensor_key,
-                &mut hooks, &sensors,
-            )?;
-        }
-        for network_edge in req.network_edges {
-            self.add_network_edge(network_edge, &mut hooks)?;
-        }
-        for interval in req.intervals {
-            self.runner.set_interval(interval.module_id, interval.seconds)?;
-        }
-        Ok(Response::new(()))
     }
 }
 
@@ -327,12 +239,14 @@ impl Controller {
         caching_enabled: bool,
         pubsub_enabled: bool,
     ) -> Self {
+        let modules = Arc::new(Mutex::new(Modules::default()));
         Controller {
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
-            runner: HookRunner::new(pubsub_enabled),
-            sensors: Arc::new(Mutex::new(HashMap::new())),
+            runner: Runner::new(pubsub_enabled, modules.clone()),
+            modules,
+            sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,
         }
@@ -385,37 +299,6 @@ impl Controller {
         Ok(())
     }
 
-    /// Register a hook, authenticating the client.
-    ///
-    /// If the provided client token does not correspond to a registered
-    /// client, logs a warning message about an unauthorized client.
-    ///
-    /// IoError if error importing hook from filesystem.
-    /// HookInstallError if environment variables are formatted incorrectly.
-    /// AuthError if not a valid client token.
-    pub fn register_hook(
-        &self,
-        _token: &SensorToken,
-        global_hook_id: String,
-    ) -> Result<HookID, Error> {
-        // // Validate the client token.
-        // if let Some(sensor) = self.sensors.lock().unwrap().get(token) {
-        //     if !sensor.confirmed {
-        //         println!("register_hook unconfirmed sensor token {:?}", token);
-        //         return Err(Error::AuthError("invalid sensor token".to_string()));
-        //     }
-        // } else {
-        //     println!("register_hook invalid sensor token {:?}", token);
-        //     return Err(Error::AuthError("invalid sensor token".to_string()));
-        // }
-
-        // Register the hook.
-        self.runner.register_hook(
-            global_hook_id.clone(),
-            global_hook_id, // TODO: local id
-        )
-    }
-
     /// Register a client.
     ///
     /// Stores the client-generated ID and controller-generated token
@@ -443,39 +326,18 @@ impl Controller {
     fn sensor_register(
         &self,
         mut id: String,
-        addr: IpAddr,
         keys: Vec<String>,
         returns: Vec<String>,
         app_bytes: &[u8],
-        confirmed: bool,
     ) -> SensorRegisterResult {
-        // resolve duplicate sensor ids
-        let ids = self.sensors.lock().unwrap().values()
-            .map(|sensor| sensor.id.clone()).collect::<HashSet<_>>();
-        id = id.trim().to_lowercase();
-        id = id
-            .chars()
-            .filter(|ch| ch.is_alphanumeric() || ch == &'_')
-            .collect();
-        if ids.contains(&id) {
-            let mut i = 1;
-            loop {
-                let new_id = format!("{}_{}", id, i);
-                if !ids.contains(&new_id) {
-                    id = new_id;
-                    break;
-                }
-                i += 1;
-            }
-        }
-
         // generate a sensor with a unique id and token
-        let sensor = Client {
-            confirmed: confirmed || self.autoconfirm,
+        let mut sensors = self.sensors.lock().unwrap();
+        id = sensors.unique_id(id);
+        let sensor = sensors::Sensor {
+            confirmed: self.autoconfirm,
             id: id.clone(),
             keys,
-            returns: returns.into_iter().map(|r| (r, vec![])).collect(),
-            addr,
+            returns,
         };
 
         // register the sensor's webapp
@@ -488,19 +350,8 @@ impl Controller {
         }
 
         // register the sensor itself
-        let mut sensors = self.sensors.lock().unwrap();
         let token = Token::gen();
-        if sensors.insert(token.clone(), sensor.clone()).is_none() {
-            info!(
-                "registered sensor {} {} keys={:?} returns={:?}",
-                sensor.id,
-                token,
-                sensor.keys,
-                sensor.returns,
-            );
-        } else {
-            unreachable!("impossible to generate duplicate sensor tokens")
-        }
+        sensors.add_sensor(sensor, token.clone());
         SensorRegisterResult {
             sensor_token: token,
             sensor_id: id,
@@ -520,54 +371,30 @@ impl Controller {
         out_return: String,
         in_id: String,
         in_param: String,
-        hooks: &mut HashMap<HookID, Hook>,
-        sensors: &mut HashMap<SensorToken, Client>,
+        modules: &mut Modules,
+        sensors: &mut Sensors,
     ) -> Result<(), Status> {
         debug!("data_edge {}.{} -> {}.{} stateless={}",
             out_id, out_return, in_id, in_param, stateless);
         // assign a tag name to the input node, if it doesn't already have one.
-        let tag = if let Some(in_module) = hooks.get_mut(&in_id) {
-            if let Some(maybe_tag) = in_module.params.get_mut(&in_param) {
-                if maybe_tag.is_none() {
-                    *maybe_tag = Some(self.runner.next_tag());
-                }
-                maybe_tag.clone().unwrap()
+        let tag = {
+            if let Some(maybe_tag) = modules.tags_mut(&in_id)?.get_input_tag(&in_param)? {
+                maybe_tag.clone()
             } else {
-                error!("input module does not have input param");
-                return Ok(())
+                let tag = modules.next_tag();
+                modules.tags_mut(&in_id)?.set_input_tag(&in_param, &tag)?;
+                tag
             }
-        } else {
-            error!("input module does not exist");
-            return Ok(())
         };
 
         // add that tag name to the output node.
-        if let Some(out_module) = hooks.get_mut(&out_id) {
-            if let Some(out_tags) = out_module.returns.get_mut(&out_return) {
-                out_tags.push(tag.to_string());
-            } else {
-                error!("output module does not have output return name");
-                return Ok(())
-            }
+        if modules.module_exists(&out_id) {
+            modules.tags_mut(&out_id)?.add_output_tag(&out_return, &tag)?;
+        } else if sensors.sensor_exists(&out_id) {
+            sensors.tags_mut(&out_id)?.add_output_tag(&out_return, &tag)?;
         } else {
-            // maybe a sensor
-            let mut changed = false;
-            for (_, sensor) in sensors.iter_mut() {
-                if sensor.id == out_id {
-                    if let Some(out_tags) = sensor.returns.get_mut(&out_return) {
-                        out_tags.push(tag.to_string());
-                    } else {
-                        error!("output sensor does not have output return name");
-                        return Ok(())
-                    }
-                    changed = true;
-                    break;
-                }
-            }
-            if !changed {
-                error!("output sensor nor module exists");
-                return Ok(())
-            }
+            error!("output sensor nor module exists");
+            return Ok(());
         }
 
         // if the edge is stateless, tell the runner to watch that tag.
@@ -587,16 +414,13 @@ impl Controller {
         out_return: String,
         sensor_id: String,
         sensor_key: String,
-        hooks: &mut HashMap<HookID, Hook>,
-        sensors: &HashMap<SensorToken, Client>,
+        modules: &mut Modules,
+        sensors: &Sensors,
     ) -> Result<(), Status> {
         debug!("state_edge {}.{} -> {}.{}",
             out_id, out_return, sensor_id, sensor_key);
         // check that the sensor has that key
-        if let Some(sensor) = sensors.iter()
-                .map(|(_, sensor)| sensor)
-                .filter(|sensor| sensor.id == sensor_id)
-                .next() {
+        if let Some(sensor) = sensors.get_sensor(&sensor_id) {
             if !sensor.keys.contains(&sensor_key) {
                 error!("sensor does not have input key {:?}", sensor.keys);
                 return Ok(());
@@ -607,44 +431,22 @@ impl Controller {
         }
 
         // add the state tag to the output module
-        if let Some(out_module) = hooks.get_mut(&out_id) {
-            let state_tag = format!("#{}.{}", sensor_id, sensor_key);
-            if let Some(out_tags) = out_module.returns.get_mut(&out_return) {
-                out_tags.push(state_tag);
-            } else {
-                error!("output module does not have output return name");
-            }
-        } else {
-            error!("output module does not exist");
-        }
+        let state_tag = tags::to_state_tag(&sensor_id, &sensor_key);
+        modules.tags_mut(&out_return)?.set_input_tag(&sensor_key, &state_tag)?;
         Ok(())
     }
 
     /// Permits a specific module to access the network.
     /// Updates how data labels are assigned relative to the new graph.
-    fn add_network_edge(
-        &self, req: NetworkEdge, hooks: &mut HashMap<HookID, Hook>,
+    pub fn add_network_edge(
+        &self,
+        module_id: String,
+        domain: String,
+        modules: &mut Modules,
     ) -> Result<(), Status> {
-        debug!("network_edge {} -> {}", req.module_id, req.domain);
-        if let Some(hook) = hooks.get_mut(&req.module_id) {
-            hook.network_perm.push(req.domain);
-            Ok(())
-        } else {
-            Err(Status::new(Code::NotFound, "module id not found"))
-        }
-    }
-
-    fn clear_graph(&self, hooks: &mut HashMap<HookID, Hook>) {
-        self.runner.clear_intervals();
-        for (_, hook) in hooks.iter_mut() {
-            for (_, params) in hook.params.iter_mut() {
-                *params = None;
-            }
-            for (_, returns) in hook.returns.iter_mut() {
-                *returns = vec![];
-            }
-            hook.network_perm = vec![];
-        }
+        debug!("network_edge {} -> {}", module_id, domain);
+        modules.config_mut(&module_id)?.add_network_perm(&domain);
+        Ok(())
     }
 }
 

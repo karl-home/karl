@@ -16,8 +16,8 @@ pub fn start(controller: Controller) {
         .manage(controller)
         .mount("/", StaticFiles::from("../karl-ui/dist"))
         .mount("/", routes![
-            endpoint::get_graph,
-            endpoint::save_graph,
+            // endpoint::get_graph,
+            // endpoint::save_graph,
             endpoint::spawn_module,
             endpoint::confirm_sensor,
             endpoint::cancel_sensor,

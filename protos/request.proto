@@ -24,13 +24,6 @@ service KarlController {
   rpc SensorRegister (SensorRegisterRequest) returns (SensorRegisterResult);
   rpc PushRawData (SensorPushData) returns (google.protobuf.Empty);
   rpc StateChanges (StateChangeInit) returns (stream StateChangePair);
-
-  // users
-  rpc Audit (AuditRequest) returns (AuditResult);
-  rpc VerifySensor (VerifySensorRequest) returns (google.protobuf.Empty);     // TODO
-  rpc VerifyHost (VerifyHostRequest) returns (google.protobuf.Empty);         // TODO
-  rpc RegisterHook (RegisterHookRequest) returns (RegisterHookResult);
-  rpc SetGraph (GraphRequest) returns (google.protobuf.Empty);
 }
 
 /****************************************************************************
@@ -41,7 +34,7 @@ message ComputeRequest {
   string host_token = 1;
 
   // caching
-  string hook_id = 2;
+  string module_id = 2;
   bool cached = 3;
   bytes package = 4;
 
@@ -166,68 +159,4 @@ message SensorPushData {
   string sensor_token = 1;
   string param = 2;
   bytes data = 3;
-}
-
-// users
-
-message AuditRequest {
-  string path = 1;
-  string sensor_id = 2;
-  uint32 pid = 3;
-}
-
-message AuditResult {
-  repeated string entries = 1;
-}
-
-message VerifySensorRequest {
-  string user_token = 1;
-  string sensor_id = 2;
-}
-
-message VerifyHostRequest {
-  string user_token = 1;
-  string host_id = 2;
-}
-
-message RegisterHookRequest {
-  string token = 1;
-  string global_hook_id = 2;
-}
-
-message RegisterHookResult {
-  string hook_id = 1;
-}
-
-// Graph
-message DataEdge {
-  string out_id = 1;
-  string out_return = 2;
-  string in_id = 3;
-  string in_param = 4;
-  bool stateless = 5;
-}
-
-message StateEdge {
-  string out_id = 1;
-  string out_return = 2;
-  string sensor_id = 3;
-  string sensor_key = 4;
-}
-
-message NetworkEdge {
-  string module_id = 1;
-  string domain = 2;
-}
-
-message Interval {
-  string module_id = 1;
-  uint32 seconds = 2;
-}
-
-message GraphRequest {
-  repeated DataEdge data_edges = 1;
-  repeated StateEdge state_edges = 2;
-  repeated NetworkEdge network_edges = 3;
-  repeated Interval intervals = 4;
 }
