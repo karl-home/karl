@@ -6,8 +6,8 @@ import request_pb2_grpc
 
 class KarlSDK:
     def __init__(self):
-        self.global_hook_id = os.environ.get('GLOBAL_HOOK_ID')
-        self.hook_id = os.environ.get('HOOK_ID')
+        self.global_module_id = os.environ.get('GLOBAL_MODULE_ID')
+        self.module_id = os.environ.get('MODULE_ID')
         self.token = os.environ.get('PROCESS_TOKEN')
         self.params = {}
         self.returns = {}

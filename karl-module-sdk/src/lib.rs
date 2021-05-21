@@ -10,8 +10,8 @@ use crate::protos::*;
 
 #[derive(Debug, Clone)]
 pub struct KarlModuleSDK {
-    pub global_hook_id: String,
-    pub hook_id: String,
+    pub global_module_id: String,
+    pub module_id: String,
     pub process_token: String,
     pub host_addr: String,
     /// Map from registered parameter to input tag
@@ -66,10 +66,10 @@ impl KarlModuleSDK {
             HashMap::new()
         };
         println!("params: {:?}", params);
-        println!("params: {:?}", returns);
+        println!("returns: {:?}", returns);
         Self {
-            global_hook_id: env::var("GLOBAL_HOOK_ID").unwrap(),
-            hook_id: env::var("HOOK_ID").unwrap(),
+            global_module_id: env::var("GLOBAL_MODULE_ID").unwrap(),
+            module_id: env::var("MODULE_ID").unwrap(),
             process_token: env::var("PROCESS_TOKEN").unwrap(),
             host_addr: String::from("http://localhost:59583"),
             params,
