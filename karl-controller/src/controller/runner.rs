@@ -8,6 +8,7 @@ use karl_common::*;
 use crate::controller::HostScheduler;
 use crate::protos::ComputeRequest;
 use crate::controller::tags::Tags;
+use futures::future::{Abortable, AbortHandle};
 
 type Tag = String;
 type GlobalModuleID = String;
@@ -16,7 +17,7 @@ type ModuleID = String;
 #[derive(Default, Clone)]
 pub struct ModuleConfig {
     // Interval duration and abortable thread handle.
-    interval: Option<(u32, bool)>,
+    interval: Option<(u32, AbortHandle)>,
     // Network domains.
     network_perm: HashSet<String>,
     // Environment variables.
@@ -32,8 +33,8 @@ pub struct Modules {
 }
 
 impl ModuleConfig {
-    pub fn set_interval(&mut self, duration_s: u32) {
-        self.interval = Some((duration_s, false)); // TODO: handle
+    pub fn set_interval(&mut self, duration_s: u32, handle: AbortHandle) {
+        self.interval = Some((duration_s, handle));
     }
 
     pub fn add_network_perm(&mut self, domain: &str) {
@@ -277,7 +278,8 @@ impl Runner {
         } else {
             let duration = Duration::from_secs(seconds.into());
             let config = modules.config_mut(&module_id)?;
-            let _handle = tokio::spawn(async move {
+            let (abort_handle, abort_registration) = AbortHandle::new_pair();
+            let future = Abortable::new(async move {
                 let mut interval = time::interval(duration);
                 loop {
                     interval.tick().await;
@@ -287,8 +289,9 @@ impl Runner {
                         trigger: None,
                     }).await.unwrap();
                 }
-            });
-            config.set_interval(seconds);
+            }, abort_registration);
+            tokio::spawn(async move { future.await });
+            config.set_interval(seconds, abort_handle);
             Ok(())
         }
     }
