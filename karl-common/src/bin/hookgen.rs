@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use bincode;
-use karl_common::{Module, HOOK_STORE_PATH, TarBuilder};
+use karl_common::{Module, TarBuilder};
 
 fn read_nonempty_line() -> String {
     loop {
@@ -101,7 +101,8 @@ fn main() {
         network_perm,
     };
 
-    let path = Path::new(HOOK_STORE_PATH).join(&hook.global_id);
+    let modules_path = std::env::var("KARL_MODULE_PATH").unwrap();
+    let path = Path::new(&modules_path).join(&hook.global_id);
     if path.exists() {
         println!("Path already exists. Override? [y/n]");
         if read_nonempty_line() != "y" {

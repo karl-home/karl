@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use bincode;
-use karl_common::{Module, HOOK_STORE_PATH, TarBuilder};
+use karl_common::{Module, TarBuilder};
 
 fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
     let mut builder = TarBuilder::new();
@@ -80,8 +80,8 @@ fn main() {
         let returns = returns[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let network_perm = network_perm[i].iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let package = read_tar_builder(vec![
-            format!("/home/gina/karl/karl-module-sdk/target/x86_64-unknown-linux-musl/release/examples/{} {}",
-                &global_id, &global_id),
+            format!("{}/karl-module-sdk/target/x86_64-unknown-linux-musl/release/examples/{} {}",
+                std::env::var("KARL_PATH").unwrap(), &global_id, &global_id),
         ]).finalize().unwrap();
         let binary_path = format!("./{}", &global_id);
         let args = vec![];
@@ -96,7 +96,8 @@ fn main() {
             network_perm,
         };
 
-        let path = Path::new(HOOK_STORE_PATH).join(&hook.global_id);
+        let modules_path = std::env::var("KARL_MODULE_PATH").unwrap();
+        let path = Path::new(&modules_path).join(&hook.global_id);
         println!("Writing hook to {:?}", path);
         let bytes = bincode::serialize(&hook).unwrap();
         println!("{} bytes", bytes.len());

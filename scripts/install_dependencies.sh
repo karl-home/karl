@@ -1,4 +1,7 @@
 #!/bin/bash
+export KARL_PATH=$(pwd)
+export KARL_MODULE_PATH=$(pwd)/modules
+
 install_deps() {
 	# Rust
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh

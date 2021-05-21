@@ -560,12 +560,13 @@ impl Host {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::builder().init();
+    let path = format!("{}/.host", std::env::var("KARL_PATH").unwrap());
     let matches = App::new("Karl Host")
         .arg(Arg::with_name("karl-path")
             .help("Absolute path to the base Karl directory.")
             .long("karl-path")
             .takes_value(true)
-            .default_value("/home/gina/.karl"))
+            .default_value(&path))
         .arg(Arg::with_name("port")
             .help("Port. Defaults to a random open port.")
             .short("p")

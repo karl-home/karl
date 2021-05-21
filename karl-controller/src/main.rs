@@ -25,12 +25,13 @@ use protos::karl_controller_server::KarlControllerServer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::builder().init();
+    let path = format!("{}/.controller", std::env::var("KARL_PATH").unwrap());
     let matches = App::new("Controller")
         .arg(Arg::with_name("karl-path")
             .help("Absolute path to the base Karl directory.")
             .long("karl-path")
             .takes_value(true)
-            .default_value("/home/gina/.karl_controller"))
+            .default_value(&path))
         .arg(Arg::with_name("port")
             .help("Port. Defaults to a random open port.")
             .short("p")

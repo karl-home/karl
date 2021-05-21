@@ -19,7 +19,8 @@ pub struct Module {
 
 impl Module {
     pub fn import(global_id: &StringID) -> Result<Self, Error> {
-        let path = Path::new(HOOK_STORE_PATH).join(global_id);
+        let modules_path = std::env::var("KARL_MODULE_PATH").unwrap();
+        let path = Path::new(&modules_path).join(global_id);
         let bytes = fs::read(path)?;
         let hook: Module = bincode::deserialize(&bytes[..])
             .map_err(|e| Error::HookInstallError(e.to_string()))?;
