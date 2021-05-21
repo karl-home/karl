@@ -14,6 +14,30 @@ type Tag = String;
 type GlobalModuleID = String;
 type ModuleID = String;
 
+#[derive(Debug)]
+struct Trigger {
+    tag: String,
+    timestamp: String,
+    data: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct QueuedModule {
+    id: ModuleID,
+    trigger: Option<Trigger>,
+}
+
+#[derive(Clone)]
+pub struct Runner {
+    tx: Option<mpsc::Sender<QueuedModule>>,
+    /// Registered modules and their local module IDs.
+    modules: Arc<Mutex<Modules>>,
+    /// Watched tags and the modules they spawn.
+    watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
+    /// Wether to include triggered data in the request.
+    pubsub_enabled: bool,
+}
+
 #[derive(Default, Clone)]
 pub struct ModuleConfig {
     // Interval duration and abortable thread handle.
@@ -33,16 +57,12 @@ pub struct Modules {
 }
 
 impl ModuleConfig {
-    pub fn set_interval(&mut self, duration_s: u32, handle: AbortHandle) {
-        self.interval = Some((duration_s, handle));
-    }
-
     pub fn add_network_perm(&mut self, domain: &str) {
         self.network_perm.insert(domain.to_string());
     }
 
-    pub fn set_env(&mut self, key: String, value: String) {
-        self.envs.insert(key, value);
+    fn set_interval(&mut self, duration_s: u32, handle: AbortHandle) {
+        self.interval = Some((duration_s, handle));
     }
 }
 
@@ -181,24 +201,6 @@ impl Modules {
     }
 }
 
-#[derive(Debug)]
-pub struct QueuedModule {
-    id: ModuleID,
-    /// Tag, timestamp, data
-    trigger: Option<(String, String, Vec<u8>)>,
-}
-
-#[derive(Clone)]
-pub struct Runner {
-    tx: Option<mpsc::Sender<QueuedModule>>,
-    /// Registered modules and their local module IDs.
-    modules: Arc<Mutex<Modules>>,
-    /// Watched tags and the modules they spawn.
-    watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
-    /// Wether to include triggered data in the request.
-    pubsub_enabled: bool,
-}
-
 fn gen_process_id() -> ProcessID {
     use rand::Rng;
     rand::thread_rng().gen()
@@ -303,22 +305,14 @@ impl Runner {
             .push(module_id.clone());
     }
 
-    pub async fn spawn_if_watched(
+    pub async fn spawn_module_if_watched(
         &self,
         tag: &String,
         timestamp: &String,
         data: &Vec<u8>,
     ) -> usize {
-        let module_ids = {
-            let mut module_ids = HashSet::new();
-            let watched_tags = self.watched_tags.read().unwrap();
-            if let Some(modules) = watched_tags.get(tag) {
-                for module_id in modules {
-                    module_ids.insert(module_id.clone());
-                }
-            }
-            module_ids
-        };
+        let module_ids = self.watched_tags.read().unwrap()
+            .get(tag).unwrap_or(&vec![]).clone();
         let tx = self.tx.as_ref().unwrap();
         let spawned = module_ids.len();
         // TODO: avoid cloning data unnecessarily.
@@ -331,13 +325,17 @@ impl Runner {
             };
             tx.send(QueuedModule {
                 id: module_id,
-                trigger: Some((tag.clone(), timestamp.clone(), data)),
+                trigger: Some(Trigger {
+                    tag: tag.clone(),
+                    timestamp: timestamp.clone(),
+                    data,
+                }),
             }).await.unwrap();
         }
         spawned
     }
 
-    pub async fn spawn_module_id(&self, module_id: String) {
+    pub async fn spawn_module(&self, module_id: String) {
         self.tx.as_ref().unwrap().send(QueuedModule {
             id: module_id,
             trigger: None,
@@ -382,10 +380,10 @@ impl Runner {
                     },
                 }
             };
-            if let Some((tag, timestamp, data)) = next.trigger {
-                request.triggered_tag = tag;
-                request.triggered_timestamp = timestamp;
-                request.triggered_data = data;
+            if let Some(trigger) = next.trigger {
+                request.triggered_tag = trigger.tag;
+                request.triggered_timestamp = trigger.timestamp;
+                request.triggered_data = trigger.data;
             }
             debug!("convert module to compute request => {} s", now.elapsed().as_secs_f32());
 
