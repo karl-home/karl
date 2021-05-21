@@ -23,17 +23,17 @@ pub struct Sensors {
 }
 
 impl Sensors {
-    pub fn authenticate(&self, token: &SensorToken) -> Result<&SensorID, Error> {
+    pub fn authenticate(&self, token: &SensorToken) -> Option<&SensorID> {
         if let Some(id) = self.tokens.get(token) {
             if self.values.get(id).unwrap().confirmed {
-                Ok(id)
+                Some(id)
             } else {
                 debug!("unconfirmed sensor {}", id);
-                Err(Error::Unauthenticated)
+                None
             }
         } else {
             debug!("invalid sensor token {}", token);
-            Err(Error::Unauthenticated)
+            None
         }
     }
 

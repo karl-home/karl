@@ -189,11 +189,14 @@ impl karl_controller_server::KarlController for Controller {
         let req = req.into_inner();
         let (sensor_id, tags) = {
             let sensors = self.sensors.lock().unwrap();
-            let id = sensors.authenticate(&req.sensor_token)
-                .map_err(|e| e.to_tonic())?.to_string();
-            let tags = sensors.tags(&id).map_err(|e| e.to_tonic())?
-                .get_output_tags(&req.param).map_err(|e| e.to_tonic())?.clone();
-            (id, tags.clone())
+            if let Some(id) = sensors.authenticate(&req.sensor_token) {
+                let tags = sensors.tags(&id).map_err(|e| e.to_tonic())?
+                    .get_output_tags(&req.param).map_err(|e| e.to_tonic())?.clone();
+                (id.clone(), tags.clone())
+            } else {
+                // drop messages from unconfirmed sensors
+                return Ok(Response::new(()));
+            }
         };
         for tag in tags {
             let res = self.data_sink.write().unwrap()
@@ -214,10 +217,14 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<StateChangeInit>,
     ) -> Result<Response<Self::StateChangesStream>, Status> {
         let req = req.into_inner();
-        let sensor_id = self.sensors.lock().unwrap()
-            .authenticate(&req.sensor_token)
-            .map_err(|e| e.to_tonic())?
-            .to_string();
+        let sensor_id: String =
+        loop {
+            if let Some(id) = self.sensors.lock().unwrap().authenticate(&req.sensor_token) {
+                break id.clone();
+            }
+            // poll until the sensor is confirmed
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        };
 
         let (internal_tx, mut internal_rx) = mpsc::channel::<StateChangePair>(10);
         let (tx, rx) = mpsc::channel::<Result<StateChangePair, Status>>(10);
