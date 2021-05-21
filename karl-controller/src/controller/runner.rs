@@ -3,11 +3,11 @@ use std::collections::{HashSet, HashMap};
 use tokio::sync::mpsc;
 use std::time::Instant;
 use tokio::time::{self, Duration};
+use tokio::task::JoinHandle;
 use karl_common::*;
 use crate::controller::HostScheduler;
 use crate::protos::ComputeRequest;
 use crate::controller::tags::Tags;
-use futures::future::{Abortable, AbortHandle};
 
 #[derive(Debug)]
 struct Trigger {
@@ -31,17 +31,17 @@ pub struct Runner {
     pubsub_enabled: bool,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct ModuleConfig {
     // Interval duration and abortable thread handle.
-    interval: Option<(u32, AbortHandle)>,
+    interval: Option<(u32, JoinHandle<()>)>,
     // Network domains.
     network_perm: HashSet<String>,
     // Environment variables.
     envs: HashMap<String, String>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct Modules {
     tag_counter: usize,
     modules: HashMap<ModuleID, Module>,
@@ -62,7 +62,7 @@ impl ModuleConfig {
         self.interval.as_ref().map(|(duration, _)| *duration)
     }
 
-    fn set_interval(&mut self, duration_s: u32, handle: AbortHandle) {
+    fn set_interval(&mut self, duration_s: u32, handle: JoinHandle<()>) {
         self.interval = Some((duration_s, handle));
     }
 }
@@ -271,8 +271,7 @@ impl Runner {
         if let Some(seconds) = seconds {
             let duration = Duration::from_secs(seconds.into());
             let config = modules.config_mut(&module_id)?;
-            let (abort_handle, abort_registration) = AbortHandle::new_pair();
-            let future = Abortable::new(async move {
+            let handle = tokio::spawn(async move {
                 let mut interval = time::interval(duration);
                 loop {
                     interval.tick().await;
@@ -282,9 +281,8 @@ impl Runner {
                         trigger: None,
                     }).await.unwrap();
                 }
-            }, abort_registration);
-            tokio::spawn(async move { future.await });
-            config.set_interval(seconds, abort_handle);
+            });
+            config.set_interval(seconds, handle);
         }
         Ok(())
     }

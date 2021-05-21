@@ -1,10 +1,10 @@
 // use std::collections::{HashMap};
 use std::sync::{Arc, Mutex};
-use futures;
 use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
 use crate::controller::{Controller, HostScheduler};
+use tokio::runtime::Handle;
 use karl_common::Error;
 use super::graph::*;
 
@@ -86,7 +86,7 @@ pub fn spawn_module(
     id: String,
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
-    futures::executor::block_on(controller.lock().unwrap().runner.spawn_module(id));
+    Handle::current().block_on(controller.lock().unwrap().runner.spawn_module(id));
     Status::Ok
 }
 
