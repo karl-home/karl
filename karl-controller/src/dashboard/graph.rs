@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use karl_common::*;
 use crate::controller::{sensors, runner, tags::*, Controller};
 
@@ -20,7 +20,7 @@ pub struct GraphJson {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SensorJson {
     pub id: String,
     pub stateKeys: Vec<(String, String)>,
@@ -28,7 +28,7 @@ pub struct SensorJson {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ModuleJson {
     pub localId: String,
     pub globalId: String,
@@ -221,5 +221,305 @@ impl GraphJson {
             networkEdges: network_edges,
             intervals,
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum Delta {
+    AddModule {
+        global_id: String,
+        id: String,
+    },
+    RemoveModule {
+        id: String,
+    },
+    AddDataEdge {
+        stateless: bool,
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
+    },
+    RemoveDataEdge {
+        stateless: bool,
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
+    },
+    AddStateEdge {
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
+    },
+    RemoveStateEdge {
+        src_id: String,
+        src_name: String,
+        dst_id: String,
+        dst_name: String,
+    },
+    SetNetworkEdges {
+        id: String,
+        domains: Vec<String>,
+    },
+    SetInterval {
+        id: String,
+        duration: Option<u32>,
+    },
+}
+
+#[derive(Default)]
+struct IndexedGraphJson<'a> {
+    sensors: HashSet<&'a SensorJson>,
+    modules: HashSet<&'a ModuleJson>,
+    data_edges_src: HashMap<u32, HashSet<(bool, String, String, String, String)>>,
+    data_edges_dst: HashMap<u32, HashSet<(bool, String, String, String, String)>>,
+    state_edges_src: HashMap<u32, HashSet<(String, String, String, String)>>,
+    state_edges_dst: HashMap<u32, HashSet<(String, String, String, String)>>,
+    network_edges: HashMap<u32, HashSet<String>>,
+    intervals: HashMap<u32, Option<u32>>,
+}
+
+impl<'a> IndexedGraphJson<'a> {
+    fn parse_reverse_entity_map(
+        sensors: &Vec<SensorJson>,
+        modules: &Vec<ModuleJson>,
+    ) -> HashMap<u32, (String, Vec<String>, Vec<String>)> {
+        let mut map = HashMap::new();
+        for sensor in sensors {
+            let index = map.len() as u32;
+            let inputs = sensor.stateKeys.iter().map(|(x, _)| x.clone()).collect::<Vec<_>>();
+            let outputs = sensor.returns.iter().map(|(x, _)| x.clone()).collect::<Vec<_>>();
+            map.insert(index, (sensor.id.clone(), inputs, outputs));
+        }
+        for module in modules {
+            let index = map.len() as u32;
+            let inputs = module.params.clone();
+            let outputs = module.returns.clone();
+            map.insert(index, (module.localId.clone(), inputs, outputs));
+        }
+        map
+    }
+
+    fn new(graph: &'a GraphJson) -> Self {
+        let mut g = IndexedGraphJson::default();
+        let map = Self::parse_reverse_entity_map(&graph.sensors, &graph.moduleIds);
+        g.sensors = graph.sensors.iter().collect();
+        g.modules = graph.moduleIds.iter().collect();
+        for i in 0..graph.sensors.len() {
+            let i = i as u32;
+            g.data_edges_src.insert(i, HashSet::new());
+            g.state_edges_dst.insert(i, HashSet::new());
+        }
+        for i in 0..(graph.sensors.len() + graph.moduleIds.len()) {
+            let i = i as u32;
+            g.data_edges_src.insert(i, HashSet::new());
+            g.data_edges_dst.insert(i, HashSet::new());
+            g.state_edges_src.insert(i, HashSet::new());
+            g.state_edges_dst.insert(i, HashSet::new());
+            g.network_edges.insert(i, HashSet::new());
+            g.intervals.insert(i, None);
+        }
+        for (stateless, a, b, c, d) in &graph.dataEdges {
+            let (src_id, inputs, _) = map.get(a).unwrap();
+            let src_name = inputs.get(*b as usize).unwrap().to_string();
+            let (dst_id, _, outputs) = map.get(c).unwrap();
+            let dst_name = outputs.get(*d as usize).unwrap().to_string();
+            let edge = (*stateless, src_id.to_string(), src_name, dst_id.to_string(), dst_name);
+            g.data_edges_src.get_mut(a).unwrap().insert(edge.clone());
+            g.data_edges_src.get_mut(c).unwrap().insert(edge);
+        }
+        for (a, b, c, d) in &graph.stateEdges {
+            let (src_id, inputs, _) = map.get(a).unwrap();
+            let src_name = inputs.get(*b as usize).unwrap().to_string();
+            let (dst_id, _, outputs) = map.get(c).unwrap();
+            let dst_name = outputs.get(*d as usize).unwrap().to_string();
+            let edge = (src_id.to_string(), src_name, dst_id.to_string(), dst_name);
+            g.state_edges_src.get_mut(a).unwrap().insert(edge.clone());
+            g.state_edges_src.get_mut(c).unwrap().insert(edge);
+        }
+        for (a, domain) in &graph.networkEdges {
+            g.network_edges.get_mut(a).unwrap().insert(domain.clone());
+        }
+        for (a, duration) in &graph.intervals {
+            g.intervals.insert(*a, Some(*duration));
+        }
+        g
+    }
+}
+
+impl GraphJson {
+    /// Calculate the delta needed to change the current graph to the new one.
+    /// All the sensors must be the same.
+    pub fn calculate_delta(&self, new: &GraphJson) -> Vec<Delta> {
+        let mut g1 = IndexedGraphJson::new(self);
+        let mut g2 = IndexedGraphJson::new(new);
+        assert_eq!(g1.sensors, g2.sensors, "sensors must be unchanged");
+
+        // Calculate which modules to remove, keep, and add.
+        let mut modules_to_remove: Vec<ModuleID> = Vec::new();
+        let mut modules_to_keep: Vec<ModuleID> = Vec::new();
+        let mut modules_to_add: Vec<(ModuleID, GlobalModuleID)> = Vec::new();
+        for m in g1.modules {
+            if g2.modules.remove(&m) {
+                modules_to_keep.push(m.localId.clone());
+            } else {
+                modules_to_remove.push(m.localId.clone());
+            }
+        }
+        for m in g2.modules {
+            modules_to_add.push((m.localId.clone(), m.globalId.clone()));
+        }
+
+        let mut deltas = vec![];
+        let old_entity_map = Self::parse_entity_map(&self.sensors, &self.moduleIds);
+        let new_entity_map = Self::parse_entity_map(&new.sensors, &new.moduleIds);
+
+        // Remove all edges connected to the removed modules.
+        // Then remove the modules.
+        for id in modules_to_remove {
+            let i = old_entity_map.get(&id).unwrap();
+            deltas.push(Delta::SetNetworkEdges {
+                id: id.clone(),
+                domains: vec![],
+            });
+            deltas.push(Delta::SetInterval {
+                id: id.clone(),
+                duration: None,
+            });
+            for (stateless, a, b, c, d) in g1.data_edges_src.remove(i).unwrap() {
+                deltas.push(Delta::RemoveDataEdge {
+                    stateless,
+                    src_id: a.clone(),
+                    src_name: b.clone(),
+                    dst_id: c.clone(),
+                    dst_name: d.clone(),
+                });
+            }
+            for (stateless, a, b, c, d) in g1.data_edges_dst.remove(i).unwrap() {
+                deltas.push(Delta::RemoveDataEdge {
+                    stateless,
+                    src_id: a.clone(),
+                    src_name: b.clone(),
+                    dst_id: c.clone(),
+                    dst_name: d.clone(),
+                });
+            }
+            for (a, b, c, d) in g1.state_edges_src.remove(i).unwrap() {
+                deltas.push(Delta::RemoveStateEdge {
+                    src_id: a.clone(),
+                    src_name: b.clone(),
+                    dst_id: c.clone(),
+                    dst_name: d.clone(),
+                });
+            }
+            deltas.push(Delta::RemoveModule { id });
+        }
+
+        // Add new modules.
+        for (id, global_id) in modules_to_add.clone() {
+            deltas.push(Delta::AddModule {id, global_id });
+        }
+
+        // For all remaining old modules:
+        // set the network edges (if changed)
+        // set the intervals (if changed)
+        // set outgoing data edges (if changed)
+        // set outgoing state edges (if changed)
+        for id in modules_to_keep {
+            let i1 = old_entity_map.get(&id).unwrap();
+            let i2 = new_entity_map.get(&id).unwrap();
+            let network_edges1 = g1.network_edges.remove(i1).unwrap();
+            let network_edges2 = g2.network_edges.remove(i2).unwrap();
+            if network_edges1 != network_edges2 {
+                deltas.push(Delta::SetNetworkEdges {
+                    id: id.clone(),
+                    domains: network_edges2.into_iter().collect(),
+                });
+            }
+            let intervals1 = g1.intervals.remove(i1).unwrap();
+            let intervals2 = g2.intervals.remove(i2).unwrap();
+            if intervals1 != intervals2 {
+                deltas.push(Delta::SetInterval { id, duration: intervals2 });
+            }
+            let data_edges1 = g1.data_edges_src.remove(i1).unwrap();
+            let mut data_edges2 = g2.data_edges_src.remove(i2).unwrap();
+            for edge in data_edges1 {
+                if !data_edges2.remove(&edge) {
+                    deltas.push(Delta::RemoveDataEdge {
+                        stateless: edge.0,
+                        src_id: edge.1,
+                        src_name: edge.2,
+                        dst_id: edge.3,
+                        dst_name: edge.4,
+                    });
+                }
+            }
+            for edge in data_edges2 {
+                deltas.push(Delta::AddDataEdge {
+                    stateless: edge.0,
+                    src_id: edge.1,
+                    src_name: edge.2,
+                    dst_id: edge.3,
+                    dst_name: edge.4,
+                });
+            }
+            let state_edges1 = g1.state_edges_src.remove(i1).unwrap();
+            let mut state_edges2 = g2.state_edges_src.remove(i2).unwrap();
+            for edge in state_edges1 {
+                if !state_edges2.remove(&edge) {
+                    deltas.push(Delta::RemoveStateEdge {
+                        src_id: edge.0,
+                        src_name: edge.1,
+                        dst_id: edge.2,
+                        dst_name: edge.3,
+                    });
+                }
+            }
+            for edge in state_edges2 {
+                deltas.push(Delta::AddStateEdge {
+                    src_id: edge.0,
+                    src_name: edge.1,
+                    dst_id: edge.2,
+                    dst_name: edge.3,
+                });
+            }
+        }
+
+        // For all completely new modules:
+        // set the network edges
+        // set the intervals
+        // set outgoing data edges
+        // set outgoing state edges
+        for (id, _) in modules_to_add {
+            let i = new_entity_map.get(&id).unwrap();
+            deltas.push(Delta::SetNetworkEdges {
+                id: id.clone(),
+                domains: g2.network_edges.remove(i).unwrap().into_iter().collect(),
+            });
+            deltas.push(Delta::SetInterval {
+                id,
+                duration: g2.intervals.remove(i).unwrap(),
+            });
+            for edge in g2.data_edges_src.remove(i).unwrap() {
+                deltas.push(Delta::AddDataEdge {
+                    stateless: edge.0,
+                    src_id: edge.1,
+                    src_name: edge.2,
+                    dst_id: edge.3,
+                    dst_name: edge.4,
+                });
+            }
+            for edge in g2.state_edges_src.remove(i).unwrap() {
+                deltas.push(Delta::AddStateEdge {
+                    src_id: edge.0,
+                    src_name: edge.1,
+                    dst_id: edge.2,
+                    dst_name: edge.3,
+                });
+            }
+        }
+        deltas
     }
 }
