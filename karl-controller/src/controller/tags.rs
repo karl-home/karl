@@ -81,7 +81,7 @@ impl Tags {
         }
     }
 
-    pub fn get_input_tag(&self, input: &Output) -> Result<&Option<Tag>, Error> {
+    pub fn get_input_tag(&self, input: &Input) -> Result<&Option<Tag>, Error> {
         if let Some(tag) = self.inputs.get(input) {
             Ok(tag)
         } else {
@@ -90,7 +90,7 @@ impl Tags {
         }
     }
 
-    pub fn set_input_tag(&mut self, input: &Output, tag: &Tag) -> Result<(), Error> {
+    pub fn set_input_tag(&mut self, input: &Input, tag: &Tag) -> Result<(), Error> {
         if let Some(current_tag) = self.inputs.get_mut(input) {
             if current_tag.is_some() {
                 warn!("replacing current tag {:?} with {}", current_tag, tag);
