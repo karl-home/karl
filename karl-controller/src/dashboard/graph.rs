@@ -387,6 +387,9 @@ impl GraphJson {
 
         // Remove all edges connected to the removed modules.
         // Then remove the modules.
+        // The following data structure ensures edges are not removed twice
+        // when later removing data edges where the source is a sensor.
+        let mut removed_data_edges_dst = HashSet::new();
         for id in modules_to_remove {
             let i = old_entity_map.get(&id).unwrap();
             let domains = g1.network_edges.remove(i).unwrap();
@@ -420,6 +423,7 @@ impl GraphJson {
                     dst_id: c.clone(),
                     dst_name: d.clone(),
                 });
+                removed_data_edges_dst.insert((stateless, a, b, c, d));
             }
             for (a, b, c, d) in g1.state_edges_src.remove(i).unwrap() {
                 deltas.push(Delta::RemoveStateEdge {
@@ -498,6 +502,37 @@ impl GraphJson {
                     src_name: edge.1,
                     dst_id: edge.2,
                     dst_name: edge.3,
+                });
+            }
+        }
+
+        // For sensors: remove the necessary data edges that have not already
+        // been removed, and add new data edges.
+        for id in g1.sensors.iter().map(|s| &s.id) {
+            let i1 = old_entity_map.get(id).unwrap();
+            let i2 = new_entity_map.get(id).unwrap();
+            let data_edges1 = g1.data_edges_src.remove(i1).unwrap();
+            let mut data_edges2 = g2.data_edges_src.remove(i2).unwrap();
+            for edge in data_edges1 {
+                if !data_edges2.remove(&edge) {
+                    if !removed_data_edges_dst.contains(&edge) {
+                        deltas.push(Delta::RemoveDataEdge {
+                            stateless: edge.0,
+                            src_id: edge.1,
+                            src_name: edge.2,
+                            dst_id: edge.3,
+                            dst_name: edge.4,
+                        });
+                    }
+                }
+            }
+            for edge in data_edges2 {
+                deltas.push(Delta::AddDataEdge {
+                    stateless: edge.0,
+                    src_id: edge.1,
+                    src_name: edge.2,
+                    dst_id: edge.3,
+                    dst_name: edge.4,
                 });
             }
         }
