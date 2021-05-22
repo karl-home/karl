@@ -71,12 +71,18 @@ pub fn save_graph(
 ) -> Status {
 	let mut c = controller.lock().unwrap();
 	let old_graph = GraphJson::new(&c);
-	let deltas = old_graph.calculate_delta(&graph);
+	let deltas = match old_graph.calculate_delta(&graph) {
+        Ok(deltas) => deltas,
+        Err(e) => {
+            error!("invalid graph: {:?}", e);
+            return Status::BadRequest;
+        }
+    };
     match apply_deltas(&mut c, deltas) {
         Ok(()) => Status::Ok,
         Err(e) => {
             error!("error saving graph: {:?}", e);
-            Status::BadRequest
+            Status::InternalServerError
         }
     }
 }

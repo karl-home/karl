@@ -35,6 +35,7 @@ pub enum Error {
     /// Something is not found,
     NotFound,
     BadRequest,
+    BadRequestInfo(String),
     AlreadyExists,
     InvalidArgument,
     Unauthenticated,
@@ -71,14 +72,14 @@ impl From<String> for Error {
 
 impl Error {
     pub fn to_tonic(self) -> Status {
-        let code = match self {
-            Error::NotFound => Code::NotFound,
-            Error::BadRequest => Code::FailedPrecondition,
-            Error::AlreadyExists => Code::AlreadyExists,
-            Error::InvalidArgument => Code::InvalidArgument,
-            Error::Unauthenticated => Code::Unauthenticated,
-            _ => Code::Unknown,
+        let (code, string) = match self {
+            Error::NotFound => (Code::NotFound, None),
+            Error::BadRequest => (Code::InvalidArgument, None),
+            Error::BadRequestInfo(x) => (Code::InvalidArgument, Some(x)),
+            Error::AlreadyExists => (Code::AlreadyExists, None),
+            Error::Unauthenticated => (Code::Unauthenticated, None),
+            _ => (Code::Unknown, None),
         };
-        Status::new(code, "".to_string())
+        Status::new(code, string.unwrap_or("".to_string()))
     }
 }

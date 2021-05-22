@@ -278,6 +278,10 @@ pub enum Delta {
     },
 }
 
+fn err(string: &str) -> Error {
+    Error::BadRequestInfo(string.to_string())
+}
+
 #[derive(Default)]
 struct IndexedGraphJson<'a> {
     sensors: HashSet<&'a SensorJson>,
@@ -311,7 +315,7 @@ impl<'a> IndexedGraphJson<'a> {
         map
     }
 
-    fn new(graph: &'a GraphJson) -> Self {
+    fn new(graph: &'a GraphJson) -> Result<Self, Error> {
         let mut g = IndexedGraphJson::default();
         let map = Self::parse_reverse_entity_map(&graph.sensors, &graph.moduleIds);
         g.sensors = graph.sensors.iter().collect();
@@ -331,40 +335,42 @@ impl<'a> IndexedGraphJson<'a> {
             g.intervals.insert(i, None);
         }
         for (stateless, a, b, c, d) in &graph.dataEdges {
-            let (src_id, _, outputs) = map.get(a).unwrap();
-            let src_name = outputs.get(*b as usize).unwrap().to_string();
-            let (dst_id, inputs, _) = map.get(c).unwrap();
-            let dst_name = inputs.get(*d as usize).unwrap().to_string();
+            let (src_id, _, outputs) = map.get(a).ok_or(err("data edge src id"))?;
+            let src_name = outputs.get(*b as usize).ok_or(err("data edge src name"))?.to_string();
+            let (dst_id, inputs, _) = map.get(c).ok_or(err("data edge dst id"))?;
+            let dst_name = inputs.get(*d as usize).ok_or(err("data edge dst name"))?.to_string();
             let edge = (*stateless, src_id.to_string(), src_name, dst_id.to_string(), dst_name);
             g.data_edges_src.get_mut(a).unwrap().insert(edge.clone());
             g.data_edges_dst.get_mut(c).unwrap().insert(edge);
         }
         for (a, b, c, d) in &graph.stateEdges {
-            let (src_id, _, outputs) = map.get(a).unwrap();
-            let src_name = outputs.get(*b as usize).unwrap().to_string();
-            let (dst_id, inputs, _) = map.get(c).unwrap();
-            let dst_name = inputs.get(*d as usize).unwrap().to_string();
+            let (src_id, _, outputs) = map.get(a).ok_or(err("state edge src id"))?;
+            let src_name = outputs.get(*b as usize).ok_or(err("state edge src name"))?.to_string();
+            let (dst_id, inputs, _) = map.get(c).ok_or(err("state edge dst id"))?;
+            let dst_name = inputs.get(*d as usize).ok_or(err("state edge dst name"))?.to_string();
             let edge = (src_id.to_string(), src_name, dst_id.to_string(), dst_name);
             g.state_edges_src.get_mut(a).unwrap().insert(edge.clone());
             g.state_edges_dst.get_mut(c).unwrap().insert(edge);
         }
         for (a, domain) in &graph.networkEdges {
-            g.network_edges.get_mut(a).unwrap().insert(domain.clone());
+            g.network_edges.get_mut(a).ok_or(err("network edge module id"))?.insert(domain.clone());
         }
         for (a, duration) in &graph.intervals {
-            g.intervals.insert(*a, Some(*duration));
+            *g.intervals.get_mut(a).ok_or(err("interval module id"))? = Some(*duration);
         }
-        g
+        Ok(g)
     }
 }
 
 impl GraphJson {
     /// Calculate the delta needed to change the current graph to the new one.
     /// All the sensors must be the same.
-    pub fn calculate_delta(&self, new: &GraphJson) -> Vec<Delta> {
-        let mut g1 = IndexedGraphJson::new(self);
-        let mut g2 = IndexedGraphJson::new(new);
-        assert_eq!(g1.sensors, g2.sensors, "sensors must be unchanged");
+    pub fn calculate_delta(&self, new: &GraphJson) -> Result<Vec<Delta>, Error> {
+        let mut g1 = IndexedGraphJson::new(self)?;
+        let mut g2 = IndexedGraphJson::new(new)?;
+        if g1.sensors != g2.sensors {
+            return Err(err("sensors do not match"));
+        }
 
         // Calculate which modules to remove, keep, and add.
         let mut modules_to_remove: Vec<ModuleID> = Vec::new();
@@ -577,6 +583,6 @@ impl GraphJson {
             }
         }
         debug!("{:?}", deltas);
-        deltas
+        Ok(deltas)
     }
 }
