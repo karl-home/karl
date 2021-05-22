@@ -1,4 +1,6 @@
 #!/bin/bash
+# git clone --recurse-submodules https://github.com/karl-home/karl.git
+
 export KARL_PATH=$(pwd)
 export KARL_MODULE_PATH=$(pwd)/modules
 
@@ -9,43 +11,57 @@ install_deps() {
 	source $HOME/.cargo/env
 	rustup toolchain install nightly
 	rustup default nightly
+	rustup target add x86_64-unknown-linux-musl
 
 	# Other deps
 	sudo apt update
-	sudo apt install -y protobuf-compiler python3-pip virtualenv npm
-
-	# nvm
-	curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh | sh
-	export NVM_DIR="$HOME/.nvm"
-	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+	sudo apt install -y npm python3-virtualenv firejail libsndfile1
 }
 
 init_submodules() {
 	git submodule init
-	git submodule update
+	git submodule update  # choose yes
+}
+
+init_aufs() {
+	cd /tmp
+	mkdir work module root
+	sudo mount -t aufs -o br=work:module=ro none root
+	sudo umount root
+}
+
+init_firejail() {
+	sudo cp $KARL_PATH/data/karl.net /etc/firejail/karl.net
+	sudo sed -i 's/restricted-network yes/restricted-network no/g' /etc/firejail/firejail.config
 }
 
 build_karl() {
-	cargo b --bin controller
-	cargo b --release --bin host
-	cargo b --release --example hello_world
+	cd $KARL_PATH/karl-controller && cargo b --release
+	cd $KARL_PATH/karl-host && cargo b --release
+	cd $KARL_PATH/karl-sensor-sdk && cargo b --release --examples
 }
 
-build_cpp_sdk() {
-	cd karl-cpp-sdk
-	./generate.sh
-	./linux.sh
-	cd ..
+build_ui() {
+	cd $KARL_PATH/karl-ui
+	npm install
+	npm run build
 }
 
-build_node_sdk() {
-	cd karl-node-example
-	source init.sh
-	cd ..
+build_modules() {
+	cd $KARL_PATH/karl-module-sdk && \
+		RUSTFLAGS="-C target-feature=+crt-static" cargo b --target x86_64-unknown-linux-musl --release --examples
+	cd $KARL_PATH/data/person-detection && source setup.sh
+	cd $KARL_PATH/data/picovoice && source setup.sh
+	cd $KARL_PATH && mkdir modules
+	cd $KARL_PATH/karl-common && cargo b --release
+	./target/release/build_static
+	./target/release/build_command_classifier
+	./target/release/build_person_detection
 }
 
 install_deps
-init_submodules
+init_firejail
+init_aufs
 build_karl
-build_cpp_sdk
-build_node_sdk
+build_ui
+build_modules
