@@ -32,6 +32,7 @@ pub fn to_status(e: Error) -> Status {
 /// client requests among available services.
 #[derive(Clone)]
 pub struct Controller {
+    pub handle: Handle,
     pub karl_path: PathBuf,
     /// Data structure for adding and allocating hosts
     pub scheduler: Arc<Mutex<HostScheduler>>,
@@ -255,6 +256,7 @@ impl Controller {
     ) -> Self {
         let watched_tags = Arc::new(RwLock::new(HashMap::new()));
         Controller {
+            handle: handle.clone(),
             karl_path: karl_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),

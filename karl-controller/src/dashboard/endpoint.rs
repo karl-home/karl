@@ -4,7 +4,6 @@ use rocket::State;
 use rocket::http::Status;
 use rocket_contrib::json::Json;
 use crate::controller::{Controller, HostScheduler};
-use tokio::runtime::Handle;
 use karl_common::Error;
 use super::graph::*;
 
@@ -92,7 +91,8 @@ pub fn spawn_module(
     id: String,
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
-    Handle::current().block_on(controller.lock().unwrap().runner.spawn_module(id));
+    let c = controller.lock().unwrap();
+    c.handle.block_on(c.runner.spawn_module(id));
     Status::Ok
 }
 
