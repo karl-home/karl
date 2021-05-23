@@ -34,10 +34,10 @@ pub enum Error {
     InvalidResponseType,
     /// Something is not found,
     NotFound,
+    NotFoundInfo(String),
     BadRequest,
     BadRequestInfo(String),
     AlreadyExists,
-    InvalidArgument,
     Unauthenticated,
     /// Failure to install an imported package.
     InstallImportError(String),
@@ -74,6 +74,7 @@ impl Error {
     pub fn to_tonic(self) -> Status {
         let (code, string) = match self {
             Error::NotFound => (Code::NotFound, None),
+            Error::NotFoundInfo(x) => (Code::NotFound, Some(x)),
             Error::BadRequest => (Code::InvalidArgument, None),
             Error::BadRequestInfo(x) => (Code::InvalidArgument, Some(x)),
             Error::AlreadyExists => (Code::AlreadyExists, None),

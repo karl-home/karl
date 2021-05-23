@@ -177,7 +177,8 @@ impl Modules {
         host_token: HostToken,
         cached: bool,
     ) -> Result<ComputeRequest, Error> {
-        let module = self.get_module(&module_id).unwrap();
+        let module = self.get_module(&module_id).ok_or(
+            Error::NotFoundInfo(format!("module not found: {}", module_id)))?;
         let config = self.config(&module_id)?;
         let package = if cached {
             vec![]
@@ -256,7 +257,7 @@ impl Runner {
             abort_handle.abort();
         } else {
             error!("module {} does not have an interval", module_id);
-            return Err(Error::InvalidArgument);
+            return Err(Error::NotFound);
         }
         modules.config_mut(module_id)?.interval = None;
         Ok(())
