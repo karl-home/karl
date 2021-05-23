@@ -64,7 +64,7 @@ impl karl_host_server::KarlHost for Host {
         &self, req: Request<ComputeRequest>,
     ) -> Result<Response<NotifyStart>, Status> {
         let mut req = req.into_inner();
-        info!("HANDLE_COMPUTE START {}", req.module_id);
+        trace!("HANDLE_COMPUTE START {}", req.module_id);
         if let Some(process_token) = self.attach_warm_process(&mut req).await {
             Ok(Response::new(NotifyStart { process_token }))
         } else {
@@ -356,7 +356,6 @@ impl Host {
             loop {
                 let req: ComputeRequest = rx.recv().await.unwrap();
                 let is_warm = true;
-                info!("spawning a warm process for {}", req.module_id);
                 Host::spawn_new_process(
                     host.clone(),
                     req,
@@ -391,7 +390,7 @@ impl Host {
             }
         };
         // permissions are set and warm process can continue
-        info!("attaching warm process {}", warm_process.process_token);
+        info!("attaching: {} ({})", req.module_id, warm_process.process_token);
         warm_process.tx.send(()).await.unwrap();
         Some(warm_process.process_token)
     }
@@ -405,10 +404,10 @@ impl Host {
     ) -> ProcessToken {
         let process_token = Token::gen();
         let (perms, tx) = if !is_warm {
-            debug!("spawning cold process");
+            info!("spawning cold process: {} ({})", req.module_id, process_token);
             (ProcessPerms::new(&mut req), None)
         } else {
-            debug!("spawning warm process");
+            info!("spawning warm process: {} ({})", req.module_id, process_token);
             let (perms, tx) = ProcessPerms::new_warm_cache();
             (perms, Some(tx))
         };
@@ -418,7 +417,6 @@ impl Host {
             let mut process_tokens = host.process_tokens.lock().unwrap();
             assert!(!process_tokens.contains_key(&process_token));
             process_tokens.insert(process_token.clone(), perms);
-            info!("starting process {}", &process_token);
         }
 
         // If it's warm insert a sending channel to eventually notify
@@ -540,7 +538,7 @@ impl Host {
         )?;
         let execution_time = start.elapsed();
         debug!("invoked binary => {} s", execution_time.as_secs_f32());
-        info!("HANDLE_COMPUTE FINISH {}", module_id);
+        trace!("HANDLE_COMPUTE FINISH {}", module_id);
 
         // Reset the root for the next computation.
         path_manager.unmount(mount);
