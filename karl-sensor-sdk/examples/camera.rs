@@ -45,7 +45,7 @@ async fn handle_state_changes(
             info!("firmware update!");
         } else if msg.key == "livestream" {
             warn!("finish true_pipeline: {:?}", Instant::now());
-            if msg.value == "on".as_bytes() {
+            if msg.value == vec![1] {
                 info!("turning livestream on");
                 // TODO: send livestream messages
                 // tokio::spawn(async move {
