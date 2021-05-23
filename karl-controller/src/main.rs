@@ -25,7 +25,8 @@ use protos::karl_controller_server::KarlControllerServer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::builder().init();
-    let path = format!("{}/.controller", std::env::var("KARL_PATH").unwrap());
+    let path = format!("{}/.controller", std::env::var("KARL_PATH")
+        .unwrap_or("/home/gina/karl/.controller".to_string()));
     let matches = App::new("Controller")
         .arg(Arg::with_name("karl-path")
             .help("Absolute path to the base Karl directory.")

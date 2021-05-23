@@ -13,7 +13,11 @@ data/person-detection/PennFudanPed/
 python
 *.svg
 node_modules/
-hooks/
+
+# work dirs
+modules/
+.controller/
+.host/
 
 # person-detection
 .bashrc
