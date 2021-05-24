@@ -87,14 +87,14 @@ impl Modules {
             Ok(id.to_string())
         } else {
             error!("module id already exists: {} ({})", id, global_id);
-            Err(Error::HookInstallError("module id already exists".to_string()))
+            Err(Error::ModuleInstallError("module id already exists".to_string()))
         }
     }
 
     /// Removes the module. Checks if all outgoing edges are removed, and
     /// that the network edges and intervals are reset, but does not check
     /// incoming edges or watched tags.
-    pub fn remove_module(&mut self, module_id: StringID) -> Result<(), Error> {
+    pub fn remove_module(&mut self, module_id: ModuleID) -> Result<(), Error> {
         if let Some(module) = self.modules.remove(&module_id) {
             let tags = self.tags_inner.remove(&module_id).unwrap();
             let config = self.config_inner.remove(&module_id).unwrap();
@@ -597,6 +597,37 @@ mod test {
         time::sleep(Duration::from_secs(1)).await;
         assert_eq!(runner.process_tokens.lock().unwrap().len(), 2,
             "queuing existing module id ran out of hosts");
+    }
+
+    #[test]
+    fn test_to_compute_request_works() {
+        // let package = vec![0, 1, 2, 3];
+        // let binary_path = "binary_path";
+        // let args = vec!["arg1".to_string(), "arg2".to_string()];
+        // let envs = vec![("KEY".to_string(), "VALUE".to_string())];
+        // let state_perm = vec!["camera".to_string()];
+        // let network_perm = vec!["https://www.stanford.edu".to_string()];
+
+        // let module = Module::new(
+        //     "module_id".to_string(),
+        //     ModuleSchedule::Interval(Duration::from_secs(10)),
+        //     state_perm.clone(),
+        //     network_perm.clone(),
+        //     package.clone(),
+        //     binary_path,
+        //     args.clone(),
+        //     envs.clone(),
+        // );
+        // let r = module.to_compute_request().unwrap();
+        // assert_eq!(r.package, package);
+        // assert_eq!(r.binary_path, binary_path);
+        // assert_eq!(r.args, args);
+        // let expected_envs: Vec<_> =
+        //     envs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        // assert_eq!(r.envs, expected_envs);
+        // assert_eq!(r.state_perm, state_perm);
+        // assert_eq!(r.network_perm, network_perm);
+        // assert_eq!(r.file_perm.len(), 1);
     }
 }
 */

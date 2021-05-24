@@ -515,10 +515,10 @@ impl Host {
                 // TODO: controller needs to handle this error
                 // what if a second request gets here before the first
                 // request caches the module? race condition
-                return Err(Error::CacheError(format!("hook {} is not cached", module_id)));
+                return Err(Error::CacheError(format!("module {} is not cached", module_id)));
             }
             if !cached {
-                path_manager.cache_hook(&module_id, package)?;
+                path_manager.cache_module(&module_id, package)?;
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
             let now = Instant::now();

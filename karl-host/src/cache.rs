@@ -52,11 +52,11 @@ impl PathManager {
 
     /// Create a new directory for a request.
     #[cfg(target_os = "linux")]
-    pub fn new_request(&self, hook_id: &ModuleID) -> (Mount, RequestPath) {
+    pub fn new_request(&self, module_id: &ModuleID) -> (Mount, RequestPath) {
         use rand::Rng;
         let random: u32 = rand::thread_rng().gen();
         let request_path = self.host_path.join(random.to_string());
-        let hook_path = self.get_hook_path(hook_id);
+        let module_path = self.get_module_path(module_id);
         let root_path = request_path.join("root");
         let work_path = request_path.join("work");
         fs::create_dir_all(&root_path).unwrap();
@@ -66,7 +66,7 @@ impl PathManager {
         let options = format!(
             "br={}:{}=ro",
             work_path.to_str().unwrap(),
-            hook_path.to_str().unwrap(),
+            module_path.to_str().unwrap(),
         );
         debug!("mounting to {:?} fstype={:?} options={:?}", root_path, fstype, options);
         let mount = Mount::new(
@@ -90,23 +90,23 @@ impl PathManager {
     }
 
     /********************** COLD CACHE FUNCTIONALITY **********************/
-    /// Returns path to cached hook.
-    pub fn get_hook_path(&self, hook_id: &ModuleID) -> PathBuf {
-        self.cache_path.join(hook_id)
+    /// Returns path to cached module.
+    pub fn get_module_path(&self, module_id: &ModuleID) -> PathBuf {
+        self.cache_path.join(module_id)
     }
 
-    pub fn is_cached(&self, hook_id: &ModuleID) -> bool {
-        self.get_hook_path(hook_id).exists()
+    pub fn is_cached(&self, module_id: &ModuleID) -> bool {
+        self.get_module_path(module_id).exists()
     }
 
     /// Unpackage the bytes of the tarred and gzipped request to the cache.
-    /// Returns false if the hook already existed, so it didn't do anything.
-    pub fn cache_hook(
+    /// Returns false if the module already existed, so it didn't do anything.
+    pub fn cache_module(
         &self,
-        hook_id: &ModuleID,
+        module_id: &ModuleID,
         package: Vec<u8>,
     ) -> Result<bool, Error> {
-        let path = self.get_hook_path(hook_id);
+        let path = self.get_module_path(module_id);
         if path.exists() {
             return Ok(false);
         }
@@ -115,7 +115,7 @@ impl PathManager {
         let mut archive = Archive::new(tar);
         fs::create_dir_all(&path).unwrap();
         archive.unpack(&path).map_err(|e| format!("malformed tar.gz: {:?}", e))?;
-        info!("=> cached hook at {:?}: {} s", &path, now.elapsed().as_secs_f32());
+        info!("=> cached module at {:?}: {} s", &path, now.elapsed().as_secs_f32());
         Ok(true)
     }
 }

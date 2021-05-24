@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::net::SocketAddr;
 use std::time::Instant;
 
@@ -6,6 +6,31 @@ use tonic::{Status, Code};
 use karl_common::*;
 
 const REQUEST_THRESHOLD: usize = 10;
+
+/// Host status and information.
+#[derive(Debug, Clone)]
+pub struct Host {
+    /// Whether the user has confirmed this host.
+    pub confirmed: bool,
+    /// Host ID.
+    pub id: HostID,
+    /// Host address.
+    pub addr: SocketAddr,
+    /// Metadata.
+    pub md: HostMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub struct HostMetadata {
+    /// Cached module IDs:
+    pub cached_modules: HashSet<ModuleID>,
+    /// All active requests.
+    pub active_requests: HashSet<ProcessToken>,
+    /// Time of last heartbeat, notify start, or notify end.
+    pub last_msg: Instant,
+    /// Total number of requests handled.
+    pub total: usize,
+}
 
 /// Data structure for adding and allocating hosts.
 pub struct HostScheduler {
@@ -25,8 +50,19 @@ pub struct HostResult {
     pub ip: String,
     /// Host port.
     pub port: u16,
-    /// Whether the include hook ID is cached.
+    /// Whether the include module ID is cached.
     pub cached: bool,
+}
+
+impl Default for HostMetadata {
+    fn default() -> Self {
+        Self {
+            cached_modules: HashSet::new(),
+            active_requests: HashSet::new(),
+            last_msg: Instant::now(),
+            total: 0,
+        }
+    }
 }
 
 impl HostScheduler {
@@ -115,18 +151,18 @@ impl HostScheduler {
     /// heartbeat intervals ago.
     ///
     /// Picks host with the least number of active requests. Prioritizes
-    /// those with the cached hook ID, unless has more than REQUEST_THRESHOLD
-    /// requests. Set threshold based on average execution time of hook ID,
+    /// those with the cached module ID, unless has more than REQUEST_THRESHOLD
+    /// requests. Set threshold based on average execution time of module ID,
     /// but otherwise 10.
-    pub fn find_hosts(&mut self, hook_id: &ModuleID) -> Vec<HostResult> {
+    pub fn find_hosts(&mut self, module_id: &ModuleID) -> Vec<HostResult> {
         let mut hosts = self.hosts.iter()
-            .filter(|(_, host)| host.is_confirmed())
+            .filter(|(_, host)| host.confirmed)
             .filter(|(_, host)| {
                 let elapsed = host.md.last_msg.elapsed().as_secs();
                 elapsed <= 2 * HEARTBEAT_INTERVAL
             })
             .map(|(host_token, host)| {
-                let cached = host.md.cached_hooks.contains(hook_id);
+                let cached = host.md.cached_modules.contains(module_id);
                 (host_token, host, cached)
             })
             .collect::<Vec<_>>();
@@ -155,14 +191,14 @@ impl HostScheduler {
     pub fn notify_start(
         &mut self,
         host_token: HostToken,
-        hook_id: ModuleID,
+        module_id: ModuleID,
         process_token: ProcessToken,
     ) {
         if let Some(host) = self.hosts.get_mut(&host_token) {
             host.md.last_msg = Instant::now();
             host.md.active_requests.insert(process_token);
             if self.caching_enabled {
-                host.md.cached_hooks.insert(hook_id);
+                host.md.cached_modules.insert(module_id);
             }
             trace!("notify start host_id={} total={}", host.id, host.md.active_requests.len());
         } else {
@@ -211,7 +247,7 @@ impl HostScheduler {
             .map(|(_, host)| host)
             .filter(|host| &host.id == id);
         if let Some(host) = hosts.next() {
-            if host.is_confirmed() {
+            if host.confirmed {
                 warn!("attempted to confirm already confirmed host: {:?}", id);
             } else {
                 info!("confirmed host {:?}", id);

@@ -22,10 +22,16 @@ use crate::protos::*;
 use karl_common::*;
 
 pub fn to_status(e: Error) -> Status {
-    match e {
-        Error::InvalidHostMessage(s) => Status::new(Code::Unauthenticated, s),
-        e => Status::new(Code::Unknown, format!("{:?}", e)),
-    }
+    let (code, string) = match e {
+        Error::NotFound => (Code::NotFound, None),
+        Error::NotFoundInfo(x) => (Code::NotFound, Some(x)),
+        Error::BadRequest => (Code::InvalidArgument, None),
+        Error::BadRequestInfo(x) => (Code::InvalidArgument, Some(x)),
+        Error::AlreadyExists => (Code::AlreadyExists, None),
+        Error::Unauthenticated => (Code::Unauthenticated, None),
+        e => (Code::Unknown, Some(format!("{:?}", e))),
+    };
+    Status::new(code, string.unwrap_or("".to_string()))
 }
 
 /// Controller used for discovering available Karl services and coordinating
@@ -38,7 +44,7 @@ pub struct Controller {
     pub scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
     pub data_sink: Arc<RwLock<DataSink>>,
-    /// Data structure for queueing and spawning processes from hooks.
+    /// Data structure for queueing and spawning processes from modules.
     pub runner: Runner,
     pub modules: Arc<Mutex<Modules>>,
     pub watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
@@ -110,9 +116,8 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        let label: KarlLabel = String::from("").into(); // TODO
         let res = self.data_sink.write().unwrap()
-            .push_data(&req.tag, &req.data, label)
+            .push_data(&req.tag, &req.data)
             .map_err(|e| to_status(e))?;
         // TODO: move to its own thread
         warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
@@ -189,12 +194,12 @@ impl karl_controller_server::KarlController for Controller {
         &self, req: Request<SensorPushData>,
     ) -> Result<Response<()>, Status> {
         let req = req.into_inner();
-        let (sensor_id, tags) = {
+        let tags = {
             let sensors = self.sensors.lock().unwrap();
             if let Some(id) = sensors.authenticate(&req.sensor_token) {
-                let tags = sensors.tags(&id).map_err(|e| e.to_tonic())?
-                    .get_output_tags(&req.param).map_err(|e| e.to_tonic())?.clone();
-                (id.clone(), tags.clone())
+                sensors.tags(&id).map_err(|e| to_status(e))?
+                    .get_output_tags(&req.param).map_err(|e| to_status(e))?
+                    .clone()
             } else {
                 // drop messages from unconfirmed sensors
                 return Ok(Response::new(()));
@@ -202,7 +207,7 @@ impl karl_controller_server::KarlController for Controller {
         };
         for tag in tags {
             let res = self.data_sink.write().unwrap()
-                .push_data(&tag, &req.data, sensor_id.clone().into())
+                .push_data(&tag, &req.data)
                 .map_err(|e| to_status(e))?;
             self.runner.spawn_module_if_watched(
                 &res.modified_tag,
@@ -309,7 +314,7 @@ impl Controller {
         }
         */
 
-        // Start the hook runner.
+        // Start the module runner.
         self.runner.start(self.modules.clone(), self.scheduler.clone(), false);
 
         info!("Karl controller listening on port {}", port);
@@ -589,16 +594,16 @@ mod test {
         host_token.unwrap()
     }
 
-    /// Wrapper around register_hook to avoid rewriting parameters
-    fn register_hook_test(
+    /// Wrapper around register_module to avoid rewriting parameters
+    fn register_module_test(
         c: &mut Controller,
         token: &SensorToken,
     ) -> Result<(), Error> {
-        c.register_hook(token, "hello-world".to_string(), vec![], vec![], vec![], vec![])
+        c.register_module(token, "hello-world".to_string(), vec![], vec![], vec![], vec![])
     }
 
     #[tokio::test]
-    async fn test_register_hook_invalid_sensor_token() {
+    async fn test_register_module_invalid_sensor_token() {
         let (_karl_path, mut c) = init_test();
 
         // Register a client
@@ -611,17 +616,17 @@ mod test {
         c.runner.start(c.audit_log.clone(), c.scheduler.clone(), true);
         let host_token = add_host_test(&mut c, 1);
         c.scheduler.lock().unwrap().heartbeat(host_token.clone());
-        assert!(register_hook_test(&mut c, &token).is_ok());
+        assert!(register_module_test(&mut c, &token).is_ok());
         c.scheduler.lock().unwrap().heartbeat(host_token.clone());
-        assert!(register_hook_test(&mut c, &token).is_ok());
+        assert!(register_module_test(&mut c, &token).is_ok());
         c.scheduler.lock().unwrap().heartbeat(host_token.clone());
-        assert!(register_hook_test(&mut c, &bad_token1).is_err());
-        assert!(register_hook_test(&mut c, &bad_token2).is_err());
-        assert!(register_hook_test(&mut c, &token).is_ok());
+        assert!(register_module_test(&mut c, &bad_token1).is_err());
+        assert!(register_module_test(&mut c, &bad_token2).is_err());
+        assert!(register_module_test(&mut c, &token).is_ok());
     }
 
     #[tokio::test]
-    async fn test_register_hook_unconfirmed_sensor_token() {
+    async fn test_register_module_unconfirmed_sensor_token() {
         let (_karl_path, mut c) = init_test();
 
         // Add a host.
@@ -634,12 +639,12 @@ mod test {
         let token = client.sensor_token.to_string();
         assert_eq!(c.sensors.lock().unwrap().len(), 1);
         assert!(!c.sensors.lock().unwrap().get(&token).unwrap().confirmed);
-        assert!(!register_hook_test(&mut c, &token).is_ok(),
+        assert!(!register_module_test(&mut c, &token).is_ok(),
             "found host with unconfirmed token");
 
         // Confirm the client and find a host.
         c.sensors.lock().unwrap().get_mut(&token).unwrap().confirmed = true;
-        assert!(register_hook_test(&mut c, &token).is_ok(),
+        assert!(register_module_test(&mut c, &token).is_ok(),
             "failed to find host with confirmed token");
     }
 

@@ -86,7 +86,7 @@ fn main() {
         let binary_path = format!("./{}", &global_id);
         let args = vec![];
 
-        let hook = Module {
+        let module = Module {
             global_id,
             package,
             binary_path: Path::new(&binary_path).to_path_buf(),
@@ -97,9 +97,9 @@ fn main() {
         };
 
         let modules_path = std::env::var("KARL_MODULE_PATH").unwrap();
-        let path = Path::new(&modules_path).join(&hook.global_id);
-        println!("Writing hook to {:?}", path);
-        let bytes = bincode::serialize(&hook).unwrap();
+        let path = Path::new(&modules_path).join(&module.global_id);
+        println!("Writing module to {:?}", path);
+        let bytes = bincode::serialize(&module).unwrap();
         println!("{} bytes", bytes.len());
         fs::write(&path, bytes).unwrap();
     }

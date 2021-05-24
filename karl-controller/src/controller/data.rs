@@ -15,14 +15,12 @@ pub struct DataSink {
 pub struct GetDataResult {
     pub timestamps: Vec<String>,
     pub data: Vec<Vec<u8>>,
-    pub labels: Vec<KarlLabel>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PushDataResult {
     pub modified_tag: String,
     pub timestamp: String,
-    pub label: KarlLabel,
 }
 
 impl DataSink {
@@ -50,7 +48,6 @@ impl DataSink {
         &self,
         tag: &str,
         data: &Vec<u8>,
-        label: KarlLabel,
     ) -> Result<PushDataResult, Error> {
         let path = self.data_path.join(tag);
         if !path.is_dir() {
@@ -68,7 +65,6 @@ impl DataSink {
             break Ok(PushDataResult {
                 modified_tag: tag.to_string(),
                 timestamp: dt,
-                label,
             })
         }
     }
@@ -117,7 +113,6 @@ impl DataSink {
             }).collect();
         Ok(GetDataResult {
             timestamps,
-            labels: vec![], // TODO
             data,
         })
     }
