@@ -33,7 +33,7 @@ pub fn to_status(e: Error) -> Status {
 #[derive(Clone)]
 pub struct Controller {
     pub handle: Handle,
-    pub karl_path: PathBuf,
+    pub base_path: PathBuf,
     /// Data structure for adding and allocating hosts
     pub scheduler: Arc<Mutex<HostScheduler>>,
     /// Data structure for managing sensor data.
@@ -248,7 +248,7 @@ impl Controller {
     /// listening for hosts and sensor requests.
     pub fn new(
         handle: Handle,
-        karl_path: PathBuf,
+        base_path: PathBuf,
         password: &str,
         autoconfirm: bool,
         caching_enabled: bool,
@@ -257,9 +257,9 @@ impl Controller {
         let watched_tags = Arc::new(RwLock::new(HashMap::new()));
         Controller {
             handle: handle.clone(),
-            karl_path: karl_path.clone(),
+            base_path: base_path.clone(),
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
-            data_sink: Arc::new(RwLock::new(DataSink::new(karl_path))),
+            data_sink: Arc::new(RwLock::new(DataSink::new(base_path))),
             runner: Runner::new(handle, pubsub_enabled, watched_tags.clone()),
             modules: Arc::new(Mutex::new(Modules::default())),
             watched_tags,
@@ -272,7 +272,7 @@ impl Controller {
     /// Initializes sensors based on the `<KARL_PATH>/clients.txt` file.
     pub async fn start(&mut self, port: u16) -> Result<(), Error> {
         // Make the karl path if it doesn't already exist.
-        fs::create_dir_all(&self.karl_path).unwrap();
+        fs::create_dir_all(&self.base_path).unwrap();
 
         /*
         // Initialize sensors in the sensors file at `<KARL_PATH>/clients.txt`.
@@ -359,7 +359,7 @@ impl Controller {
 
         // register the sensor's webapp
         if !app_bytes.is_empty() {
-            let parent = self.karl_path.join("www");
+            let parent = self.base_path.join("www");
             let path = parent.join(format!("{}.hbs", &sensor.id));
             fs::create_dir_all(parent).unwrap();
             fs::write(&path, app_bytes).unwrap();

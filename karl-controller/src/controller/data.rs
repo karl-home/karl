@@ -26,13 +26,13 @@ pub struct PushDataResult {
 }
 
 impl DataSink {
-    /// Creates a directory for the data sink relative to the `karl_path`.
+    /// Creates a directory for the data sink relative to the `controller_path`.
     ///
     /// Generates the path to the persistent data sink, which is just
     /// a directory in the filesystem. Creates an empty directory at
-    /// the path, `<karl_path>/data/` if it does not already exist.
-    pub fn new(karl_path: PathBuf) -> Self {
-        let data_path = karl_path.join("data");
+    /// the path, `<controller_path>/data/` if it does not already exist.
+    pub fn new(controller_path: PathBuf) -> Self {
+        let data_path = controller_path.join("data");
         Self {
             data_path: data_path.to_path_buf(),
         }

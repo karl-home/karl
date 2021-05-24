@@ -77,6 +77,10 @@ async fn audio_detection(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().filter_level(LevelFilter::Info).init();
+    let audio_path = "data/picovoice-coffee.wav";
+    let audio_path = std::env::var("KARL_PATH")
+        .map(|path| format!("{}/karl-sensor-sdk/{}", path, audio_path))
+        .unwrap_or(audio_path.to_string());
     let matches = App::new("Smart light bulb that turns on and off.")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
@@ -97,7 +101,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .help("Path to the audio to send when audio is detected.")
             .takes_value(true)
             .long("audio_path")
-            .default_value("data/picovoice-coffee.wav"))
+            .default_value(&audio_path))
         .get_matches();
 
     let api = {

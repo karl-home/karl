@@ -87,6 +87,10 @@ async fn motion_detection(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().filter_level(LevelFilter::Info).init();
+    let image_path = "data/FudanPed00001_smaller.png";
+    let image_path = std::env::var("KARL_PATH")
+        .map(|path| format!("{}/karl-sensor-sdk/{}", path, image_path))
+        .unwrap_or(image_path.to_string());
     let matches = App::new("Camera sensor")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
@@ -107,7 +111,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .help("Path to the image to send when motion is detected.")
             .long("image_path")
             .takes_value(true)
-            .default_value("data/FudanPed00001_smaller.png"))
+            .default_value(&image_path))
         .get_matches();
 
     let api = {

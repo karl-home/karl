@@ -1,6 +1,6 @@
 #!/bin/bash
-# git clone --recurse-submodules https://github.com/karl-home/karl.git
-
+export RUST_LOG=info
+export RUST_BACKTRACE=1
 export KARL_PATH=$(pwd)
 export KARL_MODULE_PATH=$(pwd)/modules
 

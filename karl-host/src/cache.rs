@@ -29,7 +29,7 @@ impl Drop for PathManager {
 
 impl PathManager {
     /// Creates paths that do not already exist.
-    pub fn new(karl_path: PathBuf, id: u32) -> Self {
+    pub fn new(base_path: PathBuf, id: u32) -> Self {
         #[cfg(target_os = "linux")]
         {
             assert!(SupportedFilesystems::new().unwrap().is_supported("aufs"));
@@ -38,12 +38,12 @@ impl PathManager {
         {
             warn!("sys_mount is not supported on non-linux distributions");
         }
-        let host_path = karl_path.join(id.to_string());
-        let cache_path = karl_path.join("cache");
+        let host_path = base_path.join(format!("host-{}", id));
+        let cache_path = host_path.join("cache");
         fs::create_dir_all(&host_path).unwrap();
         fs::create_dir_all(&cache_path).unwrap();
         // Set the current working directory to the <KARL_PATH>.
-        std::env::set_current_dir(&karl_path).unwrap();
+        std::env::set_current_dir(&host_path).unwrap();
         Self {
             host_path,
             cache_path,

@@ -295,7 +295,7 @@ impl karl_host_server::KarlHost for Host {
 impl Host {
     /// Generate a new host with a random ID.
     pub fn new(
-        karl_path: PathBuf,
+        base_path: PathBuf,
         controller: &str,
         cold_cache_enabled: bool,
         warm_cache_enabled: bool,
@@ -312,7 +312,7 @@ impl Host {
             process_tokens: Arc::new(Mutex::new(HashMap::new())),
             warm_processes: Arc::new(Mutex::new(HashMap::new())),
             warm_cache_tx: None, // wish this didn't have to be wrapped
-            path_manager: Arc::new(PathManager::new(karl_path, id)),
+            path_manager: Arc::new(PathManager::new(base_path, id)),
             compute_lock: Arc::new(Mutex::new(())),
             cold_cache_enabled,
             warm_cache_enabled,
@@ -557,17 +557,24 @@ impl Host {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::builder().init();
-    let path = format!("{}/.host", std::env::var("KARL_PATH").unwrap_or(
-        "/home/gina/karl/.host".to_string()));
+    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+    let pwd = std::fs::canonicalize(".")?;
+    let path = format!("{}/.host", std::env::var("KARL_PATH")
+        .unwrap_or(pwd.as_os_str().to_str().unwrap().to_string()));
     let matches = App::new("Karl Host")
-        .arg(Arg::with_name("karl-path")
-            .help("Absolute path to the base Karl directory.")
-            .long("karl-path")
+        .arg(Arg::with_name("path")
+            .help("Absolute path to the host's base directory. \
+                Caches modules at `<path>/cache/<module_id>`. \
+                If there are multiple hosts on the same computer, they share \
+                the same cache. But each host has an automatically generated \
+                directory `<path>/host-<id>` for processing requests that is \
+                removed when the host is killed. Each request has a root \
+                directory at `<path>/host-<id>/<request>`.")
+            .long("path")
             .takes_value(true)
             .default_value(&path))
         .arg(Arg::with_name("port")
-            .help("Port. Defaults to a random open port.")
+            .help("Port.")
             .short("p")
             .long("port")
             .takes_value(true)
@@ -591,23 +598,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("Whether the cold cache is enabled (0 or 1)")
             .long("cold-cache")
             .takes_value(true)
-            .required(true))
+            .default_value("1"))
         .arg(Arg::with_name("warm-cache")
             .help("Whether the warm cache is enabled (0 or 1)")
             .long("warm-cache")
             .takes_value(true)
-            .required(true))
+            .default_value("1"))
         .arg(Arg::with_name("pubsub")
             .help("Whether pubsub optimization is enabled (0 or 1)")
             .long("pubsub")
             .takes_value(true)
-            .required(true))
+            .default_value("1"))
         .arg(Arg::with_name("no-mock-network")
             .help("If the flag is included, uses the real network.")
             .long("no-mock-network"))
         .get_matches();
 
-    let karl_path = Path::new(matches.value_of("karl-path").unwrap()).to_path_buf();
+    let base_path = Path::new(matches.value_of("path").unwrap()).to_path_buf();
     let port: u16 = matches.value_of("port").unwrap().parse().unwrap();
     let controller = format!(
         "http://{}:{}",
@@ -620,7 +627,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pubsub_enabled = matches.value_of("pubsub").unwrap() == "1";
     let mock_network = !matches.is_present("no-mock-network");
     let mut host = Host::new(
-        karl_path,
+        base_path,
         &controller,
         cold_cache_enabled,
         warm_cache_enabled,
