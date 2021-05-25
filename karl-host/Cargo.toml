@@ -27,3 +27,6 @@ version = "1.2"
 
 [build-dependencies]
 tonic-build = "0.4"
+
+[dev-dependencies]
+tempdir = "0.3"

@@ -522,7 +522,7 @@ impl Host {
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
             let now = Instant::now();
-            let (mount, paths) = path_manager.new_request(&module_id);
+            let (mount, paths) = path_manager.new_request(&module_id)?;
             // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
             debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
             drop(lock);
@@ -541,7 +541,7 @@ impl Host {
         trace!("HANDLE_COMPUTE FINISH {}", module_id);
 
         // Reset the root for the next computation.
-        path_manager.unmount(mount);
+        path_manager.unmount(mount)?;
         if let Err(e) = std::fs::remove_dir_all(&paths.request_path) {
             error!("error resetting request path: {:?}", e);
         }
