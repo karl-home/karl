@@ -1,5 +1,4 @@
 use rand::Rng;
-use std::path::Path;
 
 /// Length of auth token.
 const TOKEN_LEN: usize = 32;
@@ -13,26 +12,6 @@ pub type SensorToken = String;
 pub type HostToken = String;
 /// Process token.
 pub type ProcessToken = String;
-
-/// Sanitize a path.
-///
-/// Transforms into a relative path regardless of host filesystem and removes
-/// dots and trailing slashes e.g. ./raw/../camera/ --> raw/camera
-///
-/// Actual path is /home/user/.karl_controller/data/raw/camera.
-pub fn sanitize_path(path: &str) -> String {
-    let mut new_path = Path::new("").to_path_buf();
-    let components = Path::new(path)
-        .components()
-        .filter_map(|component| match component {
-            std::path::Component::Normal(path) => Some(Path::new(path)),
-            _ => None,
-        });
-    for component in components {
-        new_path = new_path.join(component);
-    }
-    new_path.into_os_string().into_string().unwrap()
-}
 
 impl Token {
     /// Randomly generate a new token.
@@ -100,15 +79,5 @@ mod test {
         assert!(!Token::validate("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         assert!(!Token::validate("a"));
         assert!(!Token::validate(""));
-    }
-
-    #[test]
-    fn test_sanitize_path() {
-        assert_eq!(&sanitize_path("raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("/raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("./raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("../raw/cam"), "raw/cam");
-        assert_eq!(&sanitize_path("raw/../cam"), "raw/cam");
-        assert_eq!(&sanitize_path("./raw/../cam/"), "raw/cam");
     }
 }

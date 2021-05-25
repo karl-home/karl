@@ -261,11 +261,8 @@ impl karl_host_server::KarlHost for Host {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));
             }
-            if req.tag.chars().next() == Some('#') {
-                let mut split = req.tag.split(".");
-                let sensor = split.next().unwrap();
-                let key = split.next().unwrap();
-                Some((sensor[1..].to_string(), key.to_string()))
+            if state_tags::is_state_tag(&req.tag) {
+                Some(state_tags::parse_state_tag(&req.tag))
             } else {
                 None
             }
@@ -515,14 +512,14 @@ impl Host {
                 // TODO: controller needs to handle this error
                 // what if a second request gets here before the first
                 // request caches the module? race condition
-                return Err(Error::CacheError(format!("hook {} is not cached", module_id)));
+                return Err(Error::CacheError(format!("module {} is not cached", module_id)));
             }
             if !cached {
-                path_manager.cache_hook(&module_id, package)?;
+                path_manager.cache_module(&module_id, package)?;
             }
             debug!("unpacked request => {} s", now.elapsed().as_secs_f32());
             let now = Instant::now();
-            let (mount, paths) = path_manager.new_request(&module_id);
+            let (mount, paths) = path_manager.new_request(&module_id)?;
             // info!("=> preprocessing: {} s", now.elapsed().as_secs_f32());
             debug!("mounting overlayfs => {} s", now.elapsed().as_secs_f32());
             drop(lock);
@@ -541,7 +538,7 @@ impl Host {
         trace!("HANDLE_COMPUTE FINISH {}", module_id);
 
         // Reset the root for the next computation.
-        path_manager.unmount(mount);
+        path_manager.unmount(mount)?;
         if let Err(e) = std::fs::remove_dir_all(&paths.request_path) {
             error!("error resetting request path: {:?}", e);
         }

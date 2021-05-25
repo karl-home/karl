@@ -75,7 +75,7 @@ fn read_invoke_command() -> (String, Vec<String>) {
 }
 
 fn main() {
-    println!("Global hook identifier:");
+    println!("Global module identifier:");
     let global_id = read_nonempty_line();
     println!("Files (one per line):");
     let builder = read_tar_builder();
@@ -91,7 +91,7 @@ fn main() {
 
     println!("Done configuring! Building...");
     let package = handle.join().expect("failed to build tar");
-    let hook = Module {
+    let module = Module {
         global_id,
         package,
         binary_path: Path::new(&binary_path).to_path_buf(),
@@ -102,7 +102,7 @@ fn main() {
     };
 
     let modules_path = std::env::var("KARL_MODULE_PATH").unwrap();
-    let path = Path::new(&modules_path).join(&hook.global_id);
+    let path = Path::new(&modules_path).join(&module.global_id);
     if path.exists() {
         println!("Path already exists. Override? [y/n]");
         if read_nonempty_line() != "y" {
@@ -110,8 +110,8 @@ fn main() {
             return;
         }
     }
-    println!("Writing hook to {:?}", path);
-    let bytes = bincode::serialize(&hook).unwrap();
+    println!("Writing module to {:?}", path);
+    let bytes = bincode::serialize(&module).unwrap();
     println!("{} bytes", bytes.len());
     fs::write(&path, bytes).unwrap();
 }

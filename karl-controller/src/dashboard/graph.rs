@@ -1,6 +1,6 @@
 use std::collections::{HashSet, HashMap};
 use karl_common::*;
-use crate::controller::{sensors, runner, tags::*, Controller};
+use crate::controller::{sensors, runner, Controller};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -174,8 +174,8 @@ impl GraphJson {
             let tags = &modules.tags(&module.localId).unwrap();
             for (o2, output) in module.returns.iter().enumerate() {
                 for tag in tags.get_output_tags(output).unwrap() {
-                    if is_state_tag(&tag) {
-                        let (sensor, key) = parse_state_tag(tag);
+                    if state_tags::is_state_tag(&tag) {
+                        let (sensor, key) = state_tags::parse_state_tag(tag);
                         let i1 = *entity_map.get(&sensor).unwrap();
                         let i2 = sensor_jsons[i1 as usize].stateKeys.iter()
                             .position(|(k,_)| k == &key).unwrap() as u32;

@@ -82,9 +82,17 @@ mod test {
         let mut archive = Archive::new(tar);
         let root = TempDir::new(&id.to_string()).unwrap();
         if let Err(e) = archive.unpack(root.path()) {
-            assert!(false, format!("malformed archive: {:?}", e));
+            assert!(false, "malformed archive: {:?}", e);
         }
         root
+    }
+
+    #[test]
+    fn add_nonexistent_files_to_tar_builder() {
+        assert!(TarBuilder::new().add_file("a").finalize().is_err());
+        assert!(TarBuilder::new().add_file_as("a", "a").finalize().is_err());
+        assert!(TarBuilder::new().add_dir("a").finalize().is_err());
+        assert!(TarBuilder::new().add_dir_as("a", "a").finalize().is_err());
     }
 
     #[test]
@@ -94,7 +102,7 @@ mod test {
         let targz = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
-                assert!(false, format!("{:?}", e));
+                assert!(false, "{:?}", e);
                 unreachable!()
             },
         };
@@ -104,57 +112,75 @@ mod test {
     }
 
     #[test]
-    fn tar_builder_add_file_layered() {
+    fn tar_builder_add_file_as() {
         let builder = TarBuilder::new()
-            .add_file("data/stt_node/weather.wav");
+            .add_file_as("Cargo.toml", "filename");
         let targz = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
-                assert!(false, format!("{:?}", e));
+                assert!(false, "{:?}", e);
                 unreachable!()
             },
         };
         let root = unpack_targz(&targz);
-        assert!(root.path().join("data").is_dir());
-        assert!(root.path().join("data/stt_node").is_dir());
-        assert!(root.path().join("data/stt_node/weather.wav").exists());
-        assert!(root.path().join("data/stt_node/weather.wav").is_file());
+        assert!(!root.path().join("Cargo.toml").exists());
+        assert!(root.path().join("filename").exists());
+        assert!(root.path().join("filename").is_file());
     }
 
     #[test]
-    fn tar_builder_add_dir_simple() {
+    fn tar_builder_add_file_layered() {
         let builder = TarBuilder::new()
-            .add_dir("examples");
+            .add_file("src/bin/build_static.rs");
         let targz = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
-                assert!(false, format!("{:?}", e));
+                assert!(false, "{:?}", e);
                 unreachable!()
             },
         };
         let root = unpack_targz(&targz);
-        assert!(root.path().join("examples").is_dir());
-        assert!(root.path().join("examples/hello_world.rs").exists());
-        assert!(root.path().join("examples/hello_world.rs").is_file());
+        assert!(root.path().join("src").is_dir());
+        assert!(root.path().join("src/bin").is_dir());
+        assert!(root.path().join("src/bin/build_static.rs").exists());
+        assert!(root.path().join("src/bin/build_static.rs").is_file());
     }
 
     #[test]
     fn tar_builder_add_dir_layered() {
         let builder = TarBuilder::new()
-            .add_dir("data/stt");
+            .add_dir("src");
         let targz = match builder.finalize() {
             Ok(request) => request,
             Err(e) => {
-                assert!(false, format!("{:?}", e));
+                assert!(false, "{:?}", e);
                 unreachable!()
             },
         };
         let root = unpack_targz(&targz);
-        assert!(root.path().join("data").is_dir());
-        assert!(root.path().join("data/stt").is_dir());
-        assert!(root.path().join("data/stt/client.py").exists());
-        assert!(root.path().join("data/stt/client.py").is_file());
-        assert!(root.path().join("data/stt/audio").exists(), "run setup script?");
-        assert!(root.path().join("data/stt/audio").is_dir());
+        assert!(root.path().join("src").is_dir());
+        assert!(root.path().join("src/lib.rs").exists());
+        assert!(root.path().join("src/lib.rs").is_file());
+        assert!(root.path().join("src/bin").exists());
+        assert!(root.path().join("src/bin").is_dir());
+    }
+
+    #[test]
+    fn tar_builder_add_dir_as() {
+        let builder = TarBuilder::new()
+            .add_dir_as("src", "dirname");
+        let targz = match builder.finalize() {
+            Ok(request) => request,
+            Err(e) => {
+                assert!(false, "{:?}", e);
+                unreachable!()
+            },
+        };
+        let root = unpack_targz(&targz);
+        assert!(root.path().join("dirname").is_dir());
+        assert!(root.path().join("dirname/lib.rs").exists());
+        assert!(root.path().join("dirname/lib.rs").is_file());
+        assert!(root.path().join("dirname/bin").exists());
+        assert!(root.path().join("dirname/bin").is_dir());
     }
 }
