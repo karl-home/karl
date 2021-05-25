@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use chrono;
 use serde::{Serialize, Deserialize};
 use karl_common::*;
@@ -9,6 +11,7 @@ use karl_common::*;
 /// Operations to the data sink must be authenticated in the above layer.
 pub struct DataSink {
     pub data_path: PathBuf,
+    pub tag_locks: Arc<RwLock<HashMap<Tag, Arc<RwLock<()>>>>>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -33,6 +36,30 @@ impl DataSink {
         let data_path = controller_path.join("data");
         Self {
             data_path: data_path.to_path_buf(),
+            tag_locks: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    fn rwlock(&self, tag: &str) -> Result<Arc<RwLock<()>>, Error> {
+        let path = self.data_path.join(tag);
+        let tags = self.tag_locks.read().unwrap();
+        if !path.exists() {
+            drop(tags);
+            let mut tags = self.tag_locks.write().unwrap();
+            // check optimistic locking
+            if path.exists() {
+                assert!(tags.contains_key(tag));
+                Ok(tags.get(tag).unwrap().clone())
+            } else {
+                assert!(!tags.contains_key(tag));
+                let lock = Arc::new(RwLock::new(()));
+                tags.insert(tag.to_string(), lock.clone());
+                fs::create_dir_all(&path)?;
+                Ok(lock)
+            }
+        } else {
+            assert!(path.is_dir());
+            Ok(tags.get(tag).unwrap().clone())
         }
     }
 
@@ -50,9 +77,8 @@ impl DataSink {
         data: &Vec<u8>,
     ) -> Result<PushDataResult, Error> {
         let path = self.data_path.join(tag);
-        if !path.is_dir() {
-            fs::create_dir_all(&path)?;
-        }
+        let lock = self.rwlock(tag)?;
+        let _lock = lock.write().unwrap();
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
             let path = path.join(&dt);
@@ -87,10 +113,10 @@ impl DataSink {
         upper: String,
     ) -> Result<GetDataResult, Error> {
         debug!("get_data tag={} {}", tag, lower);
-        let path = self.data_path.join(&tag);
-        if !path.is_dir() {
-            fs::create_dir_all(&path)?;
-        }
+        let path = self.data_path.join(tag);
+        let lock = self.rwlock(tag)?;
+        let _lock = lock.read().unwrap();
+
         let mut paths: Vec<_> = fs::read_dir(path)?.map(|r| r.unwrap()
             .path().as_path().file_name().unwrap()
             .to_str().unwrap()
