@@ -82,7 +82,7 @@ impl DataSink {
     /// the request indicates it is a directory, or vice versa.
     pub fn get_data(
         &self,
-        tag: String,
+        tag: &str,
         lower: String,
         upper: String,
     ) -> Result<GetDataResult, Error> {
@@ -96,6 +96,10 @@ impl DataSink {
             .to_str().unwrap()
             .to_string()
         ).collect();
+        if paths.is_empty() {
+            return Ok(GetDataResult { timestamps: vec![], data: vec![] });
+        }
+
         paths.sort();
         let start_i = match paths.binary_search(&lower) {
             Ok(i) => i,
@@ -118,11 +122,11 @@ impl DataSink {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::path::Path;
+    use std::collections::HashSet;
+    use chrono::Duration;
     use tempdir::TempDir;
 
     fn init_test() -> (TempDir, DataSink) {
@@ -135,77 +139,142 @@ mod test {
     fn test_data_sink_initial_paths() {
         let (dir, sink) = init_test();
         assert_eq!(sink.data_path, dir.path().join("data"));
-        assert_eq!(sink.state_path, dir.path().join("state"));
     }
 
     #[test]
-    fn test_put_directory_simple() {
+    fn test_push_data_success() {
         let (_dir, sink) = init_test();
-        let path = Path::new("raw/camera").to_path_buf();
-        let expected_path = sink.data_path.join(&path);
-        assert!(!expected_path.exists());
-        assert!(sink.put_data(path, None, false).is_ok());
-        assert!(expected_path.exists());
-        assert!(expected_path.is_dir());
+        let tag = "t1";
+        let data = vec![1, 2, 3, 4];
+        let tag_path = sink.data_path.join(tag);
+        assert!(!tag_path.exists(), "tag path does not initially exist");
+
+        let res = {
+            let res = sink.push_data(tag, &data);
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert!(tag_path.exists(), "tag path was created");
+        assert_eq!(&res.modified_tag, tag, "modified tag was the same");
+        assert!(tag_path.join(&res.timestamp).exists(), "data was pushed");
+        assert!(tag_path.join(&res.timestamp).is_file(), "data is a file");
     }
 
     #[test]
-    fn test_put_directory_recursive() {
+    fn test_push_multiple_data_all_written() {
         let (_dir, sink) = init_test();
-        let path = Path::new("raw/camera/1234").to_path_buf();
-        let expected_path = sink.data_path.join(&path);
-        assert!(!sink.data_path.join("raw/camera/1234").exists());
-        assert!(!sink.data_path.join("raw/camera").exists());
-        assert!(sink.put_data(path.clone(), None, false).is_err());
-        assert!(!sink.data_path.join("raw/camera").exists());
-        assert!(!expected_path.exists());
-        assert!(sink.put_data(path.clone(), None, true).is_ok());
-        assert!(expected_path.exists());
-        assert!(expected_path.is_dir());
+        let tag = "t1";
+        let n = 100;
+        let timestamps = (0..n)
+            .map(|i| {
+                sink.push_data(tag, &vec![i])
+            })
+            .map(|res| {
+                assert!(res.is_ok());
+                res.unwrap()
+            })
+            .map(|res| {
+                assert_eq!(&res.modified_tag, tag);
+                res.timestamp
+            })
+            .map(|timestamp| {
+                assert!(sink.data_path.join(tag).join(&timestamp).is_file());
+                timestamp
+            })
+            .collect::<HashSet<_>>();
+        assert_eq!(timestamps.len(), n as usize);
     }
 
     #[test]
-    fn test_put_file_simple() {
+    fn test_get_data_nothing_pushed() {
         let (_dir, sink) = init_test();
-        let path = Path::new("raw/camera").to_path_buf();
-        let expected_path = sink.data_path.join(&path);
-        assert!(!expected_path.exists());
-        assert!(sink.put_data(path, Some(vec![]), false).is_ok());
-        assert!(expected_path.exists());
-        assert!(expected_path.is_file());
+        let t2 = chrono::prelude::Local::now();
+        let t1 = t2.checked_sub_signed(Duration::hours(1)).unwrap();
+        let upper = t2.format("%+").to_string();
+        let lower = t1.format("%+").to_string();
+        let tag = "abc";
+        let res = {
+            let res = sink.get_data(tag, lower, upper);
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert_eq!(res.timestamps.len(), res.data.len());
+        assert!(res.timestamps.is_empty());
+        assert!(res.data.is_empty());
     }
 
     #[test]
-    fn test_put_file_recursive() {
+    fn test_get_data_single_value() {
         let (_dir, sink) = init_test();
-        let path = Path::new("raw/camera/1234").to_path_buf();
-        let expected_path = sink.data_path.join(&path);
-        assert!(!sink.data_path.join("raw/camera/1234").exists());
-        assert!(!sink.data_path.join("raw/camera").exists());
-        assert!(sink.put_data(path.clone(), Some(vec![]), false).is_err());
-        assert!(!sink.data_path.join("raw/camera").exists());
-        assert!(!expected_path.exists());
-        assert!(sink.put_data(path.clone(), Some(vec![]), true).is_ok());
-        assert!(expected_path.exists());
-        assert!(expected_path.is_file());
+        let tag = "abc";
+        let timestamp = sink.push_data(tag, &vec![1]).unwrap().timestamp;
+
+        let res = {
+            let res = sink.get_data(tag, timestamp.clone(), timestamp.clone());
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert_eq!(res.timestamps.len(), 1);
+        assert_eq!(res.data.len(), 1);
+        assert_eq!(res.timestamps[0], timestamp);
+        assert_eq!(res.data, vec![vec![1]]);
     }
 
     #[test]
-    fn test_get_return_type() {
+    fn test_get_data_timestamp_boundaries() {
         let (_dir, sink) = init_test();
-        let dir_path = Path::new("raw/camera").to_path_buf();
-        let file_path = Path::new("raw/camera/file").to_path_buf();
-        let file_bytes: Vec<u8> = vec![10, 20, 30, 40];
-        assert!(sink.put_data(file_path.clone(), Some(file_bytes.clone()), true).is_ok());
-        assert!(sink.data_path.join(&file_path).exists());
-        assert!(sink.data_path.join(&dir_path).exists());
+        let tag = "abc";
+        let t1 = sink.push_data(tag, &vec![1]).unwrap().timestamp;
+        let t2 = sink.push_data(tag, &vec![2]).unwrap().timestamp;
+        let t3 = sink.push_data(tag, &vec![3]).unwrap().timestamp;
+        assert!(t1 != t2);
+        assert!(t2 != t3);
+        assert!(t1 != t3);
 
-        // get data
-        assert!(sink.get_data(file_path.clone(), true).is_err(), "not a directory");
-        assert!(sink.get_data(file_path.clone(), false).is_ok());
-        assert_eq!(sink.get_data(file_path.clone(), false).unwrap(), file_bytes);
-        assert!(sink.get_data(dir_path.clone(), false).is_err(), "not a file");
-        assert!(sink.get_data(dir_path.clone(), true).is_ok());
+        let res = {
+            let res = sink.get_data(tag, t1.clone(), t3.clone());
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert!(res.timestamps.contains(&t2), "contains middle timestamp");
+        assert!(res.timestamps.contains(&t1), "contains lower timestamp");
+        assert!(res.timestamps.contains(&t3), "contains upper timestamp");
+        assert_eq!(res.timestamps.len(), 3);
+        assert_eq!(res.timestamps, vec![t1, t2, t3], "sorted order");
+        assert_eq!(res.data, vec![vec![1], vec![2], vec![3]], "sorted order");
+    }
+
+    #[test]
+    fn test_get_data_randomized() {
+        let (_dir, sink) = init_test();
+        let tag = "t1";
+        let n: u8 = 100;
+        let timestamps = (0..n)
+            .map(|i| sink.push_data(tag, &vec![i]).unwrap().timestamp)
+            .collect::<Vec<_>>();
+        assert_eq!(timestamps.len(), n as usize);
+
+        let rounds = 10;
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let (lower_i, upper_i) = {
+            let i = rng.gen_range(0..n);
+            let j = rng.gen_range(0..n);
+            (std::cmp::min(i, j), std::cmp::max(i, j))
+        };
+        for _ in 0..rounds {
+            let expected = (upper_i - lower_i + 1) as usize;
+            let lower = &timestamps[lower_i as usize];
+            let upper = &timestamps[upper_i as usize];
+            let res = sink.get_data(tag, lower.clone(), upper.clone());
+            assert!(res.is_ok());
+            let res = res.unwrap();
+            assert_eq!(res.data.len(), expected);
+            assert_eq!(res.data[0], vec![lower_i]);
+            assert_eq!(res.data[expected - 1], vec![upper_i]);
+            assert_eq!(res.timestamps.len(), expected);
+            assert_eq!(&res.timestamps[0], lower);
+            assert_eq!(&res.timestamps[expected - 1], upper);
+        }
     }
 }
-*/

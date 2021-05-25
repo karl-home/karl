@@ -102,7 +102,7 @@ impl karl_controller_server::KarlController for Controller {
         let req = req.into_inner();
         info!("get_data tag={} {}-{}", req.tag, req.lower, req.upper);
         let res = self.data_sink.read().unwrap()
-            .get_data(req.tag, req.lower, req.upper)
+            .get_data(&req.tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
         Ok(Response::new(GetDataResult {
             data: res.data,
