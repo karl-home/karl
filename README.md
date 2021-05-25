@@ -93,6 +93,10 @@ For questions, join the [Discord](https://discord.gg/ujgQ7mdD95) or
 shoot me (Gina Yuan) an email.
 All experience levels welcome!
 
-## Resources
+## Funding
+
+This material is based upon work supported by the National Science Foundation under Grant No. 1931750. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.
+
+## Appendix
 * [Fog computing](https://en.wikipedia.org/wiki/Fog_computing)
 * [Karl the Fog](https://en.wikipedia.org/wiki/San_Francisco_fog)
