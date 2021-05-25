@@ -259,6 +259,7 @@ impl HostScheduler {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::*;
@@ -399,7 +400,6 @@ mod test {
 
     #[test]
     fn test_find_host_non_blocking() {
-        /*
         let mut s = HostScheduler::new(PASSWORD);
 
         // Add three hosts
@@ -446,12 +446,10 @@ mod test {
         s.unique_hosts.get_mut(&t1).unwrap().md.active_request = Some(Request::default());
         s.unique_hosts.get_mut(&t2).unwrap().md.active_request = Some(Request::default());
         assert!(s.find_host().is_none());
-        */
     }
 
     #[test]
     fn test_notify_start_no_hosts() {
-        /*
         let mut s = HostScheduler::new(PASSWORD);
 
         // Notify start with no hosts. Nothing errors.
@@ -479,12 +477,10 @@ mod test {
         assert!(new_request.description != description, "description changed");
         assert!(new_request.start > request.start, "start time increased");
         assert!(new_request.end.is_none(), "end time still does not exist");
-        */
     }
 
     #[test]
     fn test_notify_end() {
-        /*
         let mut s = HostScheduler::new(PASSWORD);
 
         // Notify end with no hosts. Nothing errors.
@@ -511,7 +507,6 @@ mod test {
         assert!(request.description == description);
         assert!(request.end.is_some());
         assert!(request.end.unwrap() > request.start);
-        */
     }
 
     #[test]
@@ -541,7 +536,6 @@ mod test {
 
     #[test]
     fn test_notify_end_also_resets_request_tokens() {
-        /*
         let mut s = HostScheduler::new(PASSWORD);
 
         let host1 = "host1".to_string();
@@ -573,12 +567,10 @@ mod test {
         assert!(host.is_some());
         assert!(s.md(&host1).token.is_none());
         assert_eq!(host.unwrap().request_token, request_token2);
-        */
     }
 
     #[test]
     fn test_notify_end_updates_total_number_of_requests() {
-        /*
         let mut s = HostScheduler::new(PASSWORD);
 
         let host1 = "host1".to_string();
@@ -606,6 +598,6 @@ mod test {
         // Two requests.
         s.notify_end(host1.clone(), request_token1.clone());
         assert_eq!(s.md(&host1).total, 2);
-        */
     }
 }
+*/
