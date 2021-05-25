@@ -520,7 +520,7 @@ impl Controller {
         }
 
         // add the state tag to the output module
-        let state_tag = tags::to_state_tag(&sensor_id, &sensor_key);
+        let state_tag = state_tags::to_state_tag(&sensor_id, &sensor_key);
         modules.tags_mut(&src_id)?.add_output_tag(&src_name, &state_tag)?;
         Ok(())
     }
@@ -535,7 +535,7 @@ impl Controller {
     ) -> Result<(), Error> {
         debug!("remove state_edge {}.{} -> {}.{}",
             src_id, src_name, sensor_id, sensor_key);
-        let state_tag = tags::to_state_tag(&sensor_id, &sensor_key);
+        let state_tag = state_tags::to_state_tag(&sensor_id, &sensor_key);
         modules.tags_mut(&src_id)?.remove_output_tag(&src_name, &state_tag)?;
         Ok(())
     }

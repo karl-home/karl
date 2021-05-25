@@ -7,7 +7,7 @@ type SensorKey = String;
 type SensorReturn = String;
 type SensorToken = String;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct Sensor {
     pub confirmed: bool,
     pub id: SensorID,

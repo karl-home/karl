@@ -6,7 +6,7 @@ use crate::*;
 
 type DomainName = String;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Module {
     pub global_id: GlobalModuleID,
     pub package: Vec<u8>,

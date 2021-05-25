@@ -261,11 +261,8 @@ impl karl_host_server::KarlHost for Host {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));
             }
-            if req.tag.chars().next() == Some('#') {
-                let mut split = req.tag.split(".");
-                let sensor = split.next().unwrap();
-                let key = split.next().unwrap();
-                Some((sensor[1..].to_string(), key.to_string()))
+            if state_tags::is_state_tag(&req.tag) {
+                Some(state_tags::parse_state_tag(&req.tag))
             } else {
                 None
             }
