@@ -181,7 +181,7 @@ impl karl_controller_server::KarlController for Controller {
             req.keys,
             req.returns.clone(),
             &req.app[..],
-        );
+        ).map_err(|e| to_status(e))?;
         trace!("sensor_register => {} s", now.elapsed().as_secs_f32());
         Ok(Response::new(res))
     }
@@ -351,7 +351,7 @@ impl Controller {
         keys: Vec<String>,
         returns: Vec<String>,
         app_bytes: &[u8],
-    ) -> SensorRegisterResult {
+    ) -> Result<SensorRegisterResult, Error> {
         // generate a sensor with a unique id and token
         let mut sensors = self.sensors.lock().unwrap();
         id = sensors.unique_id(id);
@@ -373,11 +373,11 @@ impl Controller {
 
         // register the sensor itself
         let token = Token::gen();
-        sensors.add_sensor(sensor, token.clone());
-        SensorRegisterResult {
+        sensors.add_sensor(sensor, token.clone())?;
+        Ok(SensorRegisterResult {
             sensor_token: token,
             sensor_id: id,
-        }
+        })
     }
 
     pub fn add_module(
