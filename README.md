@@ -6,7 +6,8 @@ devices (_sensors_) in the home cloud express their functionality in terms
 of small, ephemeral units of computation (similar to serverless) called _modules_.
 When functionality _must_ be offloaded to the cloud, users define
 _pipeline policies_ that justify under which conditions data can be
-exfiltrated. For details, see our paper ([TBD]()).
+exfiltrated. For details, see our preprint
+["_The IoT Home Cloud for User-Defined Pipeline Policies_"](http://www.ginayuan.com/preprints/preprint-karl.pdf).
 
 For example, typical smart cameras either come with expensive local hardware or
 charge subscription fees to process your raw video recordings in the cloud.
