@@ -19,11 +19,19 @@ and the numerical statistics have been anonymized:
 <img src="data/fig1.png" alt="pipeline policy example" width="500"/>
 </p>
 
+## System Requirements
+
+To run the home cloud, you will need a dedicated **computer** and a **router**.
+This computer can be a laptop, server, Raspberry Pi, etc.
+The OS of this computer must support [aufs](https://en.wikipedia.org/wiki/Aufs) and the [sys_mount](https://docs.rs/crate/sys-mount/1.2.1) crate. I have only used Karl on Ubuntu 20.04, though it may work on other flavors of Linux. Karl will NOT work on Windows or MacOS.
+You will need admin access to the router.
+The dedicated computer and IoT devices must all be connected to the router's network.
+
+If you only want to run the Quick Start, you will only need the computer.
+
 ## Installation
 
-Your OS must support [aufs](https://en.wikipedia.org/wiki/Aufs) and the [sys_mount](https://docs.rs/crate/sys-mount/1.2.1) crate. I have only used Karl on Ubuntu 20.04, though it may work on other flavors of Linux. Karl will NOT work on Windows or MacOS.
-
-When cloning the repository, clone its submodules.
+Clone the repository onto the computer. Be sure to clone its submodules.
 
 ```
 git clone --recurse-submodules https://github.com/karl-home/karl.git
@@ -42,6 +50,7 @@ the web UI, and example sensors.
 
 ## Quick Start
 
+This section guides you through trying out Karl with an emulated sensor (the camera sensor is simply a program that produces an image every `interval` seconds).
 After installing dependencies, start a controller, host, and camera binary in separate terminals. To configure logging in Rust, set the `RUST_LOG` environment variable.
 
 ```
@@ -55,7 +64,9 @@ cd karl-host && sudo ./target/release/karl-host
 cd karl-sensor-sdk && ./target/release/examples/camera --interval 30
 ```
 
-The camera will start pushing an image to the controller once every `<interval>` seconds. To register modules and define pipeline policies, visit `<CONTROLLER_IP>:8080` in a browser. You can install the `person_detection` and `differential_privacy` modules, then draw data edges and give network permissions such as in the pipeline policy above.
+The camera will push an image to the controller once every `<interval>` seconds. To register modules and define pipeline policies, visit `<CONTROLLER_IP>:8080` in a browser. You can install the `person_detection` and `differential_privacy` modules, then draw data edges and give network permissions such as in the pipeline policy above.
+
+To configure a real smart home deployment, [see the Wiki](https://github.com/karl-home/karl/wiki/Configuring-a-Real-Deployment).
 
 ## Web UI
 
