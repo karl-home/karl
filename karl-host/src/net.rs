@@ -9,6 +9,7 @@
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use tonic::{Request, Response, Status, Code};
+use tonic::transport::{ClientTlsConfig, Channel, Certificate};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
 use karl_common::*;
@@ -18,6 +19,7 @@ pub struct KarlHostAPI {
     pub controller_addr: String,
     /// Assigned after registering with controller
     pub host_token: Option<String>,
+    pub channel: Option<Channel> 
 }
 
 impl KarlHostAPI {
@@ -25,6 +27,7 @@ impl KarlHostAPI {
         Self {
             controller_addr: controller_addr.to_string(),
             host_token: None,
+            channel: None 
         }
     }
 
@@ -47,8 +50,20 @@ impl KarlHostAPI {
             password: password.to_string(),
         };
         info!("Registering host {} at {}:{}", req.host_id, req.ip, req.port);
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+
+        let pem = tokio::fs::read("../ca.pem").await.unwrap();
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new()
+            .domain_name("localhost")
+            .ca_certificate(ca);
+        
+        self.channel = Some(Channel::from_shared(self.controller_addr.to_owned()).unwrap()
+            .tls_config(tls).unwrap()
+            .connect()
+            .await.unwrap());
+
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .host_register(Request::new(req)).await
             .map(|res| {
                 let res = res.into_inner();
@@ -67,8 +82,7 @@ impl KarlHostAPI {
             process_token,
         };
         trace!("notify_end host_token={}, process_token={}", request.host_token, request.process_token);
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .finish_compute(Request::new(request)).await
             .map(|res| res.into_inner())
     }
@@ -78,8 +92,8 @@ impl KarlHostAPI {
         let request = HostHeartbeat {
             host_token: self.host_token.clone().expect("missing token"),
         };
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .heartbeat(Request::new(request)).await
             .map(|res| res.into_inner())
     }
@@ -90,8 +104,7 @@ impl KarlHostAPI {
         mut req: NetworkAccess,
     ) -> Result<Response<()>, Status> {
         req.host_token = self.host_token.clone().expect("missing token");
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .forward_network(Request::new(req)).await
     }
 
@@ -100,8 +113,7 @@ impl KarlHostAPI {
         mut req: GetData,
     ) -> Result<Response<GetDataResult>, Status> {
         req.host_token = self.host_token.clone().expect("missing token");
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .forward_get(Request::new(req)).await
     }
 
@@ -110,8 +122,7 @@ impl KarlHostAPI {
         mut req: PushData,
     ) -> Result<Response<()>, Status> {
         req.host_token = self.host_token.clone().expect("missing token");
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .forward_push(Request::new(req)).await
     }
 
@@ -120,8 +131,7 @@ impl KarlHostAPI {
         mut req: StateChange,
     ) -> Result<Response<()>, Status> {
         req.host_token = self.host_token.clone().expect("missing token");
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .forward_state(Request::new(req)).await
     }
 }

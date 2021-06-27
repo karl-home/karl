@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let api = {
         let ip = matches.value_of("ip").unwrap();
         let port = matches.value_of("port").unwrap();
-        let addr = format!("http://{}:{}", ip, port);
+        let addr = format!("https://{}:{}", ip, port);
         let mut api = KarlSensorSDK::new(&addr);
         let _sensor_id = register(&mut api).await?;
         api

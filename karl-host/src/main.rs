@@ -27,7 +27,7 @@ use tokio::sync::mpsc;
 use karl_common::*;
 use reqwest::{self, Method, header::HeaderName};
 use tonic::{Request, Response, Status, Code};
-use tonic::transport::Server;
+use tonic::transport::{Server,ServerTlsConfig, Identity};
 use clap::{Arg, App};
 
 struct WarmProcess {
@@ -632,7 +632,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mock_network,
     );
     host.start(port, password).await.unwrap();
+    let cert = tokio::fs::read("../server.pem").await.expect("error!");
+    let key = tokio::fs::read("../server.key").await.expect("error!");
+    
+    let identity = Identity::from_pem(cert,key);
+    let tls = ServerTlsConfig::new()
+        .identity(identity);
     Server::builder()
+        .tls_config(tls).unwrap()
         .add_service(KarlHostServer::new(host))
         .serve(format!("0.0.0.0:{}", port).parse()?)
         .await

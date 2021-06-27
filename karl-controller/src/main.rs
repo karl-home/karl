@@ -20,7 +20,7 @@ pub mod protos {
 
 use std::path::Path;
 use clap::{Arg, App};
-use tonic::transport::Server;
+use tonic::transport::{Server,Identity, ServerTlsConfig};
 use protos::karl_controller_server::KarlControllerServer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,11 +91,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pubsub_enabled,
     );
     rt.block_on(async {
+        let cert = tokio::fs::read("../server.pem").await.unwrap();
+        let key = tokio::fs::read("../server.key").await.unwrap(); 
+        
+        let identity = Identity::from_pem(cert,key);
+        let tls = ServerTlsConfig::new()
+            .identity(identity);
+
         controller.start(port).await.unwrap();
         if use_dashboard {
             dashboard::start(controller.clone());
         }
         Server::builder()
+            .tls_config(tls).unwrap()
             .add_service(KarlControllerServer::new(controller))
             .serve(format!("0.0.0.0:{}", port).parse().unwrap())
             .await

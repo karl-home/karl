@@ -9,6 +9,7 @@
 //! executor for a different host and try again on the client-side.
 //! Addresses are passed in the form of `<IP>:<PORT>`.
 use tonic::{Request, Response, Status, Code};
+use tonic::transport::{Channel, ClientTlsConfig,Certificate,Identity};
 use crate::protos::karl_host_client::KarlHostClient;
 use crate::protos::*;
 
@@ -18,7 +19,21 @@ pub async fn send_compute(
     host: &str,
     req: ComputeRequest,
 ) -> Result<Response<NotifyStart>, Status> {
-    KarlHostClient::connect(host.to_string()).await
+    let pem = tokio::fs::read("../ca.pem").await.unwrap();
+    let ca = Certificate::from_pem(pem);
+
+    let tls = ClientTlsConfig::new()
+        .domain_name("localhost")
+        .ca_certificate(ca);
+    
+    let ip: String = host.to_string();
+    let channel = Channel::from_shared(ip).unwrap()
+        .tls_config(tls).unwrap()
+        .connect()
+        .await
         .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+;
+
+    KarlHostClient::new(channel)
         .start_compute(Request::new(req)).await
 }
