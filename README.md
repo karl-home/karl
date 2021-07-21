@@ -37,16 +37,7 @@ Clone the repository onto the computer. Be sure to clone its submodules.
 git clone --recurse-submodules https://github.com/karl-home/karl.git
 ```
 
-Install dependencies from the root of this repository.
-On prompt, select "1) Proceed with installation (default)".
-
-```
-cd karl
-source setup.sh
-```
-
-The script also builds the `host` and `controller` binaries,
-the web UI, and example sensors.
+Follow the directions in [INSTALL.md](https://github.com/karl-home/karl/blob/main/INSTALL.md) to install dependencies, and build Karl and its example modules and sensors.
 
 ## Quick Start
 

@@ -4,6 +4,9 @@ export RUST_BACKTRACE=1
 export KARL_PATH=$(pwd)
 export KARL_MODULE_PATH=$(pwd)/modules
 
+# exit when any command fails
+set -e
+
 install_deps() {
 	# Rust
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -14,7 +17,7 @@ install_deps() {
 	rustup target add x86_64-unknown-linux-musl
 
 	# Other deps
-	sudo apt update
+	sudo apt update && sudo apt upgrade
 	sudo apt install -y npm python3-virtualenv firejail libsndfile1
 }
 
