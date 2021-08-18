@@ -20,3 +20,18 @@ env_logger = "0.7"
 log = "0.4"
 clap = "2.33.3"
 tokio = { version = "1.4", features = ["rt", "macros", "sync", "time", "rt-multi-thread"] }
+
+[lib]
+path = "src/rust/lib.rs"
+
+[[example]]
+name="bulb"
+path="examples/rust/bulb.rs"
+
+[[example]]
+name="camera"
+path="examples/rust/camera.rs"
+
+[[example]]
+name="microphone"
+path="examples/rust/microphone.rs"
