@@ -1,0 +1,2 @@
+.. automodule:: karl.KarlSensor
+	:members:

@@ -2,6 +2,9 @@ target/
 logs/
 *.swp
 
+# Build Dirs
+cmake/
+
 # Data
 data/*/lib/
 data/*/bin/
