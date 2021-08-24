@@ -20,8 +20,8 @@ class KarlSensorSDK {
 	    KarlSensorSDK(std::shared_ptr<Channel> channel);
 	    KarlSensorSDK(string token,std::shared_ptr<Channel> channel);
 	    
-	    SensorRegisterResult sensorRegister(string global_sensor_id, vector<string> keys, vector<string> returns, vector<int> app);
-	    void push(string param, vector<char> data);
+	    SensorRegisterResult sensorRegister(string global_sensor_id, vector<string>& keys, vector<string>& returns, vector<int>& app);
+	    void push(string param, vector<char>& data);
 		unique_ptr<ClientReader<StateChangePair>> connectState();
         
 	private:

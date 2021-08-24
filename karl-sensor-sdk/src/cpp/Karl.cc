@@ -23,7 +23,7 @@ KarlSensorSDK::KarlSensorSDK(string token,std::shared_ptr<Channel> channel): stu
 	this->sensor_token = token;
 }
 
-SensorRegisterResult KarlSensorSDK::sensorRegister(string global_sensor_id, vector<string> keys, vector<string> returns, vector<int> app) {
+SensorRegisterResult KarlSensorSDK::sensorRegister(string global_sensor_id, vector<string>& keys, vector<string>& returns, vector<int>& app) {
 	
 	SensorRegisterRequest request;
 	request.set_global_sensor_id(global_sensor_id);
@@ -42,7 +42,7 @@ SensorRegisterResult KarlSensorSDK::sensorRegister(string global_sensor_id, vect
 	return response;
 }
 
-void KarlSensorSDK::push(string param, vector<char> data) {
+void KarlSensorSDK::push(string param, vector<char>& data) {
 	SensorPushData request;
 	request.set_sensor_token(this->sensor_token);
 	request.set_param(param);

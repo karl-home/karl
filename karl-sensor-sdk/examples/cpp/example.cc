@@ -51,7 +51,7 @@ int main() {
 	vector<char> fileData;
 	fileData.resize(length);
 	infile.seekg(0, std::ios_base::beg);
-    infile.read(&fileData[0], length);
+	infile.read(&fileData[0], length);
 	std::thread t1(motion_detection, std::ref(karl), std::ref(fileData));
 	t1.join();
 	
