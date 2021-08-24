@@ -3,8 +3,7 @@ logs/
 *.swp
 
 # Build Dirs
-karl-sensor-sdk/src/cpp/cmake/
-karl-sensor-sdk/examples/cpp/cmake/
+cmake/
 
 # Data
 data/*/lib/
