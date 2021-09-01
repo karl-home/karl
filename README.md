@@ -49,10 +49,25 @@ export KARL_PATH=$(pwd)
 export KARL_MODULE_PATH=$(pwd)/modules
 ```
 
+### Controller
 ```
-cd karl-controller && ./target/release/karl-controller --dashboard --autoconfirm
-cd karl-host && sudo ./target/release/karl-host
-cd karl-sensor-sdk && ./target/release/examples/camera --interval 30
+cd karl-controller
+cargo build --release  # Run to recompile code
+./target/release/karl-controller --dashboard --autoconfirm
+```
+
+### Host
+```
+cd karl-host
+cargo build --release
+sudo ./target/release/karl-host
+```
+
+### Camera
+```
+cd karl-sensor-sdk
+cargo build --release --examples
+./target/release/examples/camera --interval 30
 ```
 
 The camera will push an image to the controller once every `<interval>` seconds. To register modules and define pipeline policies, visit `<CONTROLLER_IP>:8080` in a browser. You can install the `person_detection` and `differential_privacy` modules, then draw data edges and give network permissions such as in the pipeline policy above.
