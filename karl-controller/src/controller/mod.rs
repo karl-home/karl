@@ -1,5 +1,5 @@
 mod scheduler;
-mod data;
+pub(crate) mod data;
 pub(crate) mod runner;
 pub(crate) mod sensors;
 pub(crate) mod tags;

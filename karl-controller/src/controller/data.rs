@@ -38,6 +38,7 @@ impl DataSink {
             warn!("removing existing data path! ({:?})", data_path);
             fs::remove_dir_all(&data_path).expect("error removing data path");
         }
+        info!("initialized data store at {:?}", data_path);
         Self {
             data_path: data_path.to_path_buf(),
             tag_locks: Arc::new(RwLock::new(HashMap::new())),

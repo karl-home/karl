@@ -24,6 +24,8 @@ pub fn start(controller: Controller) {
             endpoint::confirm_host,
             endpoint::cancel_host,
             endpoint::get_hosts,
+            endpoint::list_tags,
+            endpoint::read_tag,
         ])
         .launch();
     });

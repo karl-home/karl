@@ -220,3 +220,30 @@ pub fn get_hosts(
     }
     Ok(Json(res))
 }
+
+#[get("/tags")]
+pub fn list_tags(
+    controller: State<Arc<Mutex<Controller>>>,
+) -> Result<Json<Vec<String>>, Status> {
+    let res = controller.lock().unwrap()
+        .data_sink.read().unwrap()
+        .list_tags();
+    Ok(Json(res))
+}
+
+#[get("/tags/<tag>")]
+pub fn read_tag(
+    tag: String,
+    controller: State<Arc<Mutex<Controller>>>,
+) -> Result<Json<crate::controller::data::GetDataResult>, Status> {
+    let res = controller.lock().unwrap()
+        .data_sink.read().unwrap()
+        .get_data_inner(&tag, None, None);
+    match res {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => {
+            error!("{:?}", e);
+            Err(Status::NotFound)
+        }
+    }
+}
