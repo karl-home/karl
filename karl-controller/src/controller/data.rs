@@ -30,10 +30,14 @@ impl DataSink {
     /// Creates a directory for the data sink relative to the `controller_path`.
     ///
     /// Generates the path to the persistent data sink, which is just
-    /// a directory in the filesystem. Creates an empty directory at
-    /// the path, `<controller_path>/data/` if it does not already exist.
+    /// a directory in the filesystem. Removes the existing directory at
+    /// the path, `<controller_path>/data/`, if it already exists.
     pub fn new(controller_path: PathBuf) -> Self {
         let data_path = controller_path.join("data");
+        if data_path.exists() {
+            warn!("removing existing data path! ({:?})", data_path);
+            fs::remove_dir_all(&data_path).expect("error removing data path");
+        }
         Self {
             data_path: data_path.to_path_buf(),
             tag_locks: Arc::new(RwLock::new(HashMap::new())),
@@ -95,24 +99,44 @@ impl DataSink {
         }
     }
 
-    /// Get data from the given path.
+    /// Get data for the given tag.
     ///
     /// Parameters:
-    /// - `path`: The sanitized path to the data.
-    /// - `dir`: Whether the path is a directory.
+    /// - `tag`: data category.
+    /// - `lower`: lower timestamp, inclusive.
+    /// - `upper`: upper timestamp, inclusive.
     ///
-    /// Returns: the raw bytes of the file. If the file is a directory,
-    /// returns the files and directories in json.
+    /// Returns: the timestamps and raw bytes of data for this tag within
+    /// the given timestamp range.
     ///
-    /// Errors if the path does not exist. Errors if the path is a file but
-    /// the request indicates it is a directory, or vice versa.
+    /// Errors if the tag does not exist or the expected path does not exist.
     pub fn get_data(
         &self,
         tag: &str,
         lower: String,
         upper: String,
     ) -> Result<GetDataResult, Error> {
-        debug!("get_data tag={} {}", tag, lower);
+        self.get_data_inner(tag, Some(lower), Some(upper))
+    }
+
+    /// Get data for the given tag.
+    ///
+    /// Parameters:
+    /// - `tag`: data category.
+    /// - `lower`: lower timestamp, inclusive. None if no lower bound.
+    /// - `upper`: upper timestamp, inclusive. None if no upper bound.
+    ///
+    /// Returns: the timestamps and raw bytes of data for this tag within
+    /// the given timestamp range.
+    ///
+    /// Errors if the tag does not exist or the expected path does not exist.
+    pub fn get_data_inner(
+        &self,
+        tag: &str,
+        lower: Option<String>,
+        upper: Option<String>,
+    ) -> Result<GetDataResult, Error> {
+        debug!("get_data tag={} {:?}", tag, lower);
         let path = self.data_path.join(tag);
         let lock = self.rwlock(tag)?;
         let _lock = lock.read().unwrap();
@@ -127,13 +151,15 @@ impl DataSink {
         }
 
         paths.sort();
-        let start_i = match paths.binary_search(&lower) {
-            Ok(i) => i,
-            Err(i) => i,
+        let start_i = if let Some(lower) = lower {
+            match paths.binary_search(&lower) { Ok(i) => i, Err(i) => i }
+        } else {
+            0
         };
-        let end_i = match paths.binary_search(&upper) {
-            Ok(i) => i,
-            Err(i) => i,
+        let end_i = if let Some(upper) = upper {
+            match paths.binary_search(&upper) { Ok(i) => i, Err(i) => i }
+        } else {
+            paths.len() - 1
         };
         let timestamps: Vec<String> = paths.drain(start_i..end_i+1).collect();
         let data: Vec<Vec<u8>> =
@@ -145,6 +171,15 @@ impl DataSink {
             timestamps,
             data,
         })
+    }
+
+    /// List the tags in the data sink, in alphabetical order.
+    pub fn list_tags(&self) -> Vec<String> {
+        let mut tags: Vec<_> = self.tag_locks.read().unwrap().keys()
+            .map(|tag| tag.clone())
+            .collect();
+        tags.sort();
+        tags
     }
 }
 
