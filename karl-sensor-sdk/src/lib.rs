@@ -8,6 +8,7 @@ use crate::protos::*;
 
 #[derive(Debug, Clone)]
 pub struct KarlSensorSDK {
+    pub sensor_id: Option<String>,
     pub controller_addr: String,
     pub sensor_token: Option<String>,
 }
@@ -15,6 +16,7 @@ pub struct KarlSensorSDK {
 impl KarlSensorSDK {
     pub fn new(controller_addr: &str) -> Self {
         Self {
+            sensor_id: None,
             controller_addr: controller_addr.to_string(),
             sensor_token: None,
         }
@@ -22,6 +24,7 @@ impl KarlSensorSDK {
 
     pub fn new_with_token(controller_addr: &str, token: String) -> Self {
         Self {
+            sensor_id: None,
             controller_addr: controller_addr.to_string(),
             sensor_token: Some(token),
         }
@@ -41,11 +44,13 @@ impl KarlSensorSDK {
             returns,
             app,
         };
-        KarlControllerClient::connect(self.controller_addr.clone()).await
+        KarlControllerClient::connect(self.controller_addr.clone())
+            .await
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
             .sensor_register(Request::new(request)).await
             .map(|res| {
                 let res = res.into_inner();
+                self.sensor_id = Some(res.sensor_id.clone());
                 self.sensor_token = Some(res.sensor_token.clone());
                 res
             })
@@ -54,12 +59,12 @@ impl KarlSensorSDK {
     /// Push raw data from a sensor.
     pub async fn push(
         &self,
-        param: String,
+        output: String,
         data: Vec<u8>,
     ) -> Result<(), Status> {
         let request = SensorPushData {
             sensor_token: self.sensor_token.clone().expect("missing token"),
-            param,
+            output,
             data,
         };
         KarlControllerClient::connect(self.controller_addr.clone()).await

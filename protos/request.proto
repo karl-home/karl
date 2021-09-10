@@ -18,7 +18,6 @@ service KarlController {
   rpc ForwardNetwork (NetworkAccess) returns (google.protobuf.Empty);
   rpc ForwardGet (GetData) returns (GetDataResult);
   rpc ForwardPush (PushData) returns (google.protobuf.Empty);
-  rpc ForwardState (StateChange) returns (google.protobuf.Empty);
   rpc FinishCompute (NotifyEnd) returns (google.protobuf.Empty);
   rpc Heartbeat (HostHeartbeat) returns (google.protobuf.Empty);
 
@@ -114,14 +113,6 @@ message StateChangePair {
   bytes value = 2;
 }
 
-message StateChange {
-  string host_token = 1;
-  string process_token = 2;
-  string sensor_id = 3;
-  string key = 4;
-  bytes value = 5;
-}
-
 /****************************************************************************
  * ControllerService
  ****************************************************************************/
@@ -164,6 +155,6 @@ message SensorRegisterResult {
 
 message SensorPushData {
   string sensor_token = 1;
-  string param = 2;
+  string output = 2;
   bytes data = 3;
 }

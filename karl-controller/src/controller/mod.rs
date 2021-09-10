@@ -100,7 +100,6 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        info!("get_data tag={} {}-{}", req.tag, req.lower, req.upper);
         let (node, input) = tag_parsing::parse_tag(&req.tag);
         let tag = self.modules.read().unwrap().tags(&node)
             .map_err(|_| Status::new(Code::NotFound, "missing node"))?
@@ -109,6 +108,7 @@ impl karl_controller_server::KarlController for Controller {
             .as_ref()
             .ok_or(Status::new(Code::NotFound, "missing tag"))?
             .clone();
+        info!("get_data tag={} -> {} {}-{}", req.tag, tag, req.lower, req.upper);
         let res = self.data_sink.read().unwrap()
             .get_data(&tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
@@ -130,38 +130,24 @@ impl karl_controller_server::KarlController for Controller {
             .get_output_tags(&output)
             .map_err(|_| Status::new(Code::NotFound, "missing output"))?
             .clone();
+        info!("push_data tag={} -> {:?}", req.tag, tags);
         for tag in tags {
-            let res = self.data_sink.write().unwrap()
-                .push_data(&tag, &req.data)
-                .map_err(|e| to_status(e))?;
-            // TODO: move to its own thread
-            warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
-            self.runner.spawn_module_if_watched(
-                &res.modified_tag,
-                &res.timestamp,
-                &req.data,
-            ).await;
+            if tag_parsing::is_state_tag(&tag) {
+                let (node, input) = tag_parsing::parse_state_tag(&tag);
+                self.state_change(node, input, req.data.clone()).await?;
+            } else {
+                let res = self.data_sink.write().unwrap()
+                    .push_data(&tag, &req.data)
+                    .map_err(|e| to_status(e))?;
+                // TODO: move to its own thread
+                warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
+                self.runner.spawn_module_if_watched(
+                    &res.modified_tag,
+                    &res.timestamp,
+                    &req.data,
+                ).await;
+            }
         }
-        Ok(Response::new(()))
-    }
-
-    /// This request is endorsed by the host. Simply forward the state
-    /// change and return.
-    async fn forward_state(
-        &self, req: Request<StateChange>,
-    ) -> Result<Response<()>, Status> {
-        // TODO: validate host token
-        let req = req.into_inner();
-        let tx = if let Some(tx) = self.state.read().unwrap().get(&req.sensor_id) {
-            tx.clone()
-        } else {
-            return Err(Status::new(Code::NotFound, "sensor not listening"));
-        };
-        let pair = StateChangePair {
-            key: req.key,
-            value: req.value,
-        };
-        tx.send(pair).await.unwrap();
         Ok(Response::new(()))
     }
 
@@ -213,9 +199,11 @@ impl karl_controller_server::KarlController for Controller {
         let tags = {
             let sensors = self.sensors.lock().unwrap();
             if let Some(id) = sensors.authenticate(&req.sensor_token) {
-                sensors.tags(&id).map_err(|e| to_status(e))?
-                    .get_output_tags(&req.param).map_err(|e| to_status(e))?
-                    .clone()
+                let tags = sensors.tags(&id).map_err(|e| to_status(e))?
+                    .get_output_tags(&req.output).map_err(|e| to_status(e))?
+                    .clone();
+                info!("push_raw_data tag={}.{} -> {:?}", id, req.output, tags);
+                tags
             } else {
                 // drop messages from unconfirmed sensors
                 return Ok(Response::new(()));
@@ -337,6 +325,25 @@ impl Controller {
         Ok(())
     }
 
+    /// Forward to a device input.
+    pub async fn state_change(
+        &self, sensor_id: String, input: String, value: Vec<u8>,
+    ) -> Result<Response<()>, Status> {
+        // Forward as state change if the tag changes state.
+        info!("state_change #{}.{}", sensor_id, input);
+        let tx = if let Some(tx) = self.state.read().unwrap().get(&sensor_id) {
+            tx.clone()
+        } else {
+            return Err(Status::new(Code::NotFound, "sensor not listening"));
+        };
+        let pair = StateChangePair {
+            key: input,
+            value,
+        };
+        tx.send(pair).await.unwrap();
+        Ok(Response::new(()))
+    }
+
     /// Register a client.
     ///
     /// Stores the client-generated ID and controller-generated token
@@ -404,7 +411,7 @@ impl Controller {
     ) -> Result<(), Error> {
         debug!("add module {} ({})", module_id, global_module_id);
         modules.add_module(global_module_id, module_id).map_err(|e| {
-            error!("error adding module: {:?}", e);
+            error!("error adding module ({}): {:?}", global_module_id, e);
             Error::BadRequest
         })?;
         Ok(())

@@ -297,36 +297,17 @@ impl karl_host_server::KarlHost for Host {
             debug!("warm process awaiting...");
             rx.recv().await;
         }
-        let sensor_key = if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+        if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
             if !perms.can_write(&req.tag) {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));
             }
-            if tag_parsing::is_state_tag(&req.tag) {
-                Some(tag_parsing::parse_state_tag(&req.tag))
-            } else {
-                None
-            }
         } else {
             unreachable!()
         };
-
-        if let Some((sensor, key)) = sensor_key {
-            // Forward as state change if the tag changes state.
-            debug!("push: {} forwarding state change tag={}", req.process_token, req.tag);
-            let req = StateChange {
-                host_token: String::new(),
-                process_token: req.process_token,
-                sensor_id: sensor,
-                key,
-                value: req.data,
-            };
-            self.api.forward_state(req).await
-        } else {
-            // Forward the file access to the controller and return the result
-            debug!("push: {} forwarding push tag={}", req.process_token, req.tag);
-            self.api.forward_push(req).await
-        }
+        // Forward the file access to the controller and return the result
+        debug!("push: {} forwarding push tag={}", req.process_token, req.tag);
+        self.api.forward_push(req).await
     }
 }
 

@@ -9,7 +9,7 @@ fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
         let line = line.split(" ").collect::<Vec<_>>();
         let path = std::path::Path::new(line[0]);
         if !path.exists() {
-            println!("Path does not exist");
+            println!("Path does not exist: {:?}", path);
             continue;
         }
         let is_dir = path.is_dir();
@@ -42,6 +42,7 @@ fn main() {
         "search",
         "targz",
         "true",
+        "set_true",
     ];
 
     let params = vec![
@@ -51,6 +52,7 @@ fn main() {
         vec!["light_intent"],
         vec!["query_intent"],
         vec!["files"],
+        vec![],
         vec![],
     ];
 
@@ -62,6 +64,7 @@ fn main() {
         vec!["response"],
         vec!["video"],
         vec!["true"],
+        vec!["true"],
     ];
 
     let network_perm = vec![
@@ -70,6 +73,7 @@ fn main() {
         vec!["firmware.com"],
         vec![],
         vec!["google.com"],
+        vec![],
         vec![],
         vec![],
     ];

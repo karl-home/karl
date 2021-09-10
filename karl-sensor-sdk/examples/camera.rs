@@ -49,8 +49,8 @@ async fn handle_state_changes(
                 info!("turning livestream on");
                 // TODO: send livestream messages
                 // tokio::spawn(async move {
-                // let tag = "streaming".to_string();
-                // api.push(tag, image_bytes.clone()).await.unwrap();
+                // let output = "streaming".to_string();
+                // api.push(output, image_bytes.clone()).await.unwrap();
             } else {
                 info!("turning livestream off");
             }
@@ -73,13 +73,13 @@ async fn motion_detection(
     tokio::time::sleep(Duration::from_secs(10)).await;
     let mut interval = tokio::time::interval(duration);
     loop {
-        let tag = "motion".to_string();
+        let output = "motion".to_string();
         interval.tick().await;
         // warn!("START step 1: pushing image");
         warn!("start diff_priv_pipeline or person_detection_pipeline: {:?}", Instant::now());
         info!("pushing {} byte image", image_bytes.len());
         // let now = Instant::now();
-        api.push(tag, image_bytes.clone()).await.unwrap();
+        api.push(output, image_bytes.clone()).await.unwrap();
         // warn!("=> {} s", now.elapsed().as_secs_f32());
     }
 }
