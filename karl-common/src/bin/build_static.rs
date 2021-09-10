@@ -39,10 +39,11 @@ fn main() {
         "false",
         "firmware_update",
         "light_switch",
-        "search",
+        "weather",
         "targz",
         "true",
         "set_true",
+        "statistics",
     ];
 
     let params = vec![
@@ -50,10 +51,11 @@ fn main() {
         vec![],
         vec![],
         vec!["light_intent"],
-        vec!["query_intent"],
+        vec!["weather_intent"],
         vec!["files"],
         vec![],
         vec![],
+        vec!["data"],
     ];
 
     let returns = vec![
@@ -61,10 +63,11 @@ fn main() {
         vec!["false"],
         vec!["firmware"],
         vec!["state"],
-        vec!["response"],
+        vec!["weather"],
         vec!["video"],
         vec!["true"],
         vec!["true"],
+        vec![],
     ];
 
     let network_perm = vec![
@@ -72,10 +75,11 @@ fn main() {
         vec![],
         vec!["firmware.com"],
         vec![],
-        vec!["google.com"],
+        vec!["https://www.weather.com"],
         vec![],
         vec![],
         vec![],
+        vec!["https://www.statistics.com"],
     ];
 
     for i in 0..module_ids.len() {

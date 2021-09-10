@@ -21,7 +21,7 @@ from picovoice import Picovoice
 def read_file(api):
     audio_path = 'tmp.wav'
     with open(audio_path, 'wb') as f:
-        audio_bytes = api.get_triggered()
+        audio_bytes = api.get_event('speech')
         f.write(audio_bytes)
     return audio_path
 
@@ -36,13 +36,10 @@ def main():
         if inference.is_understood:
             # data = json.dumps(inference.slots, indent=2).encode('utf-8')
             if inference.intent == 'orderBeverage':
-                # TODO: light switch and google search intents
-                # Randomly pick light switch or google search.
-                tag = 'light'
-                state = 'on' if bool(random.getrandbits(1)) else 'off'
-                intent = { 'state': state }
+                output = 'weather_intent'
+                intent = { 'location': 'san francisco, ca' }
                 data = json.dumps(intent, indent=2).encode('utf-8')
-                api.push(tag, data)
+                api.push(output, data)
             #    pass
             # elif inference.intent in ['changeLightState', 'changeLightStateOff']:
             #     api.push('light', data)

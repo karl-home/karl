@@ -20,7 +20,7 @@ sys.stderr.write('init model \t%.3fs\n' % (time.perf_counter() - start))
 
 img_path = 'tmp.png'
 with open(img_path, 'wb') as f:
-    img_bytes = karl.get_triggered()
+    img_bytes = karl.get_event('image')
     f.write(img_bytes)
 sys.stderr.write('read img \t%.3fs (%s)\n' % (time.perf_counter() - start, img_path))
 img = Image.open(img_path).convert("RGB")
@@ -51,8 +51,7 @@ img.save(img_byte_arr, format='PNG')
 img_byte_arr = img_byte_arr.getvalue()
 sys.stderr.write('prepare results \t%.3fs\n' % (time.perf_counter() - start))
 
-karl.push("box", img_byte_arr)
-sys.stderr.write('send box \t%.3fs\n' % (time.perf_counter() - start))
-karl.push("all_count", bytes([len(boxes)]))
 karl.push("count", bytes([len(boxes_filtered)]))
+karl.push("training_data", img_byte_arr)
+sys.stderr.write('send training_data \t%.3fs\n' % (time.perf_counter() - start))
 sys.stderr.write('log output \t%.3fs\n' % (time.perf_counter() - start))

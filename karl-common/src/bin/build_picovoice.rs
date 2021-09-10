@@ -36,29 +36,46 @@ fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
 
 fn main() {
     let module_ids = vec![
-        "person_detection",
+        "picovoice_light",
+        "picovoice_weather",
     ];
     let params = vec![
-        vec!["image"],
+        vec!["speech"],
+        vec!["speech"],
     ];
     let returns = vec![
-        vec!["training data", "count"],
-    ];
-    let network_perm = vec![
-        vec!["metrics.com"],
+        vec!["light_intent", "weather_intent"],
+        vec!["light_intent", "weather_intent"],
     ];
     let package_lines = vec![
         vec![
-            "person-detection/env env",
-            "person-detection/torch torch",
-            "person-detection/detect.py detect.py",
-            "person-detection/karl.py karl.py",
-            "person-detection/request_pb2.py request_pb2.py",
-            "person-detection/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/env env",
+            "picovoice/picovoice_light.py picovoice_light.py",
+            "picovoice/picovoice_linux.ppn picovoice_linux.ppn",
+            "picovoice/coffee_maker_linux.rhn coffee_maker_linux.rhn",
+            "picovoice/libsndfile.so.1 libsndfile.so.1",
+            "picovoice/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/request_pb2.py request_pb2.py",
+            "picovoice/karl.py karl.py",
+        ],
+        vec![
+            "picovoice/env env",
+            "picovoice/picovoice_weather.py picovoice_weather.py",
+            "picovoice/picovoice_linux.ppn picovoice_linux.ppn",
+            "picovoice/coffee_maker_linux.rhn coffee_maker_linux.rhn",
+            "picovoice/libsndfile.so.1 libsndfile.so.1",
+            "picovoice/request_pb2_grpc.py request_pb2_grpc.py",
+            "picovoice/request_pb2.py request_pb2.py",
+            "picovoice/karl.py karl.py",
         ],
     ];
+    let network_perm: Vec<Vec<String>> = vec![
+        vec![],
+        vec![],
+    ];
     let args = vec![
-        vec!["detect.py"],
+        vec!["picovoice_light.py"],
+        vec!["picovoice_weather.py"],
     ];
 
     for i in 0..module_ids.len() {

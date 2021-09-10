@@ -13,9 +13,9 @@ use karl_sensor_sdk::KarlSensorSDK;
 /// Register the sensor with the controller.
 ///
 /// * keys
-///     - response: an audio response to play back to the user
+///     - playback: an audio response to play back to the user
 /// * tags
-///     - sound: non-silence audio recorded from the user
+///     - speech_command: non-silence audio recorded from the user
 ///
 /// Returns: the sensor ID.
 async fn register(
@@ -23,9 +23,9 @@ async fn register(
 ) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
     let result = api.register(
-        "microphone",
-        vec![String::from("response")], // keys
-        vec![String::from("sound")], // tags
+        "speaker",
+        vec![String::from("playback")], // keys
+        vec![String::from("speech_command")], // tags
         vec![], // app
     ).await?;
     info!("registered sensor => {} s", now.elapsed().as_secs_f32());
@@ -39,7 +39,7 @@ async fn handle_state_changes(
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
-        if msg.key == "response" {
+        if msg.key == "playback" {
             match std::str::from_utf8(&msg.value[..]) {
                 Ok(string) => {
                     warn!("finish search_pipeline: {:?}", Instant::now());
@@ -54,7 +54,7 @@ async fn handle_state_changes(
     Ok(())
 }
 
-/// Push data at a regular interval to the microphone.sound tag
+/// Push data at a regular interval to the speaker.speech_command tag
 /// to represent when non-silence audio is detected.
 async fn audio_detection(
     api: KarlSensorSDK,
@@ -66,7 +66,7 @@ async fn audio_detection(
     let mut interval = tokio::time::interval(duration);
     tokio::time::sleep(Duration::from_secs(5)).await;
     loop {
-        let tag = "sound".to_string();
+        let tag = "speech_command".to_string();
         interval.tick().await;
         warn!("start search_pipeline: {:?}", Instant::now());
         info!("pushing {} bytes of audio", audio_bytes.len());

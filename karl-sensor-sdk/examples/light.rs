@@ -3,26 +3,29 @@ extern crate log;
 use log::LevelFilter;
 
 use std::error::Error;
-use std::time::{Instant, Duration};
-
-use tokio;
+use std::time::Instant;
 use clap::{Arg, App};
+use tokio;
 use karl_sensor_sdk::KarlSensorSDK;
 
 /// Register the sensor with the controller.
 ///
 /// * keys
-///     - on: whether the light bulb should be on or off
+///     - state: whether the light is on or off
+///     - intensity: the intensity of the light from 1-10
+/// * returns
+///     - state: whether the light is on or off
+///     - intensity: the intensity of the light from 1-10
 ///
-/// Returns: the sensor ID.
+/// Returns: the sensor token and sensor ID.
 async fn register(
     api: &mut KarlSensorSDK,
 ) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
     let result = api.register(
-        "bulb",
-        vec![String::from("on")], // keys
-        vec![], // tags
+        "light",
+        vec![String::from("state"), String::from("intensity")],
+        vec![String::from("state"), String::from("intensity")],
         vec![], // app
     ).await?;
     info!("registered sensor => {} s", now.elapsed().as_secs_f32());
@@ -31,12 +34,13 @@ async fn register(
     Ok(result.sensor_id)
 }
 
+/// Listen for state changes.
 async fn handle_state_changes(
     api: KarlSensorSDK,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = api.connect_state().await?;
     while let Some(msg) = conn.message().await? {
-        if msg.key == "on" {
+        if msg.key == "state" {
             let state = msg.value;
             if state.len() != 1 {
                 warn!("invalid length message: {:?}", state);
@@ -47,6 +51,15 @@ async fn handle_state_changes(
                 1 => info!("turning ON"),
                 byte => warn!("invalid byte: {}", byte),
             }
+            api.push("state".to_string(), state).await.unwrap();
+        } else if msg.key == "intensity" {
+            let intensity = msg.value;
+            if intensity.len() != 1 {
+                warn!("invalid length message: {:?}", intensity);
+                continue;
+            }
+            info!("turning light to intensity {}", intensity[0]);
+            api.push("intensity".to_string(), intensity).await.unwrap();
         } else {
             warn!("unexpected key: {}", msg.key);
         }
@@ -57,13 +70,15 @@ async fn handle_state_changes(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().filter_level(LevelFilter::Info).init();
-    let matches = App::new("Smart light bulb that turns on and off.")
+    let matches = App::new("Lightb bulb")
         .arg(Arg::with_name("ip")
             .help("Controller ip.")
+            .long("ip")
             .takes_value(true)
             .default_value("127.0.0.1"))
         .arg(Arg::with_name("port")
             .help("Controller port.")
+            .long("port")
             .takes_value(true)
             .default_value("59582"))
         .get_matches();
@@ -76,25 +91,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let _sensor_id = register(&mut api).await?;
         api
     };
-    info!("Hello, I'm a light bulb! I can turn on and off.");
     let state_change_handle = {
         let api = api.clone();
         tokio::spawn(async move {
-            const SLEEP_INTERVAL: u64 = 10;
-            let duration = Duration::from_secs(SLEEP_INTERVAL);
-            loop {
-                match handle_state_changes(api.clone()).await {
-                    Ok(()) => { break; },
-                    Err(e) => {
-                        error!(
-                            "Connection ended. Try again in {}s",
-                            SLEEP_INTERVAL,
-                        );
-                        error!("{}", e);
-                    }
-                }
-                tokio::time::sleep(duration).await;
-            }
+            handle_state_changes(api).await.unwrap()
         })
     };
     state_change_handle.await?;

@@ -561,7 +561,10 @@ impl Host {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .filter_module("karl_host", log::LevelFilter::Debug)
+        .init();
     let pwd = std::fs::canonicalize(".")?;
     let path = format!("{}/.host", std::env::var("KARL_PATH")
         .unwrap_or(pwd.as_os_str().to_str().unwrap().to_string()));

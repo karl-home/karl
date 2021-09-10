@@ -1,7 +1,7 @@
-//! Search google given a text query from a classifier.
+//! Quer.
 //!
 //! Inputs
-//! - query_intent: an intent expressing the query { query: text }
+//! - weather_intent: an intent expressing the query { location: text }
 //! Outputs
 //! - response: the text response
 //! Network access required
@@ -11,17 +11,17 @@ use karl_module_sdk::KarlModuleSDK;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api = KarlModuleSDK::new();
-    let data = api.get_event("query_intent").await?.unwrap();
+    let data = api.get_event("weather_intent").await?.unwrap();
     let slots = serde_json::from_slice(&data[..])?;
     println!("slots = {:?}", slots);
     match slots {
         serde_json::Value::Object(map) => {
-            if let Some(query) = map.get("query") {
-                match query {
-                    serde_json::Value::String(query) => {
-                        let res = api.network("https://www.google.com", "GET", vec![], query.as_bytes().to_vec()).await;
+            if let Some(location) = map.get("location") {
+                match location {
+                    serde_json::Value::String(location) => {
+                        let res = api.network("https://www.weather.com", "GET", vec![], location.as_bytes().to_vec()).await;
                         println!("response = {:?}", res);
-                        api.push("response", b"the weather is great!".to_vec()).await?;
+                        api.push("weather", b"the weather is great!".to_vec()).await?;
                     },
                     _ => {},
                 }
