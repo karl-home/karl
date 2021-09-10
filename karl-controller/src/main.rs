@@ -10,9 +10,11 @@ extern crate rocket;
 extern crate rocket_contrib;
 
 mod dashboard;
+pub mod policy;
 pub mod net;
 pub mod controller;
 pub use controller::Controller;
+pub(crate) use dashboard::{GraphJson, SensorJson, ModuleJson};
 
 pub mod protos {
 	tonic::include_proto!("request");
