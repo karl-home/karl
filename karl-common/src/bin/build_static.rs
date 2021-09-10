@@ -44,6 +44,7 @@ fn main() {
         "true",
         "set_true",
         "statistics",
+        "boolean",
     ];
 
     let params = vec![
@@ -56,6 +57,7 @@ fn main() {
         vec![],
         vec![],
         vec!["data"],
+        vec!["condition", "value"],
     ];
 
     let returns = vec![
@@ -68,6 +70,7 @@ fn main() {
         vec!["true"],
         vec!["true"],
         vec![],
+        vec!["predicate"],
     ];
 
     let network_perm = vec![
@@ -80,6 +83,7 @@ fn main() {
         vec![],
         vec![],
         vec!["https://www.statistics.com"],
+        vec![],
     ];
 
     for i in 0..module_ids.len() {
