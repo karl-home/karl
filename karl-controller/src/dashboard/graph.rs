@@ -174,8 +174,8 @@ impl GraphJson {
             let tags = &modules.tags(&module.localId).unwrap();
             for (o2, output) in module.returns.iter().enumerate() {
                 for tag in tags.get_output_tags(output).unwrap() {
-                    if state_tags::is_state_tag(&tag) {
-                        let (sensor, key) = state_tags::parse_state_tag(tag);
+                    if tag_parsing::is_state_tag(&tag) {
+                        let (sensor, key) = tag_parsing::parse_state_tag(tag);
                         let i1 = *entity_map.get(&sensor).unwrap();
                         let i2 = sensor_jsons[i1 as usize].stateKeys.iter()
                             .position(|(k,_)| k == &key).unwrap() as u32;
@@ -204,7 +204,7 @@ impl GraphJson {
 
     pub fn new(c: &Controller) -> Self {
         let sensors_lock = c.sensors.lock().unwrap();
-        let modules_lock = c.modules.lock().unwrap();
+        let modules_lock = c.modules.read().unwrap();
         let watched_tags_lock = c.watched_tags.read().unwrap();
         let sensors = GraphJson::parse_sensors(sensors_lock.list_sensors());
         let modules = GraphJson::parse_modules(modules_lock.list_modules());

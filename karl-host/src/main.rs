@@ -68,15 +68,11 @@ impl karl_host_server::KarlHost for Host {
         if let Some(process_token) = self.attach_warm_process(&mut req).await {
             Ok(Response::new(NotifyStart { process_token }))
         } else {
-            let triggered_tag = req.triggered_tag.drain(..).collect();
-            let triggered_timestamp = req.triggered_timestamp.drain(..).collect();
             let is_warm = false;
             let process_token = Host::spawn_new_process(
                 self.clone(),
                 req,
                 is_warm,
-                triggered_tag,
-                triggered_timestamp,
             ).await;
             Ok(Response::new(NotifyStart { process_token }))
         }
@@ -202,23 +198,8 @@ impl karl_host_server::KarlHost for Host {
         }
         if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
             if perms.is_triggered(&req.tag) {
-                // cached the triggered file
-                if req.lower != req.upper {
-                    debug!("get: {} invalid triggered timestamps", req.process_token);
-                    return Ok(Response::new(GetDataResult::default()))
-                } else if !self.pubsub_enabled {
-                    debug!("get: {} pubsub disabled, fallthrough to read from data sink", req.process_token);
-                    // fallthrough below
-                } else if let Some(data) = perms.read_triggered(&req.lower) {
-                    debug!("get: {} reading triggered data", req.process_token);
-                    return Ok(Response::new(GetDataResult {
-                        timestamps: vec![req.lower],
-                        data: vec![data],
-                    }))
-                } else {
-                    debug!("get: {} process was not triggered", req.process_token);
-                    return Ok(Response::new(GetDataResult::default()))
-                }
+                warn!("get: {} cannot read triggered tag {}", req.process_token, req.tag);
+                return Err(Status::new(Code::Unauthenticated, "cannot read"));
             } else if !perms.can_read(&req.tag) {
                 warn!("get: {} cannot read {}", req.process_token, req.tag);
                 return Err(Status::new(Code::Unauthenticated, "cannot read"));
@@ -227,6 +208,66 @@ impl karl_host_server::KarlHost for Host {
         // Forward the file access to the controller and return the result
         debug!("get: {} forwarding tag={}", req.process_token, req.tag);
         self.api.forward_get(req).await
+    }
+
+    /// Validates the process is an existing process, and checks its
+    /// permissions to see that the tag corresponds to a valid param.
+    /// If the tag is valid and this is a stateless edge, only respond
+    /// succesfully if the module is trying to get the triggered data.
+    /// If the tag is valid and this is a stateful edge, endorse the data
+    /// with the host token and forward to the controller.
+    async fn get_event(
+        &self, req: Request<GetEventData>,
+    ) -> Result<Response<GetDataResult>, Status> {
+        debug!("get_event");
+        // Validate the process is valid and has permissions to read the tag.
+        // No serializability guarantees from other requests from the same process.
+        let req = req.into_inner();
+        let rx = {
+            if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+                perms.touch()
+            } else {
+                warn!("get: invalid token {}", req.process_token);
+                return Err(Status::new(Code::Unauthenticated, "invalid process token"));
+            }
+        };
+        if let Some(mut rx) = rx {
+            debug!("warm process awaiting...");
+            rx.recv().await;
+        }
+        let (tag, timestamp) = if let Some(perms) = self.process_tokens.lock().unwrap().get_mut(&req.process_token) {
+            if perms.is_triggered(&req.tag) {
+                // cached the triggered file
+                if !self.pubsub_enabled {
+                    debug!("get: {} pubsub disabled, fallthrough to read from data sink", req.process_token);
+                    // fallthrough below
+                    (perms.triggered_tag.clone(), perms.triggered_timestamp.clone())
+                } else if let Some(data) = perms.read_triggered() {
+                    debug!("get: {} reading triggered data", req.process_token);
+                    return Ok(Response::new(GetDataResult {
+                        timestamps: vec![perms.triggered_timestamp.clone()],
+                        data: vec![data],
+                    }))
+                } else {
+                    debug!("get: {} process was not triggered", req.process_token);
+                    return Ok(Response::new(GetDataResult::default()))
+                }
+            } else {
+                warn!("get: {} cannot read non-triggered tag {}", req.process_token, req.tag);
+                return Err(Status::new(Code::Unauthenticated, "cannot read"));
+            }
+        } else {
+            unreachable!()
+        };
+        // Forward the file access to the controller and return the result
+        debug!("get: {} forwarding tag={}", req.process_token, req.tag);
+        self.api.forward_get(GetData {
+            host_token: "".to_string(),
+            process_token: req.process_token,
+            tag: tag,
+            lower: timestamp.clone(),
+            upper: timestamp,
+        }).await
     }
 
     /// Validates the process is an existing process, and checks its
@@ -261,8 +302,8 @@ impl karl_host_server::KarlHost for Host {
                 debug!("push: {} cannot write tag={}, silently failing", req.process_token, req.tag);
                 return Ok(Response::new(()));
             }
-            if state_tags::is_state_tag(&req.tag) {
-                Some(state_tags::parse_state_tag(&req.tag))
+            if tag_parsing::is_state_tag(&req.tag) {
+                Some(tag_parsing::parse_state_tag(&req.tag))
             } else {
                 None
             }
@@ -357,8 +398,6 @@ impl Host {
                     host.clone(),
                     req,
                     is_warm,
-                    TRIGGERED_KEY.to_string(),  // special value
-                    TRIGGERED_KEY.to_string(),  // special value
                 ).await;
             }
         });
@@ -396,10 +435,9 @@ impl Host {
         host: Host,
         mut req: ComputeRequest,
         is_warm: bool,
-        triggered_tag: String,
-        triggered_timestamp: String,
     ) -> ProcessToken {
         let process_token = Token::gen();
+
         let (perms, tx) = if !is_warm {
             info!("spawning cold process: {} ({})", req.module_id, process_token);
             (ProcessPerms::new(&mut req), None)
@@ -435,19 +473,7 @@ impl Host {
             let process_token = process_token.clone();
             tokio::spawn(async move {
                 let original_req = req.clone();
-                if !triggered_tag.is_empty() {
-                    req.envs.push(format!("TRIGGERED_TAG={}", &triggered_tag));
-                }
-                if !triggered_timestamp.is_empty() {
-                    req.envs.push(format!("TRIGGERED_TIMESTAMP={}", &triggered_timestamp));
-                }
                 req.envs.push(format!("PROCESS_TOKEN={}", &process_token));
-                if !req.params.is_empty() {
-                    req.envs.push(format!("KARL_PARAMS={}", &req.params));
-                }
-                if !req.returns.is_empty() {
-                    req.envs.push(format!("KARL_RETURNS={}", &req.returns));
-                }
                 let execution_time = Host::handle_compute(
                     host.compute_lock.clone(),
                     host.path_manager.clone(),

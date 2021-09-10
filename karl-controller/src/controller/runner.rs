@@ -77,7 +77,7 @@ impl Modules {
     ) -> Result<ModuleID, Error> {
         let module = Module::import(global_id)?;
         if !self.modules.contains_key(id) {
-            self.tags_inner.insert(id.to_string(), Tags::new_module(&module));
+            self.tags_inner.insert(id.to_string(), Tags::new_module(&module, id.clone()));
             self.modules.insert(id.to_string(), module);
             let mut config = ModuleConfig::default();
             config.envs.insert("GLOBAL_MODULE_ID".to_string(), global_id.to_string());
@@ -231,7 +231,7 @@ impl Runner {
     /// are read to be scheduled. Add modules to the queue via `queue_module()`.
     pub fn start(
         &mut self,
-        modules: Arc<Mutex<Modules>>,
+        modules: Arc<RwLock<Modules>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
@@ -352,7 +352,7 @@ impl Runner {
 
     async fn start_queue_manager(
         mut rx: mpsc::Receiver<QueuedModule>,
-        modules: Arc<Mutex<Modules>>,
+        modules: Arc<RwLock<Modules>>,
         scheduler: Arc<Mutex<HostScheduler>>,
         mock_send_compute: bool,
     ) {
@@ -376,7 +376,7 @@ impl Runner {
 
             // Generate a compute request based on the queued module.
             let mut request = {
-                match modules.lock().unwrap().get_compute_request(
+                match modules.read().unwrap().get_compute_request(
                     module_id.clone(),
                     host.host_token.clone(),
                     host.cached,

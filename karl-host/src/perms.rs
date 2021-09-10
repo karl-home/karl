@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
+use karl_common::Tag;
 use crate::protos::*;
 
 /// Special key to get the triggered data regardless of tag/timestamp
@@ -14,13 +15,13 @@ pub struct ProcessPerms {
     count: usize,
     warm_cache_notify: Option<mpsc::Receiver<()>>,
     /// Triggered tag
-    triggered_tag: String,
-    triggered_timestamp: String,
+    pub triggered_tag: String,
+    pub triggered_timestamp: String,
     triggered_data: Option<Vec<u8>>,
     /// Tags the process can read from
-    read_perms: HashSet<String>,
+    read_perms: HashSet<Tag>,
     /// Tags the process can write to
-    write_perms: HashSet<String>,
+    write_perms: HashSet<Tag>,
     /// Domains allowed to contact
     network_perms: HashSet<String>,
 }
@@ -56,28 +57,13 @@ impl ProcessPerms {
         };
         let read_perms = req.params
             .split(":")
-            .map(|param| param.split(";"))
-            .filter_map(|mut param| {
-                if let Some(_) = param.next() {
-                    param.next()
-                } else {
-                    None
-                }
-            })
+            .filter(|tag| !tag.is_empty())
             .map(|tag| tag.to_string())
-            .filter(|tag| tag != &req.triggered_tag)
             .collect::<HashSet<String>>();
         let write_perms = req.returns
             .split(":")
-            .map(|param| param.split(";"))
-            .filter_map(|mut param| {
-                if let Some(_) = param.next() {
-                    param.next()
-                } else {
-                    None
-                }
-            })
-            .flat_map(|tags| tags.split(",").map(|tag| tag.to_string()))
+            .filter(|tag| !tag.is_empty())
+            .map(|tag| tag.to_string())
             .collect::<HashSet<String>>();
         let network_perms: HashSet<_> = req.network_perm.clone().into_iter().collect();
         self.start = Instant::now();
@@ -102,14 +88,8 @@ impl ProcessPerms {
     }
 
     /// Triggered data should only be read once.
-    pub fn read_triggered(&mut self, timestamp: &str) -> Option<Vec<u8>> {
-        if timestamp == self.triggered_timestamp {
-            self.triggered_data.take()
-        } else if timestamp == TRIGGERED_KEY {
-            self.triggered_data.take()
-        } else {
-            None
-        }
+    pub fn read_triggered(&mut self) -> Option<Vec<u8>> {
+        self.triggered_data.take()
     }
 
     pub fn can_access_domain(&self, domain: &str) -> bool {
@@ -178,7 +158,7 @@ mod test {
     #[test]
     fn triggered_data_is_parsed_in_normal_case() {
         let mut req = new_compute_request();
-        let tag = "t1".to_string();
+        let tag = "camera.motion".to_string();
         let timestamp = "10:00".to_string();
         let data = vec![5, 5, 5, 5];
         req.triggered_tag = tag.clone();
@@ -197,7 +177,7 @@ mod test {
     #[test]
     fn triggered_data_is_parsed_even_when_empty() {
         let mut req = new_compute_request();
-        let tag = "t1".to_string();
+        let tag = "camera.motion".to_string();
         let timestamp = "10:00".to_string();
         req.triggered_tag = tag.clone();
         req.triggered_timestamp = timestamp.clone();
@@ -212,27 +192,25 @@ mod test {
     #[test]
     fn read_write_perms_are_parsed() {
         let mut req = new_compute_request();
-        let params = "a;t1:b;t2:c;t3".to_string();
-        let returns = "x;t4:y;t5,t6,t7".to_string();
+        let params = "camera.a:camera.b:camera.c".to_string();
+        let returns = "camera.d:camera.e".to_string();
         req.params = params.clone();
         req.returns = returns.clone();
 
         let perms = ProcessPerms::new(&mut req);
         assert_eq!(perms.read_perms.len(), 3);
-        assert!(perms.read_perms.contains("t1"));
-        assert!(perms.read_perms.contains("t2"));
-        assert!(perms.read_perms.contains("t3"));
-        assert_eq!(perms.write_perms.len(), 4);
-        assert!(perms.write_perms.contains("t4"));
-        assert!(perms.write_perms.contains("t5"));
-        assert!(perms.write_perms.contains("t6"));
-        assert!(perms.write_perms.contains("t7"));
+        assert!(perms.read_perms.contains("camera.a"));
+        assert!(perms.read_perms.contains("camera.b"));
+        assert!(perms.read_perms.contains("camera.c"));
+        assert_eq!(perms.write_perms.len(), 2);
+        assert!(perms.write_perms.contains("camera.d"));
+        assert!(perms.write_perms.contains("camera.e"));
     }
 
     #[test]
     fn is_and_read_triggered() {
         let mut req = new_compute_request();
-        let tag = "t1".to_string();
+        let tag = "camera.a".to_string();
         let timestamp = "10:00".to_string();
         let data = vec![5, 5, 5, 5];
         req.triggered_tag = tag.clone();
@@ -241,18 +219,17 @@ mod test {
 
         let mut perms = ProcessPerms::new(&mut req);
         assert!(perms.triggered_data.is_some());
-        assert!(!perms.is_triggered("t2"));
-        assert!(perms.is_triggered("t1"));
-        assert!(perms.read_triggered("9:00").is_none(), "incorrect timestamp");
-        assert!(perms.read_triggered(&timestamp).is_some());
+        assert!(!perms.is_triggered("camera.b"));
+        assert!(perms.is_triggered("camera.a"));
+        assert!(perms.read_triggered().is_some());
         assert!(perms.triggered_data.is_none(), "can't read triggered data twice");
-        assert!(perms.read_triggered(&timestamp).is_none(), "can't read triggered data twice");
+        assert!(perms.read_triggered().is_none(), "can't read triggered data twice");
     }
 
     #[test]
     fn use_triggered_key() {
         let mut req = new_compute_request();
-        let tag = "t1".to_string();
+        let tag = "camera.a".to_string();
         let timestamp = "10:00".to_string();
         let data = vec![5, 5, 5, 5];
         req.triggered_tag = tag.clone();
@@ -264,27 +241,27 @@ mod test {
         assert!(&timestamp != TRIGGERED_KEY);
         assert!(perms.triggered_data.is_some());
         assert!(perms.is_triggered(TRIGGERED_KEY));
-        assert!(perms.read_triggered(TRIGGERED_KEY).is_some());
+        assert!(perms.read_triggered().is_some());
         assert!(perms.triggered_data.is_none(), "can't read triggered data twice");
-        assert!(perms.read_triggered(&timestamp).is_none(), "can't read triggered data twice");
+        assert!(perms.read_triggered().is_none(), "can't read triggered data twice");
     }
 
     #[test]
     fn test_read_write_network_permissions() {
         let mut req = new_compute_request();
-        let params = "a;t1:b;t2:c;t3".to_string();
-        let returns = "x;t4:y;t5,t6,t7".to_string();
+        let params = "camera.a:camera.b:camera.c".to_string();
+        let returns = "camera.d:camera.e".to_string();
         let domain = "google.com".to_string();
         req.params = params.clone();
         req.returns = returns.clone();
         req.network_perm = vec![domain.clone()];
 
-        let     perms = ProcessPerms::new(&mut req);
-        assert!(perms.can_read("t1"));
-        assert!(perms.can_write("t4"));
+        let perms = ProcessPerms::new(&mut req);
+        assert!(perms.can_read("camera.a"));
+        assert!(perms.can_write("camera.d"));
         assert!(perms.can_access_domain(&domain));
-        assert!(!perms.can_read("t4"));
-        assert!(!perms.can_write("t1"));
+        assert!(!perms.can_read("camera.e"));
+        assert!(!perms.can_write("camera.b"));
         assert!(!perms.can_access_domain("yahoo.com"));
         assert!(!perms.can_read(TRIGGERED_KEY));
         assert!(!perms.can_write(TRIGGERED_KEY));

@@ -8,6 +8,7 @@ type Output = String;
 
 #[derive(Debug, Clone)]
 pub struct Tags {
+    id: String,
     inputs: HashMap<Input, Option<Tag>>,
     outputs: HashMap<Output, Vec<Tag>>,
 }
@@ -17,15 +18,17 @@ impl Tags {
         let inputs = sensor.keys.clone();
         let outputs = sensor.returns.clone();
         Self {
+            id: sensor.id.clone(),
             inputs: inputs.into_iter().map(|val| (val, None)).collect(),
             outputs: outputs.into_iter().map(|val| (val, vec![])).collect(),
         }
     }
 
-    pub fn new_module(module: &Module) -> Self {
+    pub fn new_module(module: &Module, local_id: String) -> Self {
         let inputs = module.params.clone();
         let outputs = module.returns.clone();
         Self {
+            id: local_id,
             inputs: inputs.into_iter().map(|val| (val, None)).collect(),
             outputs: outputs.into_iter().map(|val| (val, vec![])).collect(),
         }
@@ -101,23 +104,19 @@ impl Tags {
     }
 
     pub fn inputs_string(&self) -> String {
-        let mut inputs: Vec<_> = self.inputs.iter()
-            .filter(|(_, tag)| tag.is_some())
+        let mut inputs: Vec<_> = self.inputs.keys()
+            .map(|tag| format!("{}.{}", self.id, tag))
             .collect();
-        inputs.sort_by_key(|key| key.0);
-        inputs.iter()
-            .map(|(input, tag)| format!("{};{}", input, tag.as_ref().unwrap()))
-            .join(":")
+        inputs.sort();
+        inputs.iter().join(":")
     }
 
     pub fn outputs_string(&self) -> String {
-        let mut outputs: Vec<_> = self.outputs.iter()
-            .filter(|(_, tags)| !tags.is_empty())
+        let mut outputs: Vec<_> = self.outputs.keys()
+            .map(|tag| format!("{}.{}", self.id, tag))
             .collect();
-        outputs.sort_by_key(|key| key.0);
-        outputs.iter()
-            .map(|(output, tags)| format!("{};{}", output, tags.iter().join(",")))
-            .join(":")
+        outputs.sort();
+        outputs.iter().join(":")
     }
 }
 
@@ -140,7 +139,7 @@ mod test {
         let mut module = Module::default();
         module.params = vec!["a".to_string(), "b".to_string()];
         module.returns = vec!["x".to_string(), "y".to_string(), "z".to_string()];
-        let tags = Tags::new_module(&module);
+        let tags = Tags::new_module(&module, "id".to_string());
         assert_eq!(tags.inputs.len(), module.params.len());
         assert_eq!(tags.outputs.len(), module.returns.len());
     }
@@ -149,7 +148,7 @@ mod test {
         let mut module = Module::default();
         module.params = vec!["a".to_string(), "b".to_string()];
         module.returns = vec!["x".to_string(), "y".to_string(), "z".to_string()];
-        let tags = Tags::new_module(&module);
+        let tags = Tags::new_module(&module, "id".to_string());
         tags
     }
 
@@ -245,28 +244,28 @@ mod test {
     #[test]
     fn test_inputs_string() {
         let mut tags = new_tags();
-        assert!(tags.inputs_string().is_empty());
+        assert!(!tags.inputs_string().is_empty());
         assert!(tags.set_input_tag("b", "t2").is_ok());
-        assert_eq!(tags.inputs_string(), "b;t2");
+        assert_eq!(tags.inputs_string(), "id.a:id.b");
         assert!(tags.set_input_tag("a", "t1").is_ok());
-        assert_eq!(tags.inputs_string(), "a;t1:b;t2");
+        assert_eq!(tags.inputs_string(), "id.a:id.b");
         assert!(tags.set_input_tag("a", "t3").is_ok());
-        assert_eq!(tags.inputs_string(), "a;t3:b;t2");
+        assert_eq!(tags.inputs_string(), "id.a:id.b");
     }
 
     #[test]
     fn test_outputs_string() {
         let mut tags = new_tags();
-        assert!(tags.outputs_string().is_empty());
+        assert!(!tags.outputs_string().is_empty());
         assert!(tags.add_output_tag("y", "t1").is_ok());
-        assert_eq!(tags.outputs_string(), "y;t1");
+        assert_eq!(tags.outputs_string(), "id.x:id.y:id.z");
         assert!(tags.add_output_tag("y", "t2").is_ok());
-        assert_eq!(tags.outputs_string(), "y;t1,t2");
+        assert_eq!(tags.outputs_string(), "id.x:id.y:id.z");
         assert!(tags.add_output_tag("x", "t3").is_ok());
-        assert_eq!(tags.outputs_string(), "x;t3:y;t1,t2");
+        assert_eq!(tags.outputs_string(), "id.x:id.y:id.z");
         assert!(tags.add_output_tag("z", "t4").is_ok());
-        assert_eq!(tags.outputs_string(), "x;t3:y;t1,t2:z;t4");
+        assert_eq!(tags.outputs_string(), "id.x:id.y:id.z");
         assert!(tags.remove_output_tag("x", "t3").is_ok());
-        assert_eq!(tags.outputs_string(), "y;t1,t2:z;t4");
+        assert_eq!(tags.outputs_string(), "id.x:id.y:id.z");
     }
 }

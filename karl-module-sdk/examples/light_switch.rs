@@ -8,7 +8,7 @@ use karl_module_sdk::KarlModuleSDK;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api = KarlModuleSDK::new();
-    let data = api.get_triggered().await?.unwrap();
+    let data = api.get_event("light_intent").await?.unwrap();
     let slots = serde_json::from_slice(&data[..])?;
     match slots {
         serde_json::Value::Object(map) => {

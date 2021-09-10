@@ -46,7 +46,7 @@ pub struct Controller {
     pub data_sink: Arc<RwLock<DataSink>>,
     /// Data structure for queueing and spawning processes from modules.
     pub runner: Runner,
-    pub modules: Arc<Mutex<Modules>>,
+    pub modules: Arc<RwLock<Modules>>,
     pub watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     /// Map from client token to client.
     ///
@@ -101,8 +101,16 @@ impl karl_controller_server::KarlController for Controller {
         // TODO: validate host token
         let req = req.into_inner();
         info!("get_data tag={} {}-{}", req.tag, req.lower, req.upper);
+        let (node, input) = tag_parsing::parse_tag(&req.tag);
+        let tag = self.modules.read().unwrap().tags(&node)
+            .map_err(|_| Status::new(Code::NotFound, "missing node"))?
+            .get_input_tag(&input)
+            .map_err(|_| Status::new(Code::NotFound, "missing input"))?
+            .as_ref()
+            .ok_or(Status::new(Code::NotFound, "missing tag"))?
+            .clone();
         let res = self.data_sink.read().unwrap()
-            .get_data(&req.tag, req.lower, req.upper)
+            .get_data(&tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
         Ok(Response::new(GetDataResult {
             data: res.data,
@@ -116,16 +124,24 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<()>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        let res = self.data_sink.write().unwrap()
-            .push_data(&req.tag, &req.data)
-            .map_err(|e| to_status(e))?;
-        // TODO: move to its own thread
-        warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
-        self.runner.spawn_module_if_watched(
-            &res.modified_tag,
-            &res.timestamp,
-            &req.data,
-        ).await;
+        let (node, output) = tag_parsing::parse_tag(&req.tag);
+        let tags = self.modules.read().unwrap().tags(&node)
+            .map_err(|_| Status::new(Code::NotFound, "missing node"))?
+            .get_output_tags(&output)
+            .map_err(|_| Status::new(Code::NotFound, "missing output"))?
+            .clone();
+        for tag in tags {
+            let res = self.data_sink.write().unwrap()
+                .push_data(&tag, &req.data)
+                .map_err(|e| to_status(e))?;
+            // TODO: move to its own thread
+            warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
+            self.runner.spawn_module_if_watched(
+                &res.modified_tag,
+                &res.timestamp,
+                &req.data,
+            ).await;
+        }
         Ok(Response::new(()))
     }
 
@@ -266,7 +282,7 @@ impl Controller {
             scheduler: Arc::new(Mutex::new(HostScheduler::new(password, caching_enabled))),
             data_sink: Arc::new(RwLock::new(DataSink::new(base_path))),
             runner: Runner::new(handle, pubsub_enabled, watched_tags.clone()),
-            modules: Arc::new(Mutex::new(Modules::default())),
+            modules: Arc::new(RwLock::new(Modules::default())),
             watched_tags,
             sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
@@ -520,7 +536,7 @@ impl Controller {
         }
 
         // add the state tag to the output module
-        let state_tag = state_tags::to_state_tag(&sensor_id, &sensor_key);
+        let state_tag = tag_parsing::to_state_tag(&sensor_id, &sensor_key);
         modules.tags_mut(&src_id)?.add_output_tag(&src_name, &state_tag)?;
         Ok(())
     }
@@ -535,7 +551,7 @@ impl Controller {
     ) -> Result<(), Error> {
         debug!("remove state_edge {}.{} -> {}.{}",
             src_id, src_name, sensor_id, sensor_key);
-        let state_tag = state_tags::to_state_tag(&sensor_id, &sensor_key);
+        let state_tag = tag_parsing::to_state_tag(&sensor_id, &sensor_key);
         modules.tags_mut(&src_id)?.remove_output_tag(&src_name, &state_tag)?;
         Ok(())
     }

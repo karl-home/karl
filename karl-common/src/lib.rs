@@ -2,7 +2,7 @@ mod error;
 mod builder;
 mod token;
 mod module;
-pub mod state_tags;
+pub mod tag_parsing;
 
 pub use error::Error;
 pub use builder::TarBuilder;

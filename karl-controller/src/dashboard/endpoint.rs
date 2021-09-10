@@ -18,7 +18,7 @@ fn apply_deltas(
     c: &mut Controller,
     deltas: Vec<Delta>,
 ) -> Result<(), Error> {
-    let mut modules = c.modules.lock().unwrap();
+    let mut modules = c.modules.write().unwrap();
     let mut sensors = c.sensors.lock().unwrap();
     for delta in deltas {
         match delta {

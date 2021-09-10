@@ -8,7 +8,7 @@ use karl_module_sdk::KarlModuleSDK;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api = KarlModuleSDK::new();
-    let input = api.get_triggered().await?.unwrap();
+    let input = api.get_event("count").await?.unwrap();
     let output = if fastrand::bool() {
         println!("counted {:?}", input);
         vec![input[0]]
