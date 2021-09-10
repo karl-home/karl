@@ -93,7 +93,6 @@ impl GraphJson {
     fn parse_tag_map(
         entity_map: &HashMap<String, u32>,
         module_jsons: &Vec<ModuleJson>,
-        modules: &runner::Modules,
     ) -> HashMap<String, (u32, u32)> {
         module_jsons.iter()
             .map(|json| (&json.localId, &json.params))
@@ -101,13 +100,9 @@ impl GraphJson {
                 let id = *entity_map.get(module_id).unwrap();
                 params.iter()
                     .enumerate()
-                    .filter_map(move |(index, param)| {
-                        modules.tags(module_id).unwrap()
-                            .get_input_tag(param).unwrap().as_ref()
-                            .map(|tag| (index as u32, tag.to_string()))
-                    })
-                    .map(move |(index, tag)| {
-                        (tag, (id, index))
+                    .map(move |(index, input)| {
+                        let tag = format!("{}.{}", module_id, input);
+                        (tag, (id, index as u32))
                     })
             })
             .collect()
@@ -209,7 +204,7 @@ impl GraphJson {
         let sensors = GraphJson::parse_sensors(sensors_lock.list_sensors());
         let modules = GraphJson::parse_modules(modules_lock.list_modules());
         let entity_map = GraphJson::parse_entity_map(&sensors, &modules);
-        let tag_map = GraphJson::parse_tag_map(&entity_map, &modules, &modules_lock);
+        let tag_map = GraphJson::parse_tag_map(&entity_map, &modules);
         let network_edges = GraphJson::parse_network_edges(&entity_map, &modules, &modules_lock);
         let intervals = GraphJson::parse_intervals(&entity_map, &modules, &modules_lock);
         let (data_edges, state_edges) = GraphJson::parse_data_and_state_edges(

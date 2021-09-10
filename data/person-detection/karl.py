@@ -19,7 +19,7 @@ class KarlSDK:
         res = self.stub.GetEvent(req)
         if res is None:
             print('no result')
-        return res
+        return res.data[0]
 
     def get(self, input_, lower_timestamp, upper_timestamp):
         tag = "{}.{}".format(self.module_id, input_)

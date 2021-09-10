@@ -100,17 +100,9 @@ impl karl_controller_server::KarlController for Controller {
     ) -> Result<Response<GetDataResult>, Status> {
         // TODO: validate host token
         let req = req.into_inner();
-        let (node, input) = tag_parsing::parse_tag(&req.tag);
-        let tag = self.modules.read().unwrap().tags(&node)
-            .map_err(|_| Status::new(Code::NotFound, "missing node"))?
-            .get_input_tag(&input)
-            .map_err(|_| Status::new(Code::NotFound, "missing input"))?
-            .as_ref()
-            .ok_or(Status::new(Code::NotFound, "missing tag"))?
-            .clone();
-        info!("get_data tag={} -> {} {}-{}", req.tag, tag, req.lower, req.upper);
+        info!("get_data tag={} {}-{}", req.tag, req.lower, req.upper);
         let res = self.data_sink.read().unwrap()
-            .get_data(&tag, req.lower, req.upper)
+            .get_data(&req.tag, req.lower, req.upper)
             .map_err(|e| to_status(e))?;
         Ok(Response::new(GetDataResult {
             data: res.data,
@@ -448,16 +440,8 @@ impl Controller {
     ) -> Result<(), Error> {
         debug!("add data edge {}.{} -> {}.{} stateless={}",
             src_id, src_name, dst_id, dst_name, stateless);
-        // assign a tag name to the input node, if it doesn't already have one.
-        let tag = {
-            if let Some(maybe_tag) = modules.tags_mut(&dst_id)?.get_input_tag(&dst_name)? {
-                maybe_tag.clone()
-            } else {
-                let tag = modules.next_tag();
-                modules.tags_mut(&dst_id)?.set_input_tag(&dst_name, &tag)?;
-                tag
-            }
-        };
+        // get the tag name for the input node.
+        let tag = format!("{}.{}", dst_id, dst_name);
 
         // add that tag name to the output node.
         if modules.module_exists(&src_id) {
@@ -491,15 +475,7 @@ impl Controller {
     ) -> Result<(), Error> {
         debug!("remove data edge {}.{} -> {}.{} stateless={}",
             src_id, src_name, dst_id, dst_name, stateless);
-        let tag = {
-            if let Some(tag) = modules.tags(&dst_id)?.get_input_tag(&dst_name)? {
-                tag.clone()
-            } else {
-                debug!("input tag {}.{} is not set, meaning edges does not exist",
-                    dst_id, dst_name);
-                return Err(Error::NotFound);
-            }
-        };
+        let tag = format!("{}.{}", dst_id, dst_name);
 
         if modules.module_exists(&src_id) {
             modules.tags_mut(&src_id)?.remove_output_tag(&src_name, &tag)?;

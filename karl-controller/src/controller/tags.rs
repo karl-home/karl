@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 use crate::controller::sensors::Sensor;
 use karl_common::*;
@@ -8,8 +8,8 @@ type Output = String;
 
 #[derive(Debug, Clone)]
 pub struct Tags {
-    id: String,
-    inputs: HashMap<Input, Option<Tag>>,
+    node_id: String,
+    inputs: HashSet<Input>,
     outputs: HashMap<Output, Vec<Tag>>,
 }
 
@@ -18,8 +18,8 @@ impl Tags {
         let inputs = sensor.keys.clone();
         let outputs = sensor.returns.clone();
         Self {
-            id: sensor.id.clone(),
-            inputs: inputs.into_iter().map(|val| (val, None)).collect(),
+            node_id: sensor.id.clone(),
+            inputs: inputs.into_iter().collect(),
             outputs: outputs.into_iter().map(|val| (val, vec![])).collect(),
         }
     }
@@ -28,14 +28,14 @@ impl Tags {
         let inputs = module.params.clone();
         let outputs = module.returns.clone();
         Self {
-            id: local_id,
-            inputs: inputs.into_iter().map(|val| (val, None)).collect(),
+            node_id: local_id,
+            inputs: inputs.into_iter().collect(),
             outputs: outputs.into_iter().map(|val| (val, vec![])).collect(),
         }
     }
 
     pub fn contains_input(&self, input: &str) -> bool {
-        self.inputs.contains_key(input)
+        self.inputs.contains(input)
     }
 
     pub fn contains_output(&self, output: &str) -> bool {
@@ -81,31 +81,9 @@ impl Tags {
         }
     }
 
-    pub fn get_input_tag(&self, input: &str) -> Result<&Option<Tag>, Error> {
-        if let Some(tag) = self.inputs.get(input) {
-            Ok(tag)
-        } else {
-            debug!("input {} does not exist", input);
-            Err(Error::NotFound)
-        }
-    }
-
-    pub fn set_input_tag(&mut self, input: &str, tag: &str) -> Result<(), Error> {
-        if let Some(current_tag) = self.inputs.get_mut(input) {
-            if current_tag.is_some() {
-                warn!("replacing current tag {:?} with {}", current_tag, tag);
-            }
-            *current_tag = Some(tag.to_string());
-            Ok(())
-        } else {
-            debug!("input {} does not exist", input);
-            Err(Error::NotFound)
-        }
-    }
-
     pub fn inputs_string(&self) -> String {
-        let mut inputs: Vec<_> = self.inputs.keys()
-            .map(|tag| format!("{}.{}", self.id, tag))
+        let mut inputs: Vec<_> = self.inputs.iter()
+            .map(|tag| format!("{}.{}", self.node_id, tag))
             .collect();
         inputs.sort();
         inputs.iter().join(":")
@@ -113,7 +91,7 @@ impl Tags {
 
     pub fn outputs_string(&self) -> String {
         let mut outputs: Vec<_> = self.outputs.keys()
-            .map(|tag| format!("{}.{}", self.id, tag))
+            .map(|tag| format!("{}.{}", self.node_id, tag))
             .collect();
         outputs.sort();
         outputs.iter().join(":")
@@ -153,7 +131,7 @@ mod test {
     }
 
     #[test]
-    fn test_read_initial_input_tags() {
+    fn test_contains_input() {
         let tags = new_tags();
         let input_a = "a";
         let input_b = "b";
@@ -161,10 +139,6 @@ mod test {
         assert!(tags.contains_input(input_a));
         assert!(tags.contains_input(input_b));
         assert!(!tags.contains_input(output_x));
-        let tags_a = tags.get_input_tag(input_a);
-        assert!(tags_a.is_ok());
-        assert!(tags_a.unwrap().is_none(), "no initial input tag");
-        assert!(tags.get_input_tag(&output_x).is_err());
     }
 
     #[test]
@@ -182,23 +156,6 @@ mod test {
         assert!(tags_z.is_ok());
         assert!(tags_z.unwrap().is_empty(), "no initial output tags");
         assert!(tags.get_output_tags(input_a).is_err());
-    }
-
-    #[test]
-    fn test_set_input_tags() {
-        let mut tags = new_tags();
-        let (input, output) = ("a", "x");
-        assert_eq!(tags.get_input_tag(input).unwrap(), &None);
-        assert!(tags.set_input_tag(input, "t1").is_ok());
-        assert_eq!(tags.get_input_tag(input).unwrap(),
-            &Some("t1".to_string()), "set input tag");
-        assert!(tags.set_input_tag(input, "t2").is_ok());
-        assert_eq!(tags.get_input_tag(input).unwrap(),
-            &Some("t2".to_string()), "replaced tag");
-        assert!(tags.set_input_tag(input, "t2").is_ok());
-        assert_eq!(tags.get_input_tag(input).unwrap(),
-            &Some("t2".to_string()), "set same tag");
-        assert!(tags.set_input_tag(output, "t1").is_err(), "not a valid input");
     }
 
     #[test]
@@ -245,11 +202,6 @@ mod test {
     fn test_inputs_string() {
         let mut tags = new_tags();
         assert!(!tags.inputs_string().is_empty());
-        assert!(tags.set_input_tag("b", "t2").is_ok());
-        assert_eq!(tags.inputs_string(), "id.a:id.b");
-        assert!(tags.set_input_tag("a", "t1").is_ok());
-        assert_eq!(tags.inputs_string(), "id.a:id.b");
-        assert!(tags.set_input_tag("a", "t3").is_ok());
         assert_eq!(tags.inputs_string(), "id.a:id.b");
     }
 
