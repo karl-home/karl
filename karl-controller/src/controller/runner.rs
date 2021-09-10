@@ -45,7 +45,6 @@ pub struct ModuleConfig {
 
 #[derive(Default)]
 pub struct Modules {
-    tag_counter: usize,
     modules: HashMap<ModuleID, Module>,
     tags_inner: HashMap<ModuleID, Tags>,
     config_inner: HashMap<ModuleID, ModuleConfig>,
@@ -111,12 +110,6 @@ impl Modules {
         } else {
             Err(Error::NotFound)
         }
-    }
-
-    pub fn next_tag(&mut self) -> String {
-        let old_tag = self.tag_counter;
-        self.tag_counter = old_tag + 1;
-        format!("t{}", old_tag)
     }
 
     pub fn get_module(&self, id: &ModuleID) -> Option<&Module> {

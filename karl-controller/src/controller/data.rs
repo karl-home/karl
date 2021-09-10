@@ -12,6 +12,7 @@ use karl_common::*;
 pub struct DataSink {
     pub data_path: PathBuf,
     pub tag_locks: Arc<RwLock<HashMap<Tag, Arc<RwLock<()>>>>>,
+    last_dt: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -22,7 +23,6 @@ pub struct GetDataResult {
 
 #[derive(Serialize, Deserialize)]
 pub struct PushDataResult {
-    pub modified_tag: String,
     pub timestamp: String,
 }
 
@@ -42,6 +42,7 @@ impl DataSink {
         Self {
             data_path: data_path.to_path_buf(),
             tag_locks: Arc::new(RwLock::new(HashMap::new())),
+            last_dt: String::new(),
         }
     }
 
@@ -75,26 +76,59 @@ impl DataSink {
     /// - `tag`: output tag.
     /// - `data`: the data.
     ///
-    /// Returns: modified tag, and timestamp.
+    /// Returns: timestamp.
     pub fn push_data(
-        &self,
-        tag: &str,
+        &mut self,
+        tags: &Vec<String>,
         data: &Vec<u8>,
     ) -> Result<PushDataResult, Error> {
-        let path = self.data_path.join(tag);
-        let lock = self.rwlock(tag)?;
-        let _lock = lock.write().unwrap();
+        if tags.is_empty() {
+            return Err(Error::BadRequest);
+        }
         loop {
             let dt = chrono::prelude::Local::now().format("%+").to_string();
-            let path = path.join(&dt);
-            if path.exists() {
+            if dt == self.last_dt {
                 continue;
             }
-            debug!("push_data tag={} timestamp={} (len {})",
-                tag, dt, data.len());
-            fs::write(path, &data)?;
+
+            #[cfg(target_os = "linux")]
+            {
+                let original_path = {
+                    let tag = &tags[0];
+                    let lock = self.rwlock(tag)?;
+                    let _lock = lock.write().unwrap();
+                    let path = self.data_path.join(tag).join(&dt);
+                    debug!("push_data tag={} timestamp={} (len {})",
+                        tag, dt, data.len());
+                    fs::write(&path, &data)?;
+                    path
+                };
+                // use symlinks to save space
+                for i in 1..tags.len() {
+                    let tag = &tags[i];
+                    let lock = self.rwlock(tag)?;
+                    let _lock = lock.write().unwrap();
+                    let path = self.data_path.join(tag).join(&dt);
+                    debug!("push_data tag={} timestamp={} (len {}) symlink",
+                        tag, dt, data.len());
+                    std::os::unix::fs::symlink(&original_path, &path)?;
+                }
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                for tag in tags {
+                    let lock = self.rwlock(tag)?;
+                    let _lock = lock.write().unwrap();
+                    let path = self.data_path.join(tag).join(&dt);
+                    debug!("push_data tag={} timestamp={} (len {})",
+                        tag, dt, data.len());
+                    fs::write(path, &data)?;
+                }
+            }
+
+            self.last_dt = dt.clone();
             break Ok(PushDataResult {
-                modified_tag: tag.to_string(),
                 timestamp: dt,
             })
         }
@@ -205,46 +239,69 @@ mod test {
 
     #[test]
     fn test_push_data_success() {
-        let (_dir, sink) = init_test();
+        let (_dir, mut sink) = init_test();
         let tag = "t1";
         let data = vec![1, 2, 3, 4];
         let tag_path = sink.data_path.join(tag);
         assert!(!tag_path.exists(), "tag path does not initially exist");
 
         let res = {
-            let res = sink.push_data(tag, &data);
+            let res = sink.push_data(&vec![tag.to_string()], &data);
             assert!(res.is_ok());
             res.unwrap()
         };
         assert!(tag_path.exists(), "tag path was created");
-        assert_eq!(&res.modified_tag, tag, "modified tag was the same");
         assert!(tag_path.join(&res.timestamp).exists(), "data was pushed");
         assert!(tag_path.join(&res.timestamp).is_file(), "data is a file");
     }
 
     #[test]
     fn test_push_multiple_data_all_written() {
-        let (_dir, sink) = init_test();
+        let (_dir, mut sink) = init_test();
         let tag = "t1";
         let n = 100;
+        let data_path = sink.data_path.clone();
         let timestamps = (0..n)
             .map(|i| {
-                sink.push_data(tag, &vec![i])
+                sink.push_data(&vec![tag.to_string()], &vec![i])
             })
             .map(|res| {
                 assert!(res.is_ok());
                 res.unwrap()
             })
             .map(|res| {
-                assert_eq!(&res.modified_tag, tag);
                 res.timestamp
             })
             .map(|timestamp| {
-                assert!(sink.data_path.join(tag).join(&timestamp).is_file());
+                assert!(data_path.join(tag).join(&timestamp).is_file());
                 timestamp
             })
             .collect::<HashSet<_>>();
         assert_eq!(timestamps.len(), n as usize);
+    }
+
+    #[test]
+    fn test_push_data_multiple_tags() {
+        let (_dir, mut sink) = init_test();
+        let data = vec![1, 2, 3, 4];
+        let a = String::from("camera.a");
+        let b = String::from("camera.b");
+        let a_path = sink.data_path.join(&a);
+        let b_path = sink.data_path.join(&b);
+        assert!(!a_path.exists(), "tag path does not initially exist");
+        assert!(!b_path.exists(), "tag path does not initially exist");
+
+        let res = {
+            let res = sink.push_data(&vec![a.clone(), b.clone()], &data);
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert!(a_path.exists(), "tag path was created");
+        assert!(a_path.join(&res.timestamp).exists(), "data was pushed");
+        assert!(a_path.join(&res.timestamp).is_file(), "data is a file");
+        assert!(b_path.exists(), "tag path was created");
+        assert!(b_path.join(&res.timestamp).exists(), "data was pushed");
+        assert!(b_path.join(&res.timestamp).is_file(), "data is a file");
     }
 
     #[test]
@@ -267,9 +324,9 @@ mod test {
 
     #[test]
     fn test_get_data_single_value() {
-        let (_dir, sink) = init_test();
+        let (_dir, mut sink) = init_test();
         let tag = "abc";
-        let timestamp = sink.push_data(tag, &vec![1]).unwrap().timestamp;
+        let timestamp = sink.push_data(&vec![tag.to_string()], &vec![1]).unwrap().timestamp;
 
         let res = {
             let res = sink.get_data(tag, timestamp.clone(), timestamp.clone());
@@ -284,11 +341,11 @@ mod test {
 
     #[test]
     fn test_get_data_timestamp_boundaries() {
-        let (_dir, sink) = init_test();
+        let (_dir, mut sink) = init_test();
         let tag = "abc";
-        let t1 = sink.push_data(tag, &vec![1]).unwrap().timestamp;
-        let t2 = sink.push_data(tag, &vec![2]).unwrap().timestamp;
-        let t3 = sink.push_data(tag, &vec![3]).unwrap().timestamp;
+        let t1 = sink.push_data(&vec![tag.to_string()], &vec![1]).unwrap().timestamp;
+        let t2 = sink.push_data(&vec![tag.to_string()], &vec![2]).unwrap().timestamp;
+        let t3 = sink.push_data(&vec![tag.to_string()], &vec![3]).unwrap().timestamp;
         assert!(t1 != t2);
         assert!(t2 != t3);
         assert!(t1 != t3);
@@ -308,11 +365,11 @@ mod test {
 
     #[test]
     fn test_get_data_randomized() {
-        let (_dir, sink) = init_test();
+        let (_dir, mut sink) = init_test();
         let tag = "t1";
         let n: u8 = 100;
         let timestamps = (0..n)
-            .map(|i| sink.push_data(tag, &vec![i]).unwrap().timestamp)
+            .map(|i| sink.push_data(&vec![tag.to_string()], &vec![i]).unwrap().timestamp)
             .collect::<Vec<_>>();
         assert_eq!(timestamps.len(), n as usize);
 

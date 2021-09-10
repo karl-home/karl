@@ -200,7 +200,7 @@ mod test {
 
     #[test]
     fn test_inputs_string() {
-        let mut tags = new_tags();
+        let tags = new_tags();
         assert!(!tags.inputs_string().is_empty());
         assert_eq!(tags.inputs_string(), "id.a:id.b");
     }

@@ -117,24 +117,25 @@ impl karl_controller_server::KarlController for Controller {
         // TODO: validate host token
         let req = req.into_inner();
         let (node, output) = tag_parsing::parse_tag(&req.tag);
-        let tags = self.modules.read().unwrap().tags(&node)
+        let mut tags = self.modules.read().unwrap().tags(&node)
             .map_err(|_| Status::new(Code::NotFound, "missing node"))?
             .get_output_tags(&output)
             .map_err(|_| Status::new(Code::NotFound, "missing output"))?
             .clone();
+        tags.insert(0, req.tag.clone());
         info!("push_data tag={} -> {:?}", req.tag, tags);
-        for tag in tags {
-            if tag_parsing::is_state_tag(&tag) {
-                let (node, input) = tag_parsing::parse_state_tag(&tag);
+        let res = self.data_sink.write().unwrap()
+            .push_data(&tags, &req.data)
+            .map_err(|e| to_status(e))?;
+        tags.remove(0);
+        for tag in &tags {
+            if tag_parsing::is_state_tag(tag) {
+                let (node, input) = tag_parsing::parse_state_tag(tag);
                 self.state_change(node, input, req.data.clone()).await?;
             } else {
-                let res = self.data_sink.write().unwrap()
-                    .push_data(&tag, &req.data)
-                    .map_err(|e| to_status(e))?;
                 // TODO: move to its own thread
-                warn!("finish person_detection_pipeline (data persisted): {:?}", Instant::now());
                 self.runner.spawn_module_if_watched(
-                    &res.modified_tag,
+                    tag,
                     &res.timestamp,
                     &req.data,
                 ).await;
@@ -201,12 +202,12 @@ impl karl_controller_server::KarlController for Controller {
                 return Ok(Response::new(()));
             }
         };
-        for tag in tags {
-            let res = self.data_sink.write().unwrap()
-                .push_data(&tag, &req.data)
-                .map_err(|e| to_status(e))?;
+        let res = self.data_sink.write().unwrap()
+            .push_data(&tags, &req.data)
+            .map_err(|e| to_status(e))?;
+        for tag in &tags {
             self.runner.spawn_module_if_watched(
-                &res.modified_tag,
+                tag,
                 &res.timestamp,
                 &req.data,
             ).await;
