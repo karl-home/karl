@@ -114,14 +114,4 @@ impl KarlHostAPI {
             .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
             .forward_push(Request::new(req)).await
     }
-
-    pub async fn forward_state(
-        &self,
-        mut req: StateChange,
-    ) -> Result<Response<()>, Status> {
-        req.host_token = self.host_token.clone().expect("missing token");
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
-            .forward_state(Request::new(req)).await
-    }
 }
