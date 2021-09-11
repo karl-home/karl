@@ -4,8 +4,15 @@ use karl_common::*;
 mod contexts;
 pub(crate) mod graph;
 use contexts::SecurityContext;
-use graph::{Pipeline, EdgeNode, PolicyGraph};
+use graph::{Pipeline, PipelineNode, PolicyGraph};
 use crate::{GraphJson, PolicyJson};
+
+#[derive(Debug, Clone)]
+struct PipelineInner {
+    pipeline: Pipeline,
+    allowed: bool,
+    conflicts: bool,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PrivacyPolicies {
@@ -13,9 +20,8 @@ pub struct PrivacyPolicies {
     base_graph: PolicyGraph,
     real_graph: PolicyGraph,
     /// The boolean states whether the pipeline is allowed.
-    pipelines: Vec<(Pipeline, bool)>,
-    input_contexts: HashMap<graph::EdgeNode, SecurityContext>,
-    output_contexts: HashMap<graph::EdgeNode, SecurityContext>,
+    pipelines: Vec<PipelineInner>,
+    contexts: HashMap<PipelineNode, SecurityContext>,
 }
 
 impl PrivacyPolicies {
@@ -35,8 +41,6 @@ impl PrivacyPolicies {
         });
         self.base_graph = PolicyGraph::from(&self.json);
         self.real_graph = self.base_graph.clone();
-        self.pipelines = self.base_graph.get_pipelines().into_iter()
-            .map(|pipeline| (pipeline, true)).collect();
     }
 
     pub fn save_graph(&mut self, json: GraphJson) {
@@ -44,7 +48,35 @@ impl PrivacyPolicies {
         self.base_graph = PolicyGraph::from(&self.json);
         self.real_graph = self.base_graph.clone();
         self.pipelines = self.base_graph.get_pipelines().into_iter()
-            .map(|pipeline| (pipeline, true)).collect();
+            .map(|pipeline| PipelineInner {
+                pipeline: pipeline,
+                allowed: true,
+                conflicts: false,
+            }).collect();
+        self.mark_conflicting_policies();
+    }
+
+    fn mark_conflicting_policies(&mut self) {
+        // For each pipeline that is currently allowed and each context...
+        debug!("marking conflicting policies");
+        for (i, inner) in self.pipelines.iter_mut().enumerate() {
+            if !inner.allowed {
+                continue;
+            }
+            for (pnode, ctx) in self.contexts.iter() {
+                // ...if the pipeline contains the pipeline node for which
+                // the context is defined, and the pipeline conflicts with
+                // the context, mark the pipeline as disallowed.
+                let pipeline = &inner.pipeline;
+                if pipeline.contains_node(pnode) {
+                    if ctx.conflicts_with(pipeline, &self.base_graph.node_map) {
+                        info!("ctx {:?} conflicts with pipeline {}", ctx, i);
+                        inner.conflicts = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     pub fn save_policies(&mut self, json: PolicyJson) -> Result<(), String> {
@@ -55,14 +87,13 @@ impl PrivacyPolicies {
             ));
         }
         for (i, (_, allowed)) in json.pipelines.into_iter().enumerate() {
-            if self.pipelines[i].1 != allowed {
+            if self.pipelines[i].allowed != allowed {
                 info!("pipeline {} allowed? {} -> {}", i,
-                    self.pipelines[i].1, allowed);
-                self.pipelines[i].1 = allowed;
+                    self.pipelines[i].allowed, allowed);
+                self.pipelines[i].allowed = allowed;
             }
         }
-        self.input_contexts.clear();
-        self.output_contexts.clear();
+        self.contexts.clear();
         for (tag, ctx) in &json.contexts {
             info!("set context tag={} ctx={}", tag, ctx);
             if !tag_parsing::is_tag(&tag) {
@@ -77,12 +108,22 @@ impl PrivacyPolicies {
             } else {
                 SecurityContext::Module(ctx.to_string())
             };
-            if is_input {
-                self.input_contexts.insert(EdgeNode { node, index }, ctx);
+            let pnode = if node < self.base_graph.n_devices {
+                if is_input {
+                    PipelineNode::Actuator { device: node, input: index }
+                } else {
+                    PipelineNode::Data { device: node, output: index }
+                }
             } else {
-                self.output_contexts.insert(EdgeNode { node, index }, ctx);
-            }
+                if is_input {
+                    PipelineNode::ModuleInput { module: node, index }
+                } else {
+                    PipelineNode::ModuleOutput { module: node, index }
+                }
+            };
+            self.contexts.insert(pnode, ctx);
         }
+        self.mark_conflicting_policies();
         Ok(())
     }
 
@@ -90,32 +131,39 @@ impl PrivacyPolicies {
         self.pipelines
             .clone()
             .into_iter()
-            .map(|(pipeline, allowed)| {
+            .map(|inner| {
+                let pipeline = inner.pipeline;
                 let mut nodes = pipeline.nodes.into_iter()
                     .map(|node| self.base_graph.pnode_to_string(node))
                     .collect::<Vec<_>>();
                 nodes.insert(0, self.base_graph.pnode_to_string(pipeline.source));
-                (nodes.join(" -> "), allowed)
+                (nodes.join(" -> "), inner.allowed)
             })
             .collect()
     }
 
     pub fn get_security_context_strings(&self) -> Vec<(String, String)> {
         let mut contexts = Vec::new();
-        for (edge_node, context) in self.input_contexts.iter() {
-            let (node_i, input_i) = (edge_node.node, edge_node.index);
-            let node = &self.base_graph.nodes[node_i];
-            let tag = if node_i < self.base_graph.n_devices {
-                format!("#{}.{}", node.id, node.inputs[input_i])
-            } else {
-                format!("{}.{}", node.id, node.inputs[input_i])
+        for (node, context) in self.contexts.iter() {
+            let tag = match node {
+                PipelineNode::Data { device, output } => {
+                    let node = &self.base_graph.nodes[*device];
+                    format!("{}.{}", node.id, node.outputs[*output])
+                },
+                PipelineNode::ModuleOutput { module, index: output } => {
+                    let node = &self.base_graph.nodes[*module];
+                    format!("{}.{}", node.id, node.outputs[*output])
+                },
+                PipelineNode::ModuleInput { module, index: input } => {
+                    let node = &self.base_graph.nodes[*module];
+                    format!("{}.{}", node.id, node.inputs[*input])
+                },
+                PipelineNode::Actuator { device, input } => {
+                    let node = &self.base_graph.nodes[*device];
+                    format!("#{}.{}", node.id, node.inputs[*input])
+                },
+                PipelineNode::Network { .. } => unimplemented!(),
             };
-            contexts.push((tag, context.to_string()));
-        }
-        for (edge_node, context) in self.output_contexts.iter() {
-            let (node_i, output_i) = (edge_node.node, edge_node.index);
-            let node = &self.base_graph.nodes[node_i];
-            let tag = format!("{}.{}", node.id, node.outputs[output_i]);
             contexts.push((tag, context.to_string()));
         }
         info!("security contexts string: {:?}", contexts);

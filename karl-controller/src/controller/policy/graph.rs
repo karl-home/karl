@@ -30,7 +30,7 @@ pub struct EdgeNode {
     pub index: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PipelineNode {
     Data { device: usize, output: usize },
     ModuleInput { module: usize, index: usize },
@@ -98,6 +98,10 @@ impl Pipeline {
         } else {
             false
         }
+    }
+
+    pub fn contains_node(&self, node: &PipelineNode) -> bool {
+        &self.source == node || self.nodes.contains(node)
     }
 }
 
