@@ -36,12 +36,11 @@ fn read_tar_builder(lines: Vec<String>) -> TarBuilder {
 fn main() {
     let module_ids = vec![
         "differential_privacy",
-        "false",
+        "set_false",
         "firmware_update",
         "light_switch",
         "weather",
         "query",
-        "true",
         "set_true",
         "statistics",
         "boolean",
@@ -55,7 +54,6 @@ fn main() {
         vec!["weather_intent"],
         vec!["image_data"],
         vec![],
-        vec![],
         vec!["data"],
         vec!["condition", "value"],
     ];
@@ -68,7 +66,6 @@ fn main() {
         vec!["weather"],
         vec!["result"],
         vec!["true"],
-        vec!["true"],
         vec![],
         vec!["predicate"],
     ];
@@ -79,7 +76,6 @@ fn main() {
         vec!["firmware.com"],
         vec![],
         vec!["https://www.weather.com"],
-        vec![],
         vec![],
         vec![],
         vec!["https://www.statistics.com"],

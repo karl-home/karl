@@ -43,6 +43,21 @@ impl PrivacyPolicies {
         Ok(())
     }
 
+    pub fn get_pipeline_strings(&self) -> Vec<(String, bool)> {
+        self.base_graph
+            .get_pipelines()
+            .into_iter()
+            .map(|pipeline| {
+                let mut nodes = pipeline.nodes.into_iter()
+                    .map(|node| self.base_graph.pnode_to_string(node))
+                    .collect::<Vec<_>>();
+                nodes.insert(0, self.base_graph.pnode_to_string(pipeline.source));
+                nodes.join(" -> ")
+            })
+            .map(|string| (string, true))
+            .collect()
+    }
+
     pub fn get_security_context_strings(&self) -> Vec<(String, String)> {
         let mut contexts = Vec::new();
         for (edge_node, context) in self.input_contexts.iter() {

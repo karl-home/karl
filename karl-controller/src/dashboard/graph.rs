@@ -17,6 +17,8 @@ pub struct GraphJson {
     pub networkEdges: Vec<(u32, String)>,
     // module_id, duration_s
     pub intervals: Vec<(u32, u32)>,
+    // pipeline, allowed
+    pub pipelines: Vec<(String, bool)>,
     // tag, context
     // - tag: <node>.<value> or #<device>.<input>
     // - context: PRIVATE, PUBLIC, <module>
@@ -211,6 +213,7 @@ impl GraphJson {
         let tag_map = GraphJson::parse_tag_map(&entity_map, &modules);
         let network_edges = GraphJson::parse_network_edges(&entity_map, &modules, &modules_lock);
         let intervals = GraphJson::parse_intervals(&entity_map, &modules, &modules_lock);
+        let pipelines = c.policies.get_pipeline_strings();
         let contexts = c.policies.get_security_context_strings();
         let (data_edges, state_edges) = GraphJson::parse_data_and_state_edges(
             &entity_map,
@@ -229,6 +232,7 @@ impl GraphJson {
             stateEdges: state_edges,
             networkEdges: network_edges,
             intervals,
+            pipelines,
             contexts,
         }
     }

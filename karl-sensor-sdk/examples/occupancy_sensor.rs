@@ -20,7 +20,7 @@ async fn register(
 ) -> Result<String, Box<dyn Error>> {
     let now = Instant::now();
     let result = api.register(
-        "camera",
+        "occupancy_sensor",
         vec![],
         vec![String::from("at_home")],
         vec![], // app

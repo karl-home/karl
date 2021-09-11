@@ -213,6 +213,32 @@ impl PolicyGraph {
         sensitive_pipelines
     }
 
+    pub fn pnode_to_string(&self, node: PipelineNode) -> String {
+        match node {
+            PipelineNode::Data { device, output } => format!(
+                "*{}.{}",
+                self.nodes[device].id,
+                self.nodes[device].outputs[output],
+            ),
+            PipelineNode::ModuleInput { module, index } => format!(
+                "{}.{}",
+                self.nodes[module].id,
+                self.nodes[module].inputs[index],
+            ),
+            PipelineNode::ModuleOutput { module, index } => format!(
+                "{}.{}",
+                self.nodes[module].id,
+                self.nodes[module].outputs[index],
+            ),
+            PipelineNode::Network { domain } => domain,
+            PipelineNode::Actuator { device, input } => format!(
+                "#{}.{}",
+                self.nodes[device].id,
+                self.nodes[device].inputs[input],
+            ),
+        }
+    }
+
     pub fn remove_pipeline(&mut self, pipeline: &Pipeline) {
         unimplemented!()
     }

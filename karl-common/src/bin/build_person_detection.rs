@@ -42,7 +42,7 @@ fn main() {
         vec!["image"],
     ];
     let returns = vec![
-        vec!["training data", "count"],
+        vec!["training_data", "count"],
     ];
     let network_perm = vec![
         vec!["metrics.com"],

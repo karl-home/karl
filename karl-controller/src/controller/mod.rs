@@ -195,9 +195,10 @@ impl karl_controller_server::KarlController for Controller {
         let tags = {
             let sensors = self.sensors.lock().unwrap();
             if let Some(id) = sensors.authenticate(&req.sensor_token) {
-                let tags = sensors.tags(&id).map_err(|e| to_status(e))?
+                let mut tags = sensors.tags(&id).map_err(|e| to_status(e))?
                     .get_output_tags(&req.output).map_err(|e| to_status(e))?
                     .clone();
+                tags.insert(0, format!("{}.{}", id, req.output));
                 info!("push_raw_data tag={}.{} -> {:?}", id, req.output, tags);
                 tags
             } else {
