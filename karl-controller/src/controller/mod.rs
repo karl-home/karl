@@ -1,4 +1,5 @@
 mod scheduler;
+mod policy;
 pub(crate) mod data;
 pub(crate) mod runner;
 pub(crate) mod sensors;
@@ -6,6 +7,7 @@ pub(crate) mod tags;
 pub use scheduler::HostScheduler;
 pub use data::DataSink;
 pub use runner::{Modules, Runner};
+use policy::PrivacyPolicies;
 use sensors::Sensors;
 
 use std::collections::HashMap;
@@ -47,6 +49,7 @@ pub struct Controller {
     /// Data structure for queueing and spawning processes from modules.
     pub runner: Runner,
     pub modules: Arc<RwLock<Modules>>,
+    pub policies: PrivacyPolicies,
     pub watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     /// Map from client token to client.
     ///
@@ -268,6 +271,7 @@ impl Controller {
             sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,
+            policies: Default::default(),
         }
     }
 

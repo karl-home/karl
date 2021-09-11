@@ -78,7 +78,15 @@ pub fn save_graph(
         }
     };
     match apply_deltas(&mut c, deltas) {
-        Ok(()) => Status::Ok,
+        Ok(()) => {
+            match c.policies.save_graph(&graph) {
+                Ok(()) => Status::Ok,
+                Err(e) => {
+                    error!("error saving policies: {:?}", e);
+                    Status::BadRequest
+                }
+            }
+        },
         Err(e) => {
             error!("error saving graph: {:?}", e);
             Status::InternalServerError

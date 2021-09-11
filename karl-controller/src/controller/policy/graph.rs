@@ -1,13 +1,15 @@
 //! Dataflow graph representing privacy policies.
 use std::fmt;
 use std::collections::{HashMap, VecDeque};
-use crate::{SensorJson, ModuleJson, GraphJson};
+use crate::GraphJson;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct PolicyGraph {
     pub nodes: Vec<Node>,
+    /// Map from <node_id> to node index
+    pub(crate) node_map: HashMap<String, usize>,
     /// Map from <node_id>.<value> to node index, input/output index, is_input
-    pub(crate) node_map: HashMap<String, (usize, usize, bool)>,
+    pub(crate) tag_map: HashMap<String, (usize, usize, bool)>,
     pub edges: HashMap<EdgeNode, Vec<EdgeNode>>,
     /// Number of devices (the first `n_devices` nodes are devices)
     pub n_devices: usize,
@@ -220,45 +222,38 @@ impl From<&GraphJson> for PolicyGraph {
     fn from(json: &GraphJson) -> Self {
         let mut graph = PolicyGraph::default();
         graph.n_devices = json.sensors.len();
-        for (i, sensor) in json.sensors.iter().enumerate() {
+        for sensor in &json.sensors {
             graph.nodes.push(Node {
                 id: sensor.id.clone(),
                 inputs: sensor.stateKeys.iter().map(|(input, _)| input.clone()).collect(),
                 outputs: sensor.returns.iter().map(|(output, _)| output.clone()).collect(),
             });
-            for (input_i, (input, _)) in sensor.stateKeys.iter().enumerate() {
-                graph.node_map.insert(
-                    format!("#{}.{}", sensor.id, input),
-                    (i, input_i, true),
-                );
-            }
-            for (output_i, (output, _)) in sensor.returns.iter().enumerate() {
-                graph.node_map.insert(
-                    format!("{}.{}", sensor.id, output),
-                    (i, output_i, true),
-                );
-            }
         }
-        for (i, module) in json.moduleIds.iter().enumerate() {
-            let i = i + graph.n_devices;
+        for module in &json.moduleIds {
             graph.nodes.push(Node {
                 id: module.localId.clone(),
                 inputs: module.params.clone(),
                 outputs: module.returns.clone(),
             });
-            for (input_i, input) in module.params.iter().enumerate() {
-                graph.node_map.insert(
-                    format!("{}.{}", module.localId, input),
-                    (i, input_i, true),
-                );
+        }
+        for (i, node) in graph.nodes.iter().enumerate() {
+            graph.node_map.insert(node.id.clone(), i);
+            for (input_i, input) in node.inputs.iter().enumerate() {
+                let tag = if i < graph.n_devices {
+                    format!("#{}.{}", node.id, input)
+                } else {
+                    format!("{}.{}", node.id, input)
+                };
+                graph.tag_map.insert(tag, (i, input_i, true));
             }
-            for (output_i, output) in module.returns.iter().enumerate() {
-                graph.node_map.insert(
-                    format!("{}.{}", module.localId, output),
+            for (output_i, output) in node.outputs.iter().enumerate() {
+                graph.tag_map.insert(
+                    format!("{}.{}", node.id, output),
                     (i, output_i, true),
                 );
             }
         }
+
         for (_, src_node, src_index, dst_node, dst_index) in &json.dataEdges {
             graph.edges
                 .entry(EdgeNode::new(src_node, src_index))
