@@ -36,11 +36,18 @@ def main():
         if inference.is_understood:
             # data = json.dumps(inference.slots, indent=2).encode('utf-8')
             if inference.intent == 'orderBeverage':
-                output = 'light_intent'
-                state = 'on' if bool(random.getrandbits(1)) else 'off'
-                intent = { 'state': state }
-                data = json.dumps(intent, indent=2).encode('utf-8')
-                api.push(output, data)
+                # Randomly pick light switch or weather.
+                if bool(random.getrandbits(1)):
+                    output = 'light_intent'
+                    state = 'on' if bool(random.getrandbits(1)) else 'off'
+                    intent = { 'state': state }
+                    data = json.dumps(intent, indent=2).encode('utf-8')
+                    api.push(output, data)
+                else:
+                    output = 'weather_intent'
+                    intent = { 'location': 'san francisco, ca' }
+                    data = json.dumps(intent, indent=2).encode('utf-8')
+                    api.push(output, data)
             #    pass
             # elif inference.intent in ['changeLightState', 'changeLightStateOff']:
             #     api.push('light', data)

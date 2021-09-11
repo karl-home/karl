@@ -1,9 +1,9 @@
 //! Compress video from the past hour.
 //!
 //! Inputs
-//! - files: files to compress
+//! - image_data: image_data to compress
 //! Outputs
-//! - video: a single targz of those files
+//! - result: a single targz of those image_data
 use tar::Builder;
 use flate2::{Compression, write::GzEncoder};
 use chrono::Duration;
@@ -16,11 +16,11 @@ async fn main() {
     let end = Local::now();
     let start = end.checked_sub_signed(Duration::hours(1)).unwrap();
     let res = api.get(
-        "files",
+        "image_data",
         &start.format("%+").to_string(),
         &end.format("%+").to_string(),
     ).await.unwrap();
-    println!("{} files", res.data.len());
+    println!("{} image_data", res.data.len());
     let mut buffer = Vec::new();
     let enc = GzEncoder::new(&mut buffer, Compression::default());
     let mut tar = Builder::new(enc);
@@ -38,6 +38,6 @@ async fn main() {
     drop(tar);
     println!("{} bytes", buffer.len());
     if !buffer.is_empty() {
-        api.push("video", buffer).await.unwrap();
+        api.push("result", buffer).await.unwrap();
     }
 }
