@@ -249,7 +249,7 @@ impl From<&GraphJson> for PolicyGraph {
             for (output_i, output) in node.outputs.iter().enumerate() {
                 graph.tag_map.insert(
                     format!("{}.{}", node.id, output),
-                    (i, output_i, true),
+                    (i, output_i, false),
                 );
             }
         }

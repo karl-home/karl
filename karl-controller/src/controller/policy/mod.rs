@@ -64,6 +64,7 @@ impl PrivacyPolicies {
             let tag = format!("{}.{}", node.id, node.outputs[output_i]);
             contexts.push((tag, context.to_string()));
         }
+        info!("security contexts string: {:?}", contexts);
         contexts
     }
 }
