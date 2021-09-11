@@ -32,10 +32,7 @@ impl PrivacyPolicies {
             } else if ctx == "PUBLIC" {
                 SecurityContext::FalsePublic
             } else {
-                // TODO: not an error if the module doesn't exist
-                let module_i = *self.base_graph.node_map.get(ctx)
-                    .ok_or(format!("module {} does not exist", tag))?;
-                SecurityContext::Module(module_i, ctx.to_string())
+                SecurityContext::Module(ctx.to_string())
             };
             if is_input {
                 self.input_contexts.insert(EdgeNode { node, index }, ctx);
