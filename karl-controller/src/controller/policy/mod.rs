@@ -4,12 +4,14 @@ use karl_common::*;
 mod contexts;
 pub(crate) mod graph;
 use contexts::SecurityContext;
-use graph::{EdgeNode, PolicyGraph};
+use graph::{Pipeline, EdgeNode, PolicyGraph};
 
 #[derive(Debug, Clone, Default)]
 pub struct PrivacyPolicies {
     base_graph: PolicyGraph,
     real_graph: PolicyGraph,
+    /// The boolean states whether the pipeline is allowed.
+    pipelines: Vec<(Pipeline, bool)>,
     input_contexts: HashMap<graph::EdgeNode, SecurityContext>,
     output_contexts: HashMap<graph::EdgeNode, SecurityContext>,
 }
@@ -18,6 +20,8 @@ impl PrivacyPolicies {
     pub fn save_graph(&mut self, json: &crate::GraphJson) -> Result<(), String> {
         self.base_graph = PolicyGraph::from(json);
         self.real_graph = self.base_graph.clone();
+        self.pipelines = self.base_graph.get_pipelines().into_iter()
+            .map(|pipeline| (pipeline, true)).collect();
         self.input_contexts.clear();
         self.output_contexts.clear();
         for (tag, ctx) in &json.contexts {
@@ -44,17 +48,16 @@ impl PrivacyPolicies {
     }
 
     pub fn get_pipeline_strings(&self) -> Vec<(String, bool)> {
-        self.base_graph
-            .get_pipelines()
+        self.pipelines
+            .clone()
             .into_iter()
-            .map(|pipeline| {
+            .map(|(pipeline, allowed)| {
                 let mut nodes = pipeline.nodes.into_iter()
                     .map(|node| self.base_graph.pnode_to_string(node))
                     .collect::<Vec<_>>();
                 nodes.insert(0, self.base_graph.pnode_to_string(pipeline.source));
-                nodes.join(" -> ")
+                (nodes.join(" -> "), allowed)
             })
-            .map(|string| (string, true))
             .collect()
     }
 

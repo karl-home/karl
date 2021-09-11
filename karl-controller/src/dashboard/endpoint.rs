@@ -79,13 +79,11 @@ pub fn save_graph(
     };
     match apply_deltas(&mut c, deltas) {
         Ok(()) => {
-            match c.policies.save_graph(&graph) {
-                Ok(()) => Status::Ok,
-                Err(e) => {
-                    error!("error saving policies: {:?}", e);
-                    Status::BadRequest
-                }
+            if let Err(e) = c.policies.save_graph(&graph) {
+                error!("error saving policies: {:?}", e);
+                return Status::BadRequest;
             }
+            Status::Ok
         },
         Err(e) => {
             error!("error saving graph: {:?}", e);
