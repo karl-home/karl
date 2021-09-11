@@ -6,6 +6,8 @@ use crate::{SensorJson, ModuleJson, GraphJson};
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct PolicyGraph {
     pub nodes: Vec<Node>,
+    /// Map from <node_id>.<value> to node index, input/output index, is_input
+    pub(crate) node_map: HashMap<String, (usize, usize, bool)>,
     pub edges: HashMap<EdgeNode, Vec<EdgeNode>>,
     /// Number of devices (the first `n_devices` nodes are devices)
     pub n_devices: usize,
@@ -29,27 +31,16 @@ pub struct EdgeNode {
 #[derive(Debug, Clone)]
 pub enum PipelineNode {
     Data { device: usize, output: usize },
-    Module { module: usize, index: usize },
+    ModuleInput { module: usize, index: usize },
+    ModuleOutput { module: usize, index: usize },
     Network { domain: String },
     Actuator {device: usize, input: usize },
 }
 
 #[derive(Debug, Clone)]
 pub struct Pipeline {
-    source: PipelineNode,
-    nodes: Vec<PipelineNode>,
-}
-
-pub enum Context {
-    Private,
-    Public,
-    Module(String),
-}
-
-pub struct SecurityContext {
-    pub tag_node: String,
-    pub tag_label: String,
-    pub context: Context,
+    pub source: PipelineNode,
+    pub nodes: Vec<PipelineNode>,
 }
 
 impl EdgeNode {
@@ -106,10 +97,6 @@ impl Pipeline {
             false
         }
     }
-
-    pub fn conflicts_with(&self, context: &SecurityContext) -> bool {
-        unimplemented!()
-    }
 }
 
 impl PolicyGraph {
@@ -136,7 +123,7 @@ impl PolicyGraph {
                 for output_i in 0..(self.nodes[*module_i].outputs.len()) {
                     let source = PipelineNode::Network { domain: domain.clone() };
                     let mut pipeline = Pipeline::new(source);
-                    pipeline.push_node(PipelineNode::Module {
+                    pipeline.push_node(PipelineNode::ModuleOutput {
                         module: *module_i,
                         index: output_i,
                     });
@@ -155,13 +142,14 @@ impl PolicyGraph {
                     // from module inputs to module outputs and networks.
                     (*device, *output)
                 },
-                PipelineNode::Module { module, index: output } => {
+                PipelineNode::ModuleOutput { module, index: output } => {
                     // This can only be a module _output_ due to how we
                     // handle PipelineNode::Data. Find edges to module
                     // inputs (which should be treated the same as above)
                     // or actuators.
                     (*module, *output)
                 },
+                PipelineNode::ModuleInput { .. } => { unreachable!() },
                 PipelineNode::Network { .. } | PipelineNode::Actuator { .. } => {
                     // Network pipeline nodes don't have edges to anything,
                     // unless it is a source. Actuators don't have edges to
@@ -195,11 +183,11 @@ impl PolicyGraph {
                 for output_i in 0..self.nodes[input.node].outputs.len() {
                     // The output might be a module
                     let mut pipeline = pipeline.clone();
-                    pipeline.push_node(PipelineNode::Module {
+                    pipeline.push_node(PipelineNode::ModuleInput {
                         module: input.node,
                         index: input.index,
                     });
-                    pipeline.push_node(PipelineNode::Module {
+                    pipeline.push_node(PipelineNode::ModuleOutput {
                         module: input.node,
                         index: output_i,
                     });
@@ -208,7 +196,7 @@ impl PolicyGraph {
                 if let Some(domains) = self.network_nodes.get(&input.node) {
                     for domain in domains {
                         let mut pipeline = pipeline.clone();
-                        pipeline.push_node(PipelineNode::Module {
+                        pipeline.push_node(PipelineNode::ModuleInput {
                             module: input.node,
                             index: input.index,
                         });
@@ -232,19 +220,44 @@ impl From<&GraphJson> for PolicyGraph {
     fn from(json: &GraphJson) -> Self {
         let mut graph = PolicyGraph::default();
         graph.n_devices = json.sensors.len();
-        for sensor in &json.sensors {
+        for (i, sensor) in json.sensors.iter().enumerate() {
             graph.nodes.push(Node {
                 id: sensor.id.clone(),
                 inputs: sensor.stateKeys.iter().map(|(input, _)| input.clone()).collect(),
                 outputs: sensor.returns.iter().map(|(output, _)| output.clone()).collect(),
             });
+            for (input_i, (input, _)) in sensor.stateKeys.iter().enumerate() {
+                graph.node_map.insert(
+                    format!("#{}.{}", sensor.id, input),
+                    (i, input_i, true),
+                );
+            }
+            for (output_i, (output, _)) in sensor.returns.iter().enumerate() {
+                graph.node_map.insert(
+                    format!("{}.{}", sensor.id, output),
+                    (i, output_i, true),
+                );
+            }
         }
-        for module in &json.moduleIds {
+        for (i, module) in json.moduleIds.iter().enumerate() {
+            let i = i + graph.n_devices;
             graph.nodes.push(Node {
                 id: module.localId.clone(),
                 inputs: module.params.clone(),
                 outputs: module.returns.clone(),
             });
+            for (input_i, input) in module.params.iter().enumerate() {
+                graph.node_map.insert(
+                    format!("{}.{}", module.localId, input),
+                    (i, input_i, true),
+                );
+            }
+            for (output_i, output) in module.returns.iter().enumerate() {
+                graph.node_map.insert(
+                    format!("{}.{}", module.localId, output),
+                    (i, output_i, true),
+                );
+            }
         }
         for (_, src_node, src_index, dst_node, dst_index) in &json.dataEdges {
             graph.edges
