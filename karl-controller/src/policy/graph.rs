@@ -1,31 +1,231 @@
 //! Dataflow graph representing privacy policies.
 use std::fmt;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use crate::{SensorJson, ModuleJson, GraphJson};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct PolicyGraph {
     pub nodes: Vec<Node>,
-    pub edges: Vec<Edge>,
+    pub edges: HashMap<EdgeNode, Vec<EdgeNode>>,
     /// Number of devices (the first `n_devices` nodes are devices)
     pub n_devices: usize,
     /// Indices of nodes with network access and the domain names
     pub network_nodes: HashMap<usize, Vec<String>>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Node {
     pub id: String,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Edge {
-    pub src_node: usize,
-    pub src_index: usize,
-    pub dst_node: usize,
-    pub dst_index: usize,
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct EdgeNode {
+    pub node: usize,
+    pub index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum PipelineNode {
+    Data { device: usize, output: usize },
+    Module { module: usize, index: usize },
+    Network { domain: String },
+    Actuator {device: usize, input: usize },
+}
+
+#[derive(Debug, Clone)]
+pub struct Pipeline {
+    source: PipelineNode,
+    nodes: Vec<PipelineNode>,
+}
+
+pub enum Context {
+    Private,
+    Public,
+    Module(String),
+}
+
+pub struct SecurityContext {
+    pub tag_node: String,
+    pub tag_label: String,
+    pub context: Context,
+}
+
+impl EdgeNode {
+    pub fn new(node: &u32, index: &u32) -> Self {
+        Self {
+            node: *node as usize,
+            index: *index as usize,
+        }
+    }
+}
+
+impl Pipeline {
+    pub fn new(source: PipelineNode) -> Pipeline {
+        Self {
+            source,
+            nodes: Vec::new(),
+        }
+    }
+
+    pub fn get_source(&self) -> &PipelineNode {
+        &self.source
+    }
+
+    pub fn get_sink(&self) -> &PipelineNode {
+        if self.nodes.is_empty() {
+            &self.source
+        } else {
+            &self.nodes[self.nodes.len() - 1]
+        }
+    }
+
+    pub fn push_node(&mut self, node: PipelineNode) {
+        self.nodes.push(node);
+    }
+
+    pub fn is_sensitive(&self) -> bool {
+        if !self.nodes.is_empty() {
+            let sink = self.get_sink();
+            match self.get_source() {
+                PipelineNode::Data { device: device_source , .. } => match sink {
+                    PipelineNode::Network {..} => true,
+                    PipelineNode::Actuator { device: device_sink, .. } => {
+                        device_source != device_sink
+                    },
+                    _ => false,
+                },
+                PipelineNode::Network {..} => match sink {
+                    PipelineNode::Data {..}  => true,
+                    _ => false,
+                },
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn conflicts_with(&self, context: &SecurityContext) -> bool {
+        unimplemented!()
+    }
+}
+
+impl PolicyGraph {
+    /// Get all pipeline policies from the graph.
+    /// - device output to network sink
+    /// - network source to device input
+    /// - device output to other device's input
+    pub fn get_pipelines(&self) -> Vec<Pipeline> {
+        // Assemble all possible sources
+        let mut queue: VecDeque<Pipeline> = VecDeque::new();
+        for device_i in 0..self.n_devices {
+            let device = &self.nodes[device_i];
+            for output_i in 0..device.outputs.len() {
+                let source = PipelineNode::Data {
+                    device: device_i,
+                    output: output_i,
+                };
+                let pipeline = Pipeline::new(source);
+                queue.push_back(pipeline);
+            }
+        }
+        for (module_i, domains) in self.network_nodes.iter() {
+            for domain in domains {
+                for output_i in 0..(self.nodes[*module_i].outputs.len()) {
+                    let source = PipelineNode::Network { domain: domain.clone() };
+                    let mut pipeline = Pipeline::new(source);
+                    pipeline.push_node(PipelineNode::Module {
+                        module: *module_i,
+                        index: output_i,
+                    });
+                    queue.push_back(pipeline);
+                }
+            }
+        }
+
+        // BFS from device outputs and network sources
+        let mut sensitive_pipelines = Vec::new();
+        while let Some(pipeline) = queue.pop_front() {
+            let (node, output) = match pipeline.get_sink() {
+                PipelineNode::Data { device, output } => {
+                    // Find edges to module inputs only. Since sensitive
+                    // dataflow can't end in a module input, also add edges
+                    // from module inputs to module outputs and networks.
+                    (*device, *output)
+                },
+                PipelineNode::Module { module, index: output } => {
+                    // This can only be a module _output_ due to how we
+                    // handle PipelineNode::Data. Find edges to module
+                    // inputs (which should be treated the same as above)
+                    // or actuators.
+                    (*module, *output)
+                },
+                PipelineNode::Network { .. } | PipelineNode::Actuator { .. } => {
+                    // Network pipeline nodes don't have edges to anything,
+                    // unless it is a source. Actuators don't have edges to
+                    // anything.
+                    if pipeline.is_sensitive() {
+                        sensitive_pipelines.push(pipeline);
+                    }
+                    continue;
+                },
+            };
+
+            let sink = EdgeNode { node, index: output };
+            let inputs = if let Some(inputs) = self.edges.get(&sink) {
+                inputs
+            } else {
+                continue;
+            };
+            for input in inputs {
+                // If the edge is to a device...
+                if input.node < self.n_devices {
+                    let mut pipeline = pipeline.clone();
+                    pipeline.push_node(PipelineNode::Actuator {
+                        device: input.node,
+                        input: input.index,
+                    });
+                    queue.push_back(pipeline);
+                    continue;
+                }
+
+                // Otherwise it is to a module.
+                for output_i in 0..self.nodes[input.node].outputs.len() {
+                    // The output might be a module
+                    let mut pipeline = pipeline.clone();
+                    pipeline.push_node(PipelineNode::Module {
+                        module: input.node,
+                        index: input.index,
+                    });
+                    pipeline.push_node(PipelineNode::Module {
+                        module: input.node,
+                        index: output_i,
+                    });
+                    queue.push_back(pipeline);
+                }
+                if let Some(domains) = self.network_nodes.get(&input.node) {
+                    for domain in domains {
+                        let mut pipeline = pipeline.clone();
+                        pipeline.push_node(PipelineNode::Module {
+                            module: input.node,
+                            index: input.index,
+                        });
+                        pipeline.push_node(PipelineNode::Network {
+                            domain: domain.clone(),
+                        });
+                        queue.push_back(pipeline);
+                    }
+                }
+            }
+        }
+        sensitive_pipelines
+    }
+
+    pub fn remove_pipeline(&mut self, pipeline: &Pipeline) {
+        unimplemented!()
+    }
 }
 
 impl From<&GraphJson> for PolicyGraph {
@@ -47,20 +247,16 @@ impl From<&GraphJson> for PolicyGraph {
             });
         }
         for (_, src_node, src_index, dst_node, dst_index) in &json.dataEdges {
-            graph.edges.push(Edge {
-                src_node: *src_node as usize,
-                src_index: *src_index as usize,
-                dst_node: *dst_node as usize,
-                dst_index: *dst_index as usize,
-            })
+            graph.edges
+                .entry(EdgeNode::new(src_node, src_index))
+                .or_insert(Vec::new())
+                .push(EdgeNode::new(dst_node, dst_index));
         }
         for (src_node, src_index, dst_node, dst_index) in &json.stateEdges {
-            graph.edges.push(Edge {
-                src_node: *src_node as usize,
-                src_index: *src_index as usize,
-                dst_node: *dst_node as usize,
-                dst_index: *dst_index as usize,
-            })
+            graph.edges
+                .entry(EdgeNode::new(src_node, src_index))
+                .or_insert(Vec::new())
+                .push(EdgeNode::new(dst_node, dst_index));
         }
         for (node, domain) in &json.networkEdges {
             graph.network_nodes
@@ -85,15 +281,17 @@ impl fmt::Display for PolicyGraph {
             }
         }
         writeln!(f, "")?;
-        for edge in &self.edges {
-            writeln!(
-                f,
-                "{}.{} -> {}.{}",
-                self.nodes[edge.src_node].id,
-                self.nodes[edge.src_node].outputs[edge.src_index],
-                self.nodes[edge.dst_node].id,
-                self.nodes[edge.dst_node].inputs[edge.dst_index],
-            )?;
+        for (edge_src, edge_dsts) in self.edges.iter() {
+            for edge_dst in edge_dsts {
+                writeln!(
+                    f,
+                    "{}.{} -> {}.{}",
+                    self.nodes[edge_src.node].id,
+                    self.nodes[edge_src.node].outputs[edge_src.index],
+                    self.nodes[edge_dst.node].id,
+                    self.nodes[edge_dst.node].inputs[edge_dst.index],
+                )?;
+            }
         }
         Ok(())
     }
@@ -202,43 +400,46 @@ mod test {
     fn test_pipeline_i_parsing() {
         let json = pipeline_i();
         let graph = PolicyGraph::from(&json);
-        assert_eq!(graph.nodes.len(), json.sensors.len() + json.moduleIds.len());
-        assert_eq!(graph.edges.len(), json.dataEdges.len() + json.stateEdges.len());
-        assert_eq!(graph.n_devices, json.sensors.len());
-        assert_eq!(graph.network_nodes.len(), json.networkEdges.len());
         println!("{}", graph);
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.n_devices, 1);
+        assert_eq!(graph.network_nodes.len(), 0);
+        assert_eq!(graph.get_pipelines().len(), 0);
     }
 
     #[test]
     fn test_pipeline_ii_parsing() {
         let json = pipeline_ii();
         let graph = PolicyGraph::from(&json);
-        assert_eq!(graph.nodes.len(), json.sensors.len() + json.moduleIds.len());
-        assert_eq!(graph.edges.len(), json.dataEdges.len() + json.stateEdges.len());
-        assert_eq!(graph.n_devices, json.sensors.len());
-        assert_eq!(graph.network_nodes.len(), json.networkEdges.len());
         println!("{}", graph);
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.edges.len(), 3);
+        assert_eq!(graph.n_devices, 1);
+        assert_eq!(graph.network_nodes.len(), 1);
+        assert_eq!(graph.get_pipelines().len(), 1);
     }
 
     #[test]
     fn test_pipeline_iii_parsing() {
         let json = pipeline_iii();
         let graph = PolicyGraph::from(&json);
-        assert_eq!(graph.nodes.len(), json.sensors.len() + json.moduleIds.len());
-        assert_eq!(graph.edges.len(), json.dataEdges.len() + json.stateEdges.len());
-        assert_eq!(graph.n_devices, json.sensors.len());
-        assert_eq!(graph.network_nodes.len(), json.networkEdges.len());
-        println!("{}", graph);
+        assert_eq!(graph.nodes.len(), 4);
+        assert_eq!(graph.edges.len(), 3);
+        assert_eq!(graph.n_devices, 2);
+        assert_eq!(graph.network_nodes.len(), 0);
+        assert_eq!(graph.get_pipelines().len(), 1);
     }
 
     #[test]
     fn test_pipeline_iv_parsing() {
         let json = pipeline_iv();
         let graph = PolicyGraph::from(&json);
-        assert_eq!(graph.nodes.len(), json.sensors.len() + json.moduleIds.len());
-        assert_eq!(graph.edges.len(), json.dataEdges.len() + json.stateEdges.len());
-        assert_eq!(graph.n_devices, json.sensors.len());
-        assert_eq!(graph.network_nodes.len(), json.networkEdges.len());
         println!("{}", graph);
+        assert_eq!(graph.nodes.len(), 5);
+        assert_eq!(graph.edges.len(), 4);
+        assert_eq!(graph.n_devices, 2);
+        assert_eq!(graph.network_nodes.len(), 1);
+        assert_eq!(graph.get_pipelines().len(), 2);
     }
 }
