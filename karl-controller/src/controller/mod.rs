@@ -49,7 +49,7 @@ pub struct Controller {
     /// Data structure for queueing and spawning processes from modules.
     pub runner: Runner,
     pub modules: Arc<RwLock<Modules>>,
-    pub policies: PrivacyPolicies,
+    pub policies: Arc<RwLock<PrivacyPolicies>>,
     pub watched_tags: Arc<RwLock<HashMap<Tag, Vec<ModuleID>>>>,
     /// Map from client token to client.
     ///
@@ -272,7 +272,7 @@ impl Controller {
             sensors: Arc::new(Mutex::new(Sensors::default())),
             state: Arc::new(RwLock::new(HashMap::new())),
             autoconfirm,
-            policies: Default::default(),
+            policies: Arc::new(RwLock::new(Default::default())),
         }
     }
 
@@ -375,6 +375,7 @@ impl Controller {
     ) -> Result<SensorRegisterResult, Error> {
         // generate a sensor with a unique id and token
         let mut sensors = self.sensors.lock().unwrap();
+        let mut policies = self.policies.write().unwrap();
         id = sensors.unique_id(id);
         let sensor = sensors::Sensor {
             confirmed: self.autoconfirm,
@@ -394,6 +395,7 @@ impl Controller {
 
         // register the sensor itself
         let token = Token::gen();
+        policies.add_sensor(id.clone(), sensor.keys.clone(), sensor.returns.clone());
         sensors.add_sensor(sensor, token.clone())?;
         Ok(SensorRegisterResult {
             sensor_token: token,

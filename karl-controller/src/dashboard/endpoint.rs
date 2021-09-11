@@ -11,7 +11,14 @@ use super::graph::*;
 pub fn get_graph(
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Json<GraphJson> {
-    Json(GraphJson::new(&controller.lock().unwrap()))
+    Json(controller.lock().unwrap().policies.read().unwrap().json.clone())
+}
+
+#[get("/policy")]
+pub fn get_policy(
+    controller: State<Arc<Mutex<Controller>>>,
+) -> Json<PolicyJson> {
+    Json(PolicyJson::new(&controller.lock().unwrap()))
 }
 
 fn apply_deltas(
@@ -79,16 +86,28 @@ pub fn save_graph(
     };
     match apply_deltas(&mut c, deltas) {
         Ok(()) => {
-            if let Err(e) = c.policies.save_graph(&graph) {
-                error!("error saving policies: {:?}", e);
-                return Status::BadRequest;
-            }
+            c.policies.write().unwrap().save_graph(graph.into_inner());
             Status::Ok
         },
         Err(e) => {
             error!("error saving graph: {:?}", e);
             Status::InternalServerError
         }
+    }
+}
+
+#[post("/policy", format = "json", data = "<policy>")]
+pub fn save_policy(
+    policy: Json<PolicyJson>,
+    controller: State<Arc<Mutex<Controller>>>,
+) -> Status {
+    let c = controller.lock().unwrap();
+    let mut policies = c.policies.write().unwrap();
+    if let Err(e) = policies.save_policies(policy.into_inner()) {
+        error!("error saving policies: {:?}", e);
+        Status::BadRequest
+    } else {
+        Status::Ok
     }
 }
 

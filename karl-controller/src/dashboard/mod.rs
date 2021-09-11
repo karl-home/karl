@@ -5,7 +5,7 @@ use crate::controller::Controller;
 
 mod endpoint;
 mod graph;
-pub(crate) use graph::GraphJson;
+pub(crate) use graph::{SensorJson, PolicyJson, GraphJson};
 
 pub fn start(controller: Controller) {
     let hosts = controller.scheduler.clone();
@@ -18,6 +18,8 @@ pub fn start(controller: Controller) {
         .mount("/", routes![
             endpoint::get_graph,
             endpoint::save_graph,
+            endpoint::get_policy,
+            endpoint::save_policy,
             endpoint::spawn_module,
             endpoint::confirm_sensor,
             endpoint::cancel_sensor,

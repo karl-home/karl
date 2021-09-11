@@ -5,9 +5,11 @@ mod contexts;
 pub(crate) mod graph;
 use contexts::SecurityContext;
 use graph::{Pipeline, EdgeNode, PolicyGraph};
+use crate::{GraphJson, PolicyJson};
 
 #[derive(Debug, Clone, Default)]
 pub struct PrivacyPolicies {
+    pub json: GraphJson,
     base_graph: PolicyGraph,
     real_graph: PolicyGraph,
     /// The boolean states whether the pipeline is allowed.
@@ -17,11 +19,48 @@ pub struct PrivacyPolicies {
 }
 
 impl PrivacyPolicies {
-    pub fn save_graph(&mut self, json: &crate::GraphJson) -> Result<(), String> {
-        self.base_graph = PolicyGraph::from(json);
+    pub fn add_sensor(
+        &mut self,
+        id: String,
+        inputs: Vec<String>,
+        outputs: Vec<String>,
+    ) {
+        if !self.json.moduleIds.is_empty() {
+            unimplemented!("currently can only register devices if no modules are registered");
+        }
+        self.json.sensors.push(crate::SensorJson {
+            id,
+            stateKeys: inputs.into_iter().map(|input| (input, String::from("-"))).collect(),
+            returns: outputs.into_iter().map(|output| (output, String::from("-"))).collect(),
+        });
+        self.base_graph = PolicyGraph::from(&self.json);
         self.real_graph = self.base_graph.clone();
         self.pipelines = self.base_graph.get_pipelines().into_iter()
             .map(|pipeline| (pipeline, true)).collect();
+    }
+
+    pub fn save_graph(&mut self, json: GraphJson) {
+        self.json = json;
+        self.base_graph = PolicyGraph::from(&self.json);
+        self.real_graph = self.base_graph.clone();
+        self.pipelines = self.base_graph.get_pipelines().into_iter()
+            .map(|pipeline| (pipeline, true)).collect();
+    }
+
+    pub fn save_policies(&mut self, json: PolicyJson) -> Result<(), String> {
+        if self.pipelines.len() != json.pipelines.len() {
+            return Err(format!(
+                "policies apply to outdated graph expected {} != actual {}",
+                self.pipelines.len(), json.pipelines.len(),
+            ));
+        }
+        for (i, (_, allowed)) in json.pipelines.into_iter().enumerate() {
+            if self.pipelines[i].1 != allowed {
+                info!("pipeline {} allowed? {} -> {}", i,
+                    self.pipelines[i].1, allowed);
+                self.pipelines[i].1 = allowed;
+            }
+        }
         self.input_contexts.clear();
         self.output_contexts.clear();
         for (tag, ctx) in &json.contexts {

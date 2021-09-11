@@ -3,7 +3,7 @@ use karl_common::*;
 use crate::controller::{sensors, runner, Controller};
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct GraphJson {
     // sensors indexed 0 to n-1, where n is the number of sensors
     pub sensors: Vec<SensorJson>,
@@ -17,6 +17,10 @@ pub struct GraphJson {
     pub networkEdges: Vec<(u32, String)>,
     // module_id, duration_s
     pub intervals: Vec<(u32, u32)>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct PolicyJson {
     // pipeline, allowed
     pub pipelines: Vec<(String, bool)>,
     // tag, context
@@ -26,7 +30,7 @@ pub struct GraphJson {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct SensorJson {
     pub id: String,
     pub stateKeys: Vec<(String, String)>,
@@ -34,7 +38,7 @@ pub struct SensorJson {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleJson {
     pub localId: String,
     pub globalId: String,
@@ -213,8 +217,6 @@ impl GraphJson {
         let tag_map = GraphJson::parse_tag_map(&entity_map, &modules);
         let network_edges = GraphJson::parse_network_edges(&entity_map, &modules, &modules_lock);
         let intervals = GraphJson::parse_intervals(&entity_map, &modules, &modules_lock);
-        let pipelines = c.policies.get_pipeline_strings();
-        let contexts = c.policies.get_security_context_strings();
         let (data_edges, state_edges) = GraphJson::parse_data_and_state_edges(
             &entity_map,
             &tag_map,
@@ -232,8 +234,16 @@ impl GraphJson {
             stateEdges: state_edges,
             networkEdges: network_edges,
             intervals,
-            pipelines,
-            contexts,
+        }
+    }
+}
+
+impl PolicyJson {
+    pub fn new(c: &Controller) -> Self {
+        let policies = c.policies.read().unwrap();
+        Self {
+            pipelines: policies.get_pipeline_strings(),
+            contexts: policies.get_security_context_strings(),
         }
     }
 }
