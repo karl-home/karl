@@ -3,7 +3,7 @@ extern crate log;
 use log::LevelFilter;
 
 use std::error::Error;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use clap::{Arg, App};
 use tokio;
 use karl_sensor_sdk::KarlSensorSDK;
@@ -46,8 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .takes_value(true)
             .default_value("59582"))
         .arg(Arg::with_name("at_home")
-            .help("If the flag is present, the user is at home.")
-            .long("at_home"))
+            .help("If the flag is present, the user is not at home.")
+            .long("not_at_home"))
         .get_matches();
 
     let api = {
@@ -58,10 +58,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let _sensor_id = register(&mut api).await?;
         api
     };
-    let at_home = if matches.is_present("at_home") {
-        vec![1]
-    } else {
+    // Sleep so it has time to register an edge.
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    let at_home = if matches.is_present("not_at_home") {
         vec![0]
+    } else {
+        vec![1]
     };
     info!("at home? {}", at_home[0]);
     api.push(String::from("at_home"), at_home).await.unwrap();

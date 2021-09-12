@@ -42,7 +42,6 @@ async fn handle_state_changes(
         if msg.key == "playback" {
             match std::str::from_utf8(&msg.value[..]) {
                 Ok(string) => {
-                    warn!("finish search_pipeline: {:?}", Instant::now());
                     info!("Playing: {}", string);
                 },
                 Err(e) => error!("{}", e),
@@ -68,8 +67,8 @@ async fn audio_detection(
     loop {
         let tag = "speech_command".to_string();
         interval.tick().await;
-        warn!("start search_pipeline: {:?}", Instant::now());
         info!("pushing {} bytes of audio", audio_bytes.len());
+        warn!("START SpeechLight: {:?}", std::time::Instant::now());
         api.push(tag, audio_bytes.clone()).await.unwrap();
     }
 }

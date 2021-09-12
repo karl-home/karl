@@ -46,6 +46,7 @@ async fn handle_state_changes(
                 warn!("invalid length message: {:?}", state);
                 continue;
             }
+            warn!("FINISH SpeechLight: {:?}", std::time::Instant::now());
             match state[0] {
                 0 => info!("turning OFF"),
                 1 => info!("turning ON"),
