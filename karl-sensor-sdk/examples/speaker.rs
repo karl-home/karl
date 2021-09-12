@@ -69,6 +69,7 @@ async fn audio_detection(
         interval.tick().await;
         info!("pushing {} bytes of audio", audio_bytes.len());
         warn!("START SpeechLight: {:?}", std::time::Instant::now());
+        warn!("START (chrono) SpeechLight: {:?}", chrono::Utc::now().time());
         api.push(tag, audio_bytes.clone()).await.unwrap();
     }
 }

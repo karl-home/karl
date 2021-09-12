@@ -134,6 +134,7 @@ impl karl_host_server::KarlHost for Host {
             // Forward the network access to the controller.
             warn!("mock network request");
             warn!("FINISH PersonDet: {:?}", std::time::Instant::now());
+            warn!("FINISH (chrono) PersonDet: {:?}", chrono::Utc::now().time());
             self.api.forward_network(req).await?;
             Ok(Response::new(NetworkAccessResult::default()))
         } else {

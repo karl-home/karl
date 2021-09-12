@@ -45,6 +45,7 @@ async fn handle_state_changes(
             info!("firmware update!");
         } else if msg.key == "livestream" {
             warn!("FINISH LivestreamOn: {:?}", Instant::now());
+            warn!("FINISH (chrono) LivestreamOn: {:?}", chrono::Utc::now().time());
             if msg.value == vec![1] {
                 info!("turning livestream on");
                 // TODO: send livestream messages
@@ -75,8 +76,8 @@ async fn motion_detection(
     loop {
         let output = "motion".to_string();
         interval.tick().await;
-        // warn!("START step 1: pushing image");
         warn!("START PersonDet: {:?}", std::time::Instant::now());
+        warn!("START (chrono) PersonDet: {:?}", chrono::Utc::now().time());
         info!("pushing {} byte image", image_bytes.len());
         // let now = Instant::now();
         api.push(output, image_bytes.clone()).await.unwrap();

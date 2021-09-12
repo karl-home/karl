@@ -47,6 +47,7 @@ async fn handle_state_changes(
                 continue;
             }
             warn!("FINISH SpeechLight: {:?}", std::time::Instant::now());
+            warn!("FINISH (chrono) SpeechLight: {:?}", chrono::Utc::now().time());
             match state[0] {
                 0 => info!("turning OFF"),
                 1 => info!("turning ON"),
