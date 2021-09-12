@@ -70,10 +70,45 @@ impl PrivacyPolicies {
                 let pipeline = &inner.pipeline;
                 if pipeline.contains_node(pnode) {
                     if ctx.conflicts_with(pipeline, &self.base_graph.node_map) {
-                        info!("ctx {:?} conflicts with pipeline {}", ctx, i);
+                        debug!("context {:?} conflicts with pipeline {}", ctx, i);
                         inner.conflicts = true;
                         break;
                     }
+                }
+            }
+        }
+        for (i, inner) in self.pipelines.iter().enumerate() {
+            debug!("remove pipeline {}", i);
+            if !inner.allowed || inner.conflicts {
+                let p = &inner.pipeline;
+                // The index must be in bounds because a pipeline policy must
+                // have 2 nodes, and only a module can have network access.
+                let node_before_sink = &p.nodes[p.nodes.len() - 2];
+                match p.get_sink() {
+                    PipelineNode::Network { domain } => {
+                        let module_i = match node_before_sink {
+                            PipelineNode::ModuleInput { module, .. } => module,
+                            _ => unreachable!(),
+                        };
+                        let module_id = &self.base_graph.nodes[*module_i].id;
+                        info!("revoke network access to {} from {}", domain, module_id);
+                        // TODO
+                    }
+                    PipelineNode::Actuator { device, input } => {
+                        let (module_i, output_i) = match node_before_sink {
+                            PipelineNode::ModuleOutput { module, index } =>
+                                (module, index),
+                            _ => unreachable!(),
+                        };
+                        let module = &self.base_graph.nodes[*module_i];
+                        let device = &self.base_graph.nodes[*device];
+                        let output = &module.outputs[*output_i];
+                        let input = &device.inputs[*input];
+                        info!("remove edge from {}.{} to #{}.{}",
+                            module.id, output, device.id, input);
+                        // TODO
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
