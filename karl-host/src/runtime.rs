@@ -3,6 +3,7 @@
 //! Runtime for arbitrary Linux executables that mounts the appropriate
 //! directories, configures environment variables, and otherwise manages
 //! the sandbox for offloading compute requests.
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
@@ -19,6 +20,7 @@ fn run_cmd(
     trace!("envs: {:?}", envs);
     trace!("args: {:?}", args);
 
+    env::set_current_dir(root_path).unwrap();
     let mut cmd = Command::new("firejail");
     cmd.arg("--quiet");
     cmd.arg(format!("--private={}", root_path.to_str().unwrap()));
