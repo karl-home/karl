@@ -36,7 +36,7 @@ and set it as the default.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 rustup toolchain install nightly
-rustup default nightly
+rustup default nightly-2021-08-13
 ```
 
 Setup a custom firewall such that sandboxed modules can only communicate
