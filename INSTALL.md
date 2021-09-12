@@ -129,7 +129,7 @@ Build and execute the binaries that compile the module bundles in the
 ```
 cd $KARL_PATH/karl-common && cargo b --release
 ./target/release/build_static
-./target/release/build_command_classifier
+./target/release/build_picovoice
 ./target/release/build_person_detection
 ```
 
