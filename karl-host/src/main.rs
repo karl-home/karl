@@ -133,7 +133,7 @@ impl karl_host_server::KarlHost for Host {
         if self.mock_network {
             // Forward the network access to the controller.
             warn!("mock network request");
-            warn!("finish diff_priv_pipeline (statistics sent): {:?}", Instant::now());
+            warn!("FINISH PersonDet: {:?}", std::time::Instant::now());
             self.api.forward_network(req).await?;
             Ok(Response::new(NetworkAccessResult::default()))
         } else {

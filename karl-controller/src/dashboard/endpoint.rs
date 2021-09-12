@@ -116,6 +116,7 @@ pub fn spawn_module(
     id: String,
     controller: State<Arc<Mutex<Controller>>>,
 ) -> Status {
+    warn!("START LivestreamOn: {:?}", std::time::Instant::now());
     let c = controller.lock().unwrap();
     c.handle.block_on(c.runner.spawn_module(id));
     Status::Ok

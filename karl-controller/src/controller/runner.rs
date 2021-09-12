@@ -273,7 +273,6 @@ impl Runner {
                 let mut interval = time::interval(duration);
                 loop {
                     interval.tick().await;
-                    warn!("start true_pipeline: {:?}", Instant::now());
                     tx.send(QueuedModule{
                         id: module_id.clone(),
                         trigger: None,
