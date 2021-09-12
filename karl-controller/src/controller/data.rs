@@ -192,11 +192,11 @@ impl DataSink {
             0
         };
         let end_i = if let Some(upper) = upper {
-            match paths.binary_search(&upper) { Ok(i) => i, Err(i) => i }
+            match paths.binary_search(&upper) { Ok(i) => i+1, Err(i) => i }
         } else {
             paths.len() - 1
         };
-        let timestamps: Vec<String> = paths.drain(start_i..end_i+1).collect();
+        let timestamps: Vec<String> = paths.drain(start_i..end_i).collect();
         let data: Vec<Vec<u8>> =
             timestamps.iter().map(|path| {
                 let path = self.data_path.join(&tag).join(&path);
@@ -330,6 +330,69 @@ mod test {
 
         let res = {
             let res = sink.get_data(tag, timestamp.clone(), timestamp.clone());
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert_eq!(res.timestamps.len(), 1);
+        assert_eq!(res.data.len(), 1);
+        assert_eq!(res.timestamps[0], timestamp);
+        assert_eq!(res.data, vec![vec![1]]);
+    }
+
+    #[test]
+    fn test_get_data_single_value_not_exact_upper() {
+        let (_dir, mut sink) = init_test();
+        let tag = "abc";
+        let timestamp = sink.push_data(&vec![tag.to_string()], &vec![1]).unwrap().timestamp;
+
+        let res = {
+            let res = sink.get_data(
+                tag,
+                timestamp.clone(),
+                chrono::prelude::Local::now().format("%+").to_string(),
+            );
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert_eq!(res.timestamps.len(), 1);
+        assert_eq!(res.data.len(), 1);
+        assert_eq!(res.timestamps[0], timestamp);
+        assert_eq!(res.data, vec![vec![1]]);
+    }
+
+    #[test]
+    fn test_get_data_single_value_not_exact_lower() {
+        let (_dir, mut sink) = init_test();
+        let tag = "abc";
+        let timestamp = sink.push_data(&vec![tag.to_string()], &vec![1]).unwrap().timestamp;
+
+        let res = {
+            let res = sink.get_data(
+                tag,
+                String::from("2021-09-09T23:56:36.001788121-07:00"),
+                timestamp.clone(),
+            );
+            assert!(res.is_ok());
+            res.unwrap()
+        };
+        assert_eq!(res.timestamps.len(), 1);
+        assert_eq!(res.data.len(), 1);
+        assert_eq!(res.timestamps[0], timestamp);
+        assert_eq!(res.data, vec![vec![1]]);
+    }
+
+    #[test]
+    fn test_get_data_single_value_not_exact() {
+        let (_dir, mut sink) = init_test();
+        let tag = "abc";
+        let timestamp = sink.push_data(&vec![tag.to_string()], &vec![1]).unwrap().timestamp;
+
+        let res = {
+            let res = sink.get_data(
+                tag,
+                String::from("2021-09-09T23:56:36.001788121-07:00"),
+                chrono::prelude::Local::now().format("%+").to_string(),
+            );
             assert!(res.is_ok());
             res.unwrap()
         };

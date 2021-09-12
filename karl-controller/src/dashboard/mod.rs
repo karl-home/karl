@@ -5,6 +5,7 @@ use crate::controller::Controller;
 
 mod endpoint;
 mod graph;
+pub(crate) use graph::ModuleJson;
 pub(crate) use graph::{SensorJson, PolicyJson, GraphJson};
 
 pub fn start(controller: Controller) {

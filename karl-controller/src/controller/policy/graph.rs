@@ -338,6 +338,7 @@ impl fmt::Display for PolicyGraph {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{ModuleJson, SensorJson};
 
     fn sensor_json(
         id: &str,
