@@ -60,6 +60,13 @@ async fn audio_detection(
     interval: u64,
     audio_path: String,
 ) -> Result<(), Box<dyn Error>> {
+    if interval == 0 {
+        let duration = Duration::from_secs(100);
+        let mut interval = tokio::time::interval(duration);
+        loop {
+            interval.tick().await;
+        }
+    }
     let audio_bytes = fs::read(audio_path)?;
     let duration = Duration::from_secs(interval);
     let mut interval = tokio::time::interval(duration);

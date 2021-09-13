@@ -69,6 +69,13 @@ async fn motion_detection(
     interval: u64,
     image_path: String,
 ) -> Result<(), Box<dyn Error>> {
+    if interval == 0 {
+        let duration = Duration::from_secs(100);
+        let mut interval = tokio::time::interval(duration);
+        loop {
+            interval.tick().await;
+        }
+    }
     let image_bytes = fs::read(image_path)?;
     let duration = Duration::from_secs(interval);
     tokio::time::sleep(Duration::from_secs(10)).await;
