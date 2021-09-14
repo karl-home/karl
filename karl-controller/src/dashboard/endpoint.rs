@@ -126,7 +126,7 @@ pub fn spawn_module(
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SensorResultJson {
-    sensor: SensorJson,
+    sensor: NodeJson,
     attestation: String,
 }
 
@@ -177,14 +177,13 @@ pub fn get_sensors(
         .map(|sensor| SensorResultJson {
             sensor: {
                 // TODO: descriptions
-                let state_keys = sensor.keys.iter()
-                    .map(|key| (key.clone(), "-".to_string())).collect();
-                let returns = sensor.returns.iter()
-                    .map(|ret| (ret.clone(), "-".to_string())).collect();
-                SensorJson {
+                let state_keys = sensor.keys.clone();
+                let returns = sensor.returns.clone();
+                NodeJson {
+                    globalId: sensor.id.clone(),
                     id: sensor.id.clone(),
-                    stateKeys: state_keys,
-                    returns,
+                    inputs: state_keys,
+                    outputs: returns,
                 }
             },
             attestation: "QWERTY1234".to_string(), // TODO

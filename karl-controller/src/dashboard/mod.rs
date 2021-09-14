@@ -5,9 +5,7 @@ use crate::controller::Controller;
 
 mod endpoint;
 mod graph;
-#[cfg(test)]
-pub(crate) use graph::ModuleJson;
-pub(crate) use graph::{SensorJson, PolicyJson, GraphJson};
+pub(crate) use graph::{NodeJson, PolicyJson, GraphJson};
 
 pub fn start(controller: Controller) {
     let hosts = controller.scheduler.clone();

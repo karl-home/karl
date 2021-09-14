@@ -32,6 +32,20 @@ pub struct EdgeNode {
     pub index: usize,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum PolicyGraphDelta {
+    RemoveStateEdge {
+        src_node: usize,
+        src_index: usize,
+        dst_node: usize,
+        dst_index: usize,
+    },
+    RemoveNetwork {
+        node: usize,
+        domain: usize,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PipelineNode {
     Data { device: usize, output: usize },
@@ -52,6 +66,13 @@ impl PipelineNode {
     pub fn is_module_output(&self) -> bool {
         match self {
             PipelineNode::ModuleOutput { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_actuator(&self) -> bool {
+        match self {
+            PipelineNode::Actuator { .. } => true,
             _ => false,
         }
     }
@@ -111,10 +132,7 @@ impl Pipeline {
                     },
                     _ => false,
                 },
-                PipelineNode::Network {..} => match sink {
-                    PipelineNode::Actuator {..}  => true,
-                    _ => false,
-                },
+                PipelineNode::Network {..} => sink.is_actuator(),
                 _ => false,
             }
         } else {
@@ -124,6 +142,24 @@ impl Pipeline {
 
     pub fn contains_node(&self, node: &PipelineNode) -> bool {
         &self.source == node || self.nodes.contains(node)
+    }
+
+    /// If removing the policy graph delta affects this pipeline.
+    pub fn has_effect(&self, delta: PolicyGraphDelta) -> bool {
+        /*
+        match delta {
+        RemoveStateEdge { src_node, src_index, dst_node, dst_index) => {
+            match self.get_sink() {
+            PipelineNode::Actuator { device, input } => {
+                if dst_node != device || dst_index != input {
+                    return false;
+                }
+            }
+            }
+        }
+        }
+        */
+        false
     }
 }
 
@@ -268,7 +304,10 @@ impl PolicyGraph {
     pub fn apply_removed_pipelines(&self, removed: Vec<usize>) -> PolicyGraph {
         for i in removed {
             assert!(i < self.pipelines.len());
+
         }
+
+
         self.clone()
         //unimplemented!()
     }
@@ -277,19 +316,12 @@ impl PolicyGraph {
 impl From<&GraphJson> for PolicyGraph {
     fn from(json: &GraphJson) -> Self {
         let mut graph = PolicyGraph::default();
-        graph.n_devices = json.sensors.len();
-        for sensor in &json.sensors {
+        graph.n_devices = json.n_devices;
+        for node in &json.nodes {
             graph.nodes.push(Node {
-                id: sensor.id.clone(),
-                inputs: sensor.stateKeys.iter().map(|(input, _)| input.clone()).collect(),
-                outputs: sensor.returns.iter().map(|(output, _)| output.clone()).collect(),
-            });
-        }
-        for module in &json.moduleIds {
-            graph.nodes.push(Node {
-                id: module.localId.clone(),
-                inputs: module.params.clone(),
-                outputs: module.returns.clone(),
+                id: node.id.clone(),
+                inputs: node.inputs.clone(),
+                outputs: node.outputs.clone(),
             });
         }
         for (i, node) in graph.nodes.iter().enumerate() {
@@ -365,44 +397,27 @@ impl fmt::Display for PolicyGraph {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ModuleJson, SensorJson};
+    use crate::NodeJson;
 
-    fn sensor_json(
+    fn node_json(
         id: &str,
-        keys: Vec<&str>,
-        returns: Vec<&str>,
-    ) -> SensorJson {
-        SensorJson {
+        inputs: Vec<&str>,
+        outputs: Vec<&str>,
+    ) -> NodeJson {
+        NodeJson {
             id: id.to_string(),
-            stateKeys: keys.into_iter()
-                .map(|x| (x.to_string(), String::from("")))
-                .collect(),
-            returns: returns.into_iter()
-                .map(|x| (x.to_string(), String::from("")))
-                .collect(),
-        }
-    }
-
-    fn module_json(
-        id: &str,
-        params: Vec<&str>,
-        returns: Vec<&str>,
-    ) -> ModuleJson {
-        ModuleJson {
-            localId: id.to_string(),
             globalId: id.to_string(),
-            params: params.into_iter().map(|x| x.to_string()).collect(),
-            returns: returns.into_iter().map(|x| x.to_string()).collect(),
+            inputs: inputs.into_iter().map(|x| x.to_string()).collect(),
+            outputs: outputs.into_iter().map(|x| x.to_string()).collect(),
         }
     }
 
     fn pipeline_i() -> GraphJson {
         GraphJson {
-            sensors: vec![
-                sensor_json("camera", vec!["firmware", "livestream"], vec!["motion", "streaming"]),
-            ],
-            moduleIds: vec![
-                module_json("set_true", vec![], vec!["true"]),
+            n_devices: 1,
+            nodes: vec![
+                node_json("camera", vec!["firmware", "livestream"], vec!["motion", "streaming"]),
+                node_json("set_true", vec![], vec!["true"]),
             ],
             dataEdges: vec![],
             stateEdges: vec![(1, 0, 0, 1)],
@@ -413,12 +428,11 @@ mod test {
 
     fn pipeline_old_ii() -> GraphJson {
         GraphJson {
-            sensors: vec![
-                sensor_json("speaker", vec!["playback"], vec!["speech_command"]),
-            ],
-            moduleIds: vec![
-                module_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
-                module_json("weather", vec!["weather_intent"], vec!["weather"]),
+            n_devices: 1,
+            nodes: vec![
+                node_json("speaker", vec!["playback"], vec!["speech_command"]),
+                node_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
+                node_json("weather", vec!["weather_intent"], vec!["weather"]),
             ],
             dataEdges: vec![(true, 0, 0, 1, 0), (true, 1, 0, 2, 0)],
             stateEdges: vec![(2, 0, 0, 0)],
@@ -429,13 +443,12 @@ mod test {
 
     fn pipeline_ii() -> GraphJson {
         GraphJson {
-            sensors: vec![
-                sensor_json("speaker", vec!["playback"], vec!["speech_command"]),
-                sensor_json("light", vec!["state", "intensity"], vec!["state", "intensity"])
-            ],
-            moduleIds: vec![
-                module_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
-                module_json("light_switch", vec!["light_intent"], vec!["state"]),
+            n_devices: 2,
+            nodes: vec![
+                node_json("speaker", vec!["playback"], vec!["speech_command"]),
+                node_json("light", vec!["state", "intensity"], vec!["state", "intensity"]),
+                node_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
+                node_json("light_switch", vec!["light_intent"], vec!["state"]),
             ],
             dataEdges: vec![(true, 0, 0, 2, 0), (true, 2, 1, 3, 0)],
             stateEdges: vec![(3, 0, 1, 0)],
@@ -446,14 +459,13 @@ mod test {
 
     fn pipeline_iii() -> GraphJson {
         GraphJson {
-            sensors: vec![
-                sensor_json("camera", vec!["firmware", "livestream"], vec!["motion", "streaming"]),
-                sensor_json("occupancy_sensor", vec![], vec!["at_home"]),
-            ],
-            moduleIds: vec![
-                module_json("person_detection", vec!["image"], vec!["training_data", "count"]),
-                module_json("boolean", vec!["condition", "value"], vec!["predicate"]),
-                module_json("statistics", vec!["data"], vec![]),
+            n_devices: 2,
+            nodes: vec![
+                node_json("camera", vec!["firmware", "livestream"], vec!["motion", "streaming"]),
+                node_json("occupancy_sensor", vec![], vec!["at_home"]),
+                node_json("person_detection", vec!["image"], vec!["training_data", "count"]),
+                node_json("boolean", vec!["condition", "value"], vec!["predicate"]),
+                node_json("statistics", vec!["data"], vec![]),
             ],
             dataEdges: vec![(true, 0, 0, 2, 0), (false, 1, 0, 3, 0), (true, 2, 0, 3, 1), (true, 3, 0, 4, 0)],
             stateEdges: vec![],
@@ -511,17 +523,16 @@ mod test {
 
     fn figure_3ab() -> GraphJson {
         GraphJson {
-            sensors: vec![
-                sensor_json("speaker", vec!["speech_command"], vec!["playback"]),
-                sensor_json("speaker_1", vec!["speech_command"], vec!["playback"]),
-                sensor_json("light", vec!["state", "intensity"], vec!["state", "intensity"]),
-            ],
-            moduleIds: vec![
-                module_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
-                module_json("weather", vec!["weather_intent"], vec!["weather"]),
-                module_json("light_switch", vec!["light_intent"], vec!["state"]),
-                module_json("set_true", vec![], vec!["true"]),
-                module_json("set_false", vec![], vec!["false"]),
+            n_devices: 3,
+            nodes: vec![
+                node_json("speaker", vec!["speech_command"], vec!["playback"]),
+                node_json("speaker_1", vec!["speech_command"], vec!["playback"]),
+                node_json("light", vec!["state", "intensity"], vec!["state", "intensity"]),
+                node_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
+                node_json("weather", vec!["weather_intent"], vec!["weather"]),
+                node_json("light_switch", vec!["light_intent"], vec!["state"]),
+                node_json("set_true", vec![], vec!["true"]),
+                node_json("set_false", vec![], vec!["false"]),
             ],
             dataEdges: vec![(true, 0, 0, 3, 0), (false, 1, 0, 3, 0), (true, 3, 0, 4, 0), (true, 3, 1, 5, 0)],
             stateEdges: vec![(4, 0, 0, 0), (5, 0, 2, 0), (6, 0, 2, 0), (7, 0, 2, 0)],
@@ -558,22 +569,43 @@ mod test {
         assert_eq!(perms[3].len(), 6);
         assert_eq!(perms[4].len(), 6);
         assert_eq!(perms[5].len(), 6);
-        // assert_eq!(perms[0].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
-        // assert_eq!(perms[1].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
-        // assert_eq!(perms[2].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
-        // assert_eq!(perms[3].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
-        // assert_eq!(perms[4].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+        assert_eq!(perms[0].get_sink(), &PipelineNode::Actuator { device: 0, input: 0 });
+        assert_eq!(perms[1].get_sink(), &PipelineNode::Network { domain: "weather.com".to_string() });
+        assert_eq!(perms[2].get_sink(), &PipelineNode::Network { domain: "weather.com".to_string() });
+        assert_eq!(perms[3].get_sink(), &PipelineNode::Actuator { device: 2, input: 0 });
+        assert_eq!(perms[4].get_sink(), &PipelineNode::Actuator { device: 0, input: 0 });
+        assert_eq!(perms[5].get_sink(), &PipelineNode::Actuator { device: 2, input: 0 });
     }
 
     #[test]
     fn test_remove_one_light_pipeline() {
-
+        let old_graph = PolicyGraph::from(&figure_3ab());
+        let new_graph = old_graph.apply_removed_pipelines(vec![3]);
+        assert_eq!(old_graph.pipelines.len(), 6);
+        assert_eq!(new_graph.pipelines.len(), 5);
     }
 
     #[test]
-    fn test_remove_cross_speaker_pipelines() {
-
+    fn test_remove_cross_speaker_pipeline() {
+        let old_graph = PolicyGraph::from(&figure_3ab());
+        let new_graph = old_graph.apply_removed_pipelines(vec![4]);
+        assert_eq!(old_graph.pipelines.len(), 6);
+        assert_eq!(new_graph.pipelines.len(), 5);
     }
 
+    #[test]
+    fn test_remove_weather_output_pipeline() {
+        let old_graph = PolicyGraph::from(&figure_3ab());
+        let new_graph = old_graph.apply_removed_pipelines(vec![2]);
+        assert_eq!(old_graph.pipelines.len(), 6);
+        assert_eq!(new_graph.pipelines.len(), 5);
+    }
 
+    #[test]
+    fn test_remove_weather_input_pipeline() {
+        let old_graph = PolicyGraph::from(&figure_3ab());
+        let new_graph = old_graph.apply_removed_pipelines(vec![0]);
+        assert_eq!(old_graph.pipelines.len(), 6);
+        assert_eq!(new_graph.pipelines.len(), 5);
+    }
 }

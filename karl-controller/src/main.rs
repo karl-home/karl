@@ -13,9 +13,7 @@ mod dashboard;
 pub mod net;
 pub mod controller;
 pub use controller::Controller;
-#[cfg(test)]
-pub(crate) use dashboard::ModuleJson;
-pub(crate) use dashboard::{SensorJson, PolicyJson, GraphJson};
+pub(crate) use dashboard::{NodeJson, PolicyJson, GraphJson};
 
 pub mod protos {
 	tonic::include_proto!("request");

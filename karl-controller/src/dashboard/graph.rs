@@ -5,10 +5,10 @@ use crate::controller::{sensors, runner, Controller};
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct GraphJson {
+    // The number of initial nodes that are devices
+    pub n_devices: usize,
     // sensors indexed 0 to n-1, where n is the number of sensors
-    pub sensors: Vec<SensorJson>,
-    // modules indexed n to n+m-1, where m is the number of modules
-    pub moduleIds: Vec<ModuleJson>,
+    pub nodes: Vec<NodeJson>,
     // stateless, out_id, out_red, module_id, module_param
     pub dataEdges: DataEdges,
     // module_id, module_ret, sensor_id, sensor_key
@@ -31,81 +31,67 @@ pub struct PolicyJson {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct SensorJson {
+pub struct NodeJson {
     pub id: String,
-    pub stateKeys: Vec<(String, String)>,
-    pub returns: Vec<(String, String)>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct ModuleJson {
-    pub localId: String,
     pub globalId: String,
-    pub params: Vec<String>,
-    pub returns: Vec<String>,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
 }
 
 type DataEdges = Vec<(bool, u32, u32, u32, u32)>;
 type StateEdges = Vec<(u32, u32, u32, u32)>;
 
 impl GraphJson {
-    fn parse_sensors(sensors: Vec<&sensors::Sensor>) -> Vec<SensorJson> {
+    fn parse_nodes(
+        sensors: Vec<&sensors::Sensor>,
+        modules: Vec<(&ModuleID, &Module)>,
+    ) -> Vec<NodeJson> {
         // TODO: sort sensors?
-        sensors.iter()
+        let mut nodes: Vec<NodeJson> = sensors.iter()
             .filter(|s| s.confirmed)
             .map(|s| {
-                // TODO: descriptions
-                let state_keys = s.keys.iter()
-                    .map(|key| (key.clone(), "-".to_string())).collect();
-                let returns = s.returns.iter()
-                    .map(|ret| (ret.clone(), "-".to_string())).collect();
-                SensorJson {
+                NodeJson {
                     id: s.id.clone(),
-                    stateKeys: state_keys,
-                    returns,
+                    globalId: s.id.clone(),
+                    inputs: s.keys.clone(),
+                    outputs: s.returns.clone(),
                 }
             })
-            .collect()
-    }
-
-    fn parse_modules(modules: Vec<(&ModuleID, &Module)>) -> Vec<ModuleJson> {
-        // TODO: sort modules?
-        modules.iter()
+            .collect();
+        let mut modules = modules.iter()
             .map(|(module_id, m)| {
-                ModuleJson {
-                    localId: module_id.to_string(),
+                NodeJson {
+                    id: module_id.to_string(),
                     globalId: m.global_id.clone(),
-                    params: m.params.clone(),
-                    returns: m.returns.clone(),
+                    inputs: m.params.clone(),
+                    outputs: m.returns.clone(),
                 }
             })
-            .collect()
+            .collect();
+        nodes.append(&mut modules);
+        nodes
     }
 
     /// Map from entity ID to index to be used in edge references.
     fn parse_entity_map(
-        sensors: &Vec<SensorJson>,
-        modules: &Vec<ModuleJson>,
+        nodes: &Vec<NodeJson>,
     ) -> HashMap<String, u32> {
-        let mut map = HashMap::new();
-        for sensor in sensors {
-            map.insert(sensor.id.clone(), map.len() as u32);
-        }
-        for module in modules {
-            map.insert(module.localId.clone(), map.len() as u32);
-        }
-        map
+        nodes.iter()
+            .enumerate()
+            .map(|(i, node)| (node.id.clone(), i as u32))
+            .collect()
     }
 
     /// Map from tag to input entity ID and parameter index for modules.
     /// Does not include state tags.
     fn parse_tag_map(
+        n_devices: usize,
         entity_map: &HashMap<String, u32>,
-        module_jsons: &Vec<ModuleJson>,
+        node_jsons: &Vec<NodeJson>,
     ) -> HashMap<String, (u32, u32)> {
-        module_jsons.iter()
-            .map(|json| (&json.localId, &json.params))
+        node_jsons[n_devices..]
+            .iter()
+            .map(|json| (&json.id, &json.inputs))
             .flat_map(|(module_id, params)| {
                 let id = *entity_map.get(module_id).unwrap();
                 params.iter()
@@ -119,12 +105,14 @@ impl GraphJson {
     }
 
     fn parse_network_edges(
+        n_devices: usize,
         entity_map: &HashMap<String, u32>,
-        module_jsons: &Vec<ModuleJson>,
+        node_jsons: &Vec<NodeJson>,
         modules: &runner::Modules,
     ) -> Vec<(u32, String)> {
-        module_jsons.iter()
-            .map(|json| &json.localId)
+        node_jsons[n_devices..]
+            .iter()
+            .map(|json| &json.id)
             .flat_map(|module_id| {
                 let index = *entity_map.get(module_id).unwrap();
                 let config = modules.config(module_id).unwrap();
@@ -135,12 +123,14 @@ impl GraphJson {
     }
 
     fn parse_intervals(
+        n_devices: usize,
         entity_map: &HashMap<String, u32>,
-        module_jsons: &Vec<ModuleJson>,
+        node_jsons: &Vec<NodeJson>,
         modules: &runner::Modules,
     ) -> Vec<(u32, u32)> {
-        module_jsons.iter()
-            .map(|json| &json.localId)
+        node_jsons[n_devices..]
+            .iter()
+            .map(|json| &json.id)
             .filter_map(|module_id| {
                 let index = *entity_map.get(module_id).unwrap();
                 modules
@@ -151,10 +141,10 @@ impl GraphJson {
     }
 
     fn parse_data_and_state_edges(
+        n_devices: usize,
         entity_map: &HashMap<String, u32>,
         tag_map: &HashMap<String, (u32, u32)>,
-        sensor_jsons: &Vec<SensorJson>,
-        module_jsons: &Vec<ModuleJson>,
+        node_jsons: &Vec<NodeJson>,
         sensors: &sensors::Sensors,
         modules: &runner::Modules,
         watched_tags: &HashMap<Tag, Vec<ModuleID>>,
@@ -167,7 +157,7 @@ impl GraphJson {
                 .unwrap_or(false)
         };
 
-        for module in module_jsons {
+        for module in &node_jsons[n_devices..] {
             // For each of the module's return values, find the list of
             // output tags. If the tag is a state tag, add a state edge
             // from the return value to the sensor's state key. Otherwise,
@@ -175,15 +165,15 @@ impl GraphJson {
             // module that watches the tag. Find the input of the data
             // edge by using the entity map to map the target tags to the
             // input entity and parameter.
-            let o1 = *entity_map.get(&module.localId).unwrap() as u32;
-            let tags = &modules.tags(&module.localId).unwrap();
-            for (o2, output) in module.returns.iter().enumerate() {
+            let o1 = *entity_map.get(&module.id).unwrap() as u32;
+            let tags = &modules.tags(&module.id).unwrap();
+            for (o2, output) in module.outputs.iter().enumerate() {
                 for tag in tags.get_output_tags(output).unwrap() {
                     if tag_parsing::is_state_tag(&tag) {
                         let (sensor, key) = tag_parsing::parse_state_tag(tag);
                         let i1 = *entity_map.get(&sensor).unwrap();
-                        let i2 = sensor_jsons[i1 as usize].stateKeys.iter()
-                            .position(|(k,_)| k == &key).unwrap() as u32;
+                        let i2 = node_jsons[i1 as usize].inputs.iter()
+                            .position(|k| k == &key).unwrap() as u32;
                         state_edges.push((o1, o2 as u32, i1, i2));
                     } else {
                         let stateless = is_stateless(tag);
@@ -193,10 +183,10 @@ impl GraphJson {
                 }
             }
         }
-        for sensor in sensor_jsons {
+        for sensor in &node_jsons[..n_devices] {
             let o1 = *entity_map.get(&sensor.id).unwrap() as u32;
             let tags = sensors.tags(&sensor.id).unwrap();
-            for (o2, (output, _)) in sensor.returns.iter().enumerate() {
+            for (o2, output) in sensor.outputs.iter().enumerate() {
                 for tag in tags.get_output_tags(output).unwrap() {
                     let stateless = is_stateless(tag);
                     let (i1, i2) = tag_map.get(tag).unwrap();
@@ -211,25 +201,30 @@ impl GraphJson {
         let sensors_lock = c.sensors.lock().unwrap();
         let modules_lock = c.modules.read().unwrap();
         let watched_tags_lock = c.watched_tags.read().unwrap();
-        let sensors = GraphJson::parse_sensors(sensors_lock.list_sensors());
-        let modules = GraphJson::parse_modules(modules_lock.list_modules());
-        let entity_map = GraphJson::parse_entity_map(&sensors, &modules);
-        let tag_map = GraphJson::parse_tag_map(&entity_map, &modules);
-        let network_edges = GraphJson::parse_network_edges(&entity_map, &modules, &modules_lock);
-        let intervals = GraphJson::parse_intervals(&entity_map, &modules, &modules_lock);
+        let (n_devices, nodes) = {
+            let sensors = sensors_lock.list_sensors();
+            let modules = modules_lock.list_modules();
+            let n_devices = sensors.len();
+            let nodes = GraphJson::parse_nodes(sensors, modules);
+            (n_devices, nodes)
+        };
+        let entity_map = GraphJson::parse_entity_map(&nodes);
+        let tag_map = GraphJson::parse_tag_map(n_devices, &entity_map, &nodes);
+        let network_edges = GraphJson::parse_network_edges(n_devices, &entity_map, &nodes, &modules_lock);
+        let intervals = GraphJson::parse_intervals(n_devices, &entity_map, &nodes, &modules_lock);
         let (data_edges, state_edges) = GraphJson::parse_data_and_state_edges(
+            n_devices,
             &entity_map,
             &tag_map,
-            &sensors,
-            &modules,
+            &nodes,
             &sensors_lock,
             &modules_lock,
             &watched_tags_lock,
         );
 
         GraphJson {
-            sensors,
-            moduleIds: modules,
+            n_devices,
+            nodes,
             dataEdges: data_edges,
             stateEdges: state_edges,
             networkEdges: network_edges,
@@ -299,8 +294,8 @@ fn err(string: &str) -> Error {
 
 #[derive(Default)]
 struct IndexedGraphJson<'a> {
-    sensors: HashSet<&'a SensorJson>,
-    modules: HashSet<&'a ModuleJson>,
+    sensors: HashSet<&'a NodeJson>,
+    modules: HashSet<&'a NodeJson>,
     data_edges_src: HashMap<u32, HashSet<(bool, String, String, String, String)>>,
     data_edges_dst: HashMap<u32, HashSet<(bool, String, String, String, String)>>,
     state_edges_src: HashMap<u32, HashSet<(String, String, String, String)>>,
@@ -311,37 +306,29 @@ struct IndexedGraphJson<'a> {
 
 impl<'a> IndexedGraphJson<'a> {
     fn parse_reverse_entity_map(
-        sensors: &Vec<SensorJson>,
-        modules: &Vec<ModuleJson>,
+        nodes: &Vec<NodeJson>,
     ) -> HashMap<u32, (String, Vec<String>, Vec<String>)> {
         let mut map = HashMap::new();
-        for sensor in sensors {
-            let index = map.len() as u32;
-            let inputs = sensor.stateKeys.iter().map(|(x, _)| x.clone()).collect::<Vec<_>>();
-            let outputs = sensor.returns.iter().map(|(x, _)| x.clone()).collect::<Vec<_>>();
-            map.insert(index, (sensor.id.clone(), inputs, outputs));
-        }
-        for module in modules {
-            let index = map.len() as u32;
-            let inputs = module.params.clone();
-            let outputs = module.returns.clone();
-            map.insert(index, (module.localId.clone(), inputs, outputs));
+        for (index, node) in nodes.iter().enumerate() {
+            let inputs = node.inputs.clone();
+            let outputs = node.outputs.clone();
+            map.insert(index as u32, (node.id.clone(), inputs, outputs));
         }
         map
     }
 
     fn new(graph: &'a GraphJson) -> Result<Self, Error> {
         let mut g = IndexedGraphJson::default();
-        let map = Self::parse_reverse_entity_map(&graph.sensors, &graph.moduleIds);
-        g.sensors = graph.sensors.iter().collect();
-        g.modules = graph.moduleIds.iter().collect();
-        for i in 0..graph.sensors.len() {
+        let map = Self::parse_reverse_entity_map(&graph.nodes);
+        g.sensors = graph.nodes[..graph.n_devices].iter().collect();
+        g.modules = graph.nodes[graph.n_devices..].iter().collect();
+        for i in 0..graph.n_devices {
             let i = i as u32;
             g.data_edges_src.insert(i, HashSet::new());
             g.state_edges_dst.insert(i, HashSet::new());
         }
-        for i in 0..graph.moduleIds.len() {
-            let i = (graph.sensors.len() + i) as u32;
+        for i in graph.n_devices..graph.nodes.len() {
+            let i = i as u32;
             g.data_edges_src.insert(i, HashSet::new());
             g.data_edges_dst.insert(i, HashSet::new());
             g.state_edges_src.insert(i, HashSet::new());
@@ -393,18 +380,18 @@ impl GraphJson {
         let mut modules_to_add: Vec<(ModuleID, GlobalModuleID)> = Vec::new();
         for m in g1.modules {
             if g2.modules.remove(&m) {
-                modules_to_keep.push(m.localId.clone());
+                modules_to_keep.push(m.id.clone());
             } else {
-                modules_to_remove.push(m.localId.clone());
+                modules_to_remove.push(m.id.clone());
             }
         }
         for m in g2.modules {
-            modules_to_add.push((m.localId.clone(), m.globalId.clone()));
+            modules_to_add.push((m.id.clone(), m.globalId.clone()));
         }
 
         let mut deltas = vec![];
-        let old_entity_map = Self::parse_entity_map(&self.sensors, &self.moduleIds);
-        let new_entity_map = Self::parse_entity_map(&new.sensors, &new.moduleIds);
+        let old_entity_map = Self::parse_entity_map(&self.nodes);
+        let new_entity_map = Self::parse_entity_map(&new.nodes);
 
         // Remove all edges connected to the removed modules.
         // Then remove the modules.

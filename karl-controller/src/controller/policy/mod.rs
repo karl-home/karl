@@ -31,13 +31,15 @@ impl PrivacyPolicies {
         inputs: Vec<String>,
         outputs: Vec<String>,
     ) {
-        if !self.json.moduleIds.is_empty() {
+        if self.json.nodes.len() != self.json.n_devices {
             unimplemented!("currently can only register devices if no modules are registered");
         }
-        self.json.sensors.push(crate::SensorJson {
+        self.json.n_devices += 1;
+        self.json.nodes.push(crate::NodeJson {
+            globalId: id.clone(),
             id,
-            stateKeys: inputs.into_iter().map(|input| (input, String::from("-"))).collect(),
-            returns: outputs.into_iter().map(|output| (output, String::from("-"))).collect(),
+            inputs,
+            outputs,
         });
         self.base_graph = PolicyGraph::from(&self.json);
         self.real_graph = self.base_graph.clone();
