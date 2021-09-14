@@ -15,6 +15,8 @@ pub struct PolicyGraph {
     pub n_devices: usize,
     /// Indices of nodes with network access and the domain names
     pub network_nodes: HashMap<usize, Vec<String>>,
+    /// Pipelines so the indexes are maintained
+    pub pipelines: Vec<Pipeline>
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -30,7 +32,7 @@ pub struct EdgeNode {
     pub index: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PipelineNode {
     Data { device: usize, output: usize },
     ModuleInput { module: usize, index: usize },
@@ -39,7 +41,23 @@ pub enum PipelineNode {
     Actuator {device: usize, input: usize },
 }
 
-#[derive(Debug, Clone)]
+impl PipelineNode {
+    pub fn is_module_input(&self) -> bool {
+        match self {
+            PipelineNode::ModuleInput { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_module_output(&self) -> bool {
+        match self {
+            PipelineNode::ModuleOutput { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
     pub source: PipelineNode,
     pub nodes: Vec<PipelineNode>,
@@ -78,6 +96,10 @@ impl Pipeline {
         self.nodes.push(node);
     }
 
+    pub fn len(&self) -> usize {
+        self.nodes.len() + 1
+    }
+
     pub fn is_sensitive(&self) -> bool {
         if !self.nodes.is_empty() {
             let sink = self.get_sink();
@@ -90,7 +112,7 @@ impl Pipeline {
                     _ => false,
                 },
                 PipelineNode::Network {..} => match sink {
-                    PipelineNode::Data {..}  => true,
+                    PipelineNode::Actuator {..}  => true,
                     _ => false,
                 },
                 _ => false,
@@ -106,16 +128,17 @@ impl Pipeline {
 }
 
 impl PolicyGraph {
-    /// Get all pipeline policies from the graph.
+    /// Calculate all pipeline policies from the graph.
     /// - device output to network sink
     /// - network source to device input
     /// - device output to other device's input
-    pub fn get_pipelines(&self) -> Vec<Pipeline> {
+    fn calculate_pipelines(&self) -> Vec<Pipeline> {
         // Assemble all possible sources
         let mut queue: VecDeque<Pipeline> = VecDeque::new();
         for device_i in 0..self.n_devices {
             let device = &self.nodes[device_i];
             for output_i in 0..device.outputs.len() {
+                // Source can be device data
                 let source = PipelineNode::Data {
                     device: device_i,
                     output: output_i,
@@ -224,16 +247,12 @@ impl PolicyGraph {
                 self.nodes[device].id,
                 self.nodes[device].outputs[output],
             ),
-            PipelineNode::ModuleInput { module, index } => format!(
-                "{}.{}",
-                self.nodes[module].id,
-                self.nodes[module].inputs[index],
-            ),
-            PipelineNode::ModuleOutput { module, index } => format!(
-                "{}.{}",
-                self.nodes[module].id,
-                self.nodes[module].outputs[index],
-            ),
+            PipelineNode::ModuleInput { module, .. } => {
+                self.nodes[module].id.clone()
+            },
+            PipelineNode::ModuleOutput { module, .. } => {
+                self.nodes[module].id.clone()
+            },
             PipelineNode::Network { domain } => domain,
             PipelineNode::Actuator { device, input } => format!(
                 "#{}.{}",
@@ -243,8 +262,15 @@ impl PolicyGraph {
         }
     }
 
-    pub fn remove_pipeline(&mut self, pipeline: &Pipeline) {
-        unimplemented!()
+    /// Remove the given pipelines, returning a new graph.
+    /// Each value in the array is an index into a cached pipeline.
+    /// Thus each value must be less than self.pipelines.len()
+    pub fn apply_removed_pipelines(&self, removed: Vec<usize>) -> PolicyGraph {
+        for i in removed {
+            assert!(i < self.pipelines.len());
+        }
+        self.clone()
+        //unimplemented!()
     }
 }
 
@@ -302,6 +328,7 @@ impl From<&GraphJson> for PolicyGraph {
                 .or_insert(Vec::new())
                 .push(domain.clone());
         }
+        graph.pipelines = graph.calculate_pipelines();
         graph
     }
 }
@@ -384,7 +411,7 @@ mod test {
         }
     }
 
-    fn pipeline_ii() -> GraphJson {
+    fn pipeline_old_ii() -> GraphJson {
         GraphJson {
             sensors: vec![
                 sensor_json("speaker", vec!["playback"], vec!["speech_command"]),
@@ -400,7 +427,7 @@ mod test {
         }
     }
 
-    fn pipeline_iii() -> GraphJson {
+    fn pipeline_ii() -> GraphJson {
         GraphJson {
             sensors: vec![
                 sensor_json("speaker", vec!["playback"], vec!["speech_command"]),
@@ -417,7 +444,7 @@ mod test {
         }
     }
 
-    fn pipeline_iv() -> GraphJson {
+    fn pipeline_iii() -> GraphJson {
         GraphJson {
             sensors: vec![
                 sensor_json("camera", vec!["firmware", "livestream"], vec!["motion", "streaming"]),
@@ -444,41 +471,109 @@ mod test {
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.n_devices, 1);
         assert_eq!(graph.network_nodes.len(), 0);
-        assert_eq!(graph.get_pipelines().len(), 0);
+        assert_eq!(graph.pipelines.len(), 0);
     }
 
     #[test]
-    fn test_pipeline_ii_parsing() {
-        let json = pipeline_ii();
+    fn test_pipeline_old_ii_parsing() {
+        let json = pipeline_old_ii();
         let graph = PolicyGraph::from(&json);
         println!("{}", graph);
         assert_eq!(graph.nodes.len(), 3);
         assert_eq!(graph.edges.len(), 3);
         assert_eq!(graph.n_devices, 1);
         assert_eq!(graph.network_nodes.len(), 1);
-        assert_eq!(graph.get_pipelines().len(), 1);
+        assert_eq!(graph.pipelines.len(), 2);
+    }
+
+    #[test]
+    fn test_pipeline_ii_parsing() {
+        let json = pipeline_ii();
+        let graph = PolicyGraph::from(&json);
+        assert_eq!(graph.nodes.len(), 4);
+        assert_eq!(graph.edges.len(), 3);
+        assert_eq!(graph.n_devices, 2);
+        assert_eq!(graph.network_nodes.len(), 0);
+        assert_eq!(graph.pipelines.len(), 1);
     }
 
     #[test]
     fn test_pipeline_iii_parsing() {
         let json = pipeline_iii();
         let graph = PolicyGraph::from(&json);
-        assert_eq!(graph.nodes.len(), 4);
-        assert_eq!(graph.edges.len(), 3);
-        assert_eq!(graph.n_devices, 2);
-        assert_eq!(graph.network_nodes.len(), 0);
-        assert_eq!(graph.get_pipelines().len(), 1);
-    }
-
-    #[test]
-    fn test_pipeline_iv_parsing() {
-        let json = pipeline_iv();
-        let graph = PolicyGraph::from(&json);
         println!("{}", graph);
         assert_eq!(graph.nodes.len(), 5);
         assert_eq!(graph.edges.len(), 4);
         assert_eq!(graph.n_devices, 2);
         assert_eq!(graph.network_nodes.len(), 1);
-        assert_eq!(graph.get_pipelines().len(), 2);
+        assert_eq!(graph.pipelines.len(), 2);
     }
+
+    fn figure_3ab() -> GraphJson {
+        GraphJson {
+            sensors: vec![
+                sensor_json("speaker", vec!["speech_command"], vec!["playback"]),
+                sensor_json("speaker_1", vec!["speech_command"], vec!["playback"]),
+                sensor_json("light", vec!["state", "intensity"], vec!["state", "intensity"]),
+            ],
+            moduleIds: vec![
+                module_json("picovoice", vec!["speech"], vec!["weather_intent", "light_intent"]),
+                module_json("weather", vec!["weather_intent"], vec!["weather"]),
+                module_json("light_switch", vec!["light_intent"], vec!["state"]),
+                module_json("set_true", vec![], vec!["true"]),
+                module_json("set_false", vec![], vec!["false"]),
+            ],
+            dataEdges: vec![(true, 0, 0, 3, 0), (false, 1, 0, 3, 0), (true, 3, 0, 4, 0), (true, 3, 1, 5, 0)],
+            stateEdges: vec![(4, 0, 0, 0), (5, 0, 2, 0), (6, 0, 2, 0), (7, 0, 2, 0)],
+            networkEdges: vec![(4, "weather.com".to_string())],
+            intervals: vec![],
+        }
+    }
+
+    #[test]
+    fn test_figure_3ab_parsing() {
+        let json = figure_3ab();
+        let graph = PolicyGraph::from(&json);
+        assert_eq!(graph.nodes.len(), 8);
+        assert_eq!(graph.edges.len(), 8);
+        assert_eq!(graph.n_devices, 3);
+        assert_eq!(graph.network_nodes.len(), 1);
+        assert_eq!(graph.pipelines.len(), 6);
+    }
+
+    #[test]
+    fn test_figure_3ab_pipeline_order() {
+        let graph = PolicyGraph::from(&figure_3ab());
+        let perms = &graph.pipelines;
+        assert_eq!(perms.len(), 6);
+        assert_eq!(perms[0].get_source(), &PipelineNode::Network { domain: "weather.com".to_string() });
+        assert_eq!(perms[1].get_source(), &PipelineNode::Data { device: 0, output: 0 });
+        assert_eq!(perms[2].get_source(), &PipelineNode::Data { device: 1, output: 0 });
+        assert_eq!(perms[3].get_source(), &PipelineNode::Data { device: 0, output: 0 });
+        assert_eq!(perms[4].get_source(), &PipelineNode::Data { device: 1, output: 0 });
+        assert_eq!(perms[5].get_source(), &PipelineNode::Data { device: 1, output: 0 });
+        assert_eq!(perms[0].len(), 3);
+        assert_eq!(perms[1].len(), 5);
+        assert_eq!(perms[2].len(), 5);
+        assert_eq!(perms[3].len(), 6);
+        assert_eq!(perms[4].len(), 6);
+        assert_eq!(perms[5].len(), 6);
+        // assert_eq!(perms[0].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+        // assert_eq!(perms[1].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+        // assert_eq!(perms[2].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+        // assert_eq!(perms[3].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+        // assert_eq!(perms[4].get_sink(), &PipelineNode::Data { device: 0, output: 0 });
+    }
+
+    #[test]
+    fn test_remove_one_light_pipeline() {
+
+    }
+
+    #[test]
+    fn test_remove_cross_speaker_pipelines() {
+
+    }
+
+
 }
