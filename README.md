@@ -113,7 +113,12 @@ All experience levels welcome!
 
 ## Funding
 
-This material is based upon work supported by the National Science Foundation under Grant No. 1931750. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.
+This research was supported in part by affiliate members and other supporters of
+the Stanford DAWN project (Google, VMWare, Ant Financial and Meta), and by the
+NSF under Grant No. 1931750 and 1900638 and CAREER grant CNS-1651570. Any
+opinions, findings, and conclusions or recommendations expressed in this
+material are those of the author(s) and do not necessarily reflect the views of
+the National Science Foundation.
 
 ## Appendix
 * [Fog computing](https://en.wikipedia.org/wiki/Fog_computing)
