@@ -12,13 +12,13 @@ env_logger = "0.7"
 log = "0.4"
 serde = { version = "1.0",  features = ["derive"] }
 serde_derive = "1.0"
-tokio = { version = "1.4", features = ["rt", "macros", "sync", "time", "rt-multi-thread"] }
+tokio = { version = "1.4", features = ["rt", "fs", "macros", "sync", "time", "rt-multi-thread"] }
 tokio-stream = { version =  "0.1", features = ["net"] }
 clap = "2.33.3"
 rand = "0.8"
 rocket = "0.4.9"
 reqwest = { version = "0.11", features = ["blocking"] }
-tonic = "0.4"
+tonic = {version = "0.4", features =["tls"]}
 prost = "0.7"
 chrono = "0.4"
 karl-common = { path = "../karl-common" }

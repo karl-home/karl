@@ -3,6 +3,7 @@ pub mod protos {
 }
 
 use tonic::{Request, Status, Code};
+use tonic::transport::{Channel,Certificate, ClientTlsConfig};
 use crate::protos::karl_controller_client::KarlControllerClient;
 use crate::protos::*;
 
@@ -10,13 +11,16 @@ use crate::protos::*;
 pub struct KarlSensorSDK {
     pub controller_addr: String,
     pub sensor_token: Option<String>,
+    pub channel: Option<Channel>
 }
 
 impl KarlSensorSDK {
     pub fn new(controller_addr: &str) -> Self {
+        print!("Hi there");
         Self {
             controller_addr: controller_addr.to_string(),
             sensor_token: None,
+            channel: None
         }
     }
 
@@ -24,6 +28,7 @@ impl KarlSensorSDK {
         Self {
             controller_addr: controller_addr.to_string(),
             sensor_token: Some(token),
+            channel: None
         }
     }
 
@@ -41,8 +46,21 @@ impl KarlSensorSDK {
             returns,
             app,
         };
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+
+        print!("done with tls configuration!");
+        let pem = tokio::fs::read("../ca.pem").await.unwrap();
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new()
+            .domain_name("localhost")
+            .ca_certificate(ca);
+
+        self.channel = Some(Channel::from_shared(self.controller_addr.to_owned()).unwrap()
+            .tls_config(tls).unwrap()
+            .connect()
+            .await.unwrap());
+
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .sensor_register(Request::new(request)).await
             .map(|res| {
                 let res = res.into_inner();
@@ -62,8 +80,7 @@ impl KarlSensorSDK {
             param,
             data,
         };
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .push_raw_data(Request::new(request)).await
             .map(|res| res.into_inner())
     }
@@ -75,8 +92,7 @@ impl KarlSensorSDK {
         let request = StateChangeInit {
             sensor_token: self.sensor_token.clone().expect("missing token"),
         };
-        KarlControllerClient::connect(self.controller_addr.clone()).await
-            .map_err(|e| Status::new(Code::Internal, format!("{:?}", e)))?
+        KarlControllerClient::new(self.channel.clone().unwrap())
             .state_changes(Request::new(request)).await
             .map(|res| res.into_inner())
     }
